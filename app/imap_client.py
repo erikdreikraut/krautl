@@ -68,6 +68,11 @@ def mail_verschieben(
     EML herunterladen -> im Zielpostfach als Entwurf anlegen -> Draft-Flag
     entfernen -> im Quellpostfach löschen.
     """
+    if quelle.user == ziel.user and quell_ordner == ziel_ordner:
+        # Wie im n8n-Workflow ("Schon am Ziel?"): nichts zu tun, wenn Quelle
+        # und Ziel identisch sind — verhindert unnötiges Download/Delete.
+        return
+
     with IMAPClient(quelle.host, ssl=True) as q:
         q.login(quelle.user, quelle.password)
         q.select_folder(quell_ordner)
