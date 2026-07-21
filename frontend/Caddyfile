@@ -1,0 +1,15 @@
+{$KRAUTL_DOMAIN:-:80} {
+	# Alles unter /api/* geht an das FastAPI-Backend — Vite-Dev-Proxy und
+	# Produktion verhalten sich damit identisch (siehe vite.config.js).
+	handle_path /api/* {
+		reverse_proxy app:8000
+	}
+
+	# Die Oberfläche navigiert nur über internen React-State (keine eigenen
+	# Routen), trotzdem try_files zur Sicherheit für direkte Aufrufe.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

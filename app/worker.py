@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from .agent import klassifiziere
 from .db import SessionLocal
-from .imap_client import PostfachConfig, lade_postfaecher, neue_mails_abrufen
+from .imap_client import PostfachConfig, lade_postfaecher, mail_verschieben, neue_mails_abrufen
 from .mail_parser import parse_eml
 from .models import Klassifikation, Korrektur, Mail, Postfach
 
@@ -67,14 +67,25 @@ async def _mail_existiert(session, message_id: str) -> bool:
     return result.scalar_one_or_none() is not None
 
 
-async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
+async def _klassifikation_zeilen_laden(session) -> dict[str, Klassifikation]:
+    result = await session.execute(select(Klassifikation))
+    return {k.klassifikation_id: k for k in result.scalars().all()}
+
+
+async def postfach_abrufen_und_klassifizieren(
+    config: PostfachConfig, alle_postfaecher: dict[str, PostfachConfig],
+) -> int:
     """Ruft neue Mails eines Postfachs ab, klassifiziert und speichert sie.
-    Gibt die Anzahl neu gespeicherter Mails zurück."""
+    Führt anschließend die MAIL_VERSCHIEBEN-Aktion der Klassifikation aus,
+    sofern das Zielpostfach konfiguriert ist. Gibt die Anzahl neu gespeicherter
+    Mails zurück."""
     rohmails = neue_mails_abrufen(config)
     if not rohmails:
         return 0
 
     gespeichert = 0
+    zu_verschieben: list[tuple[int, PostfachConfig, str, str]] = []
+
     async with SessionLocal() as session:
         postfach = await _postfach_holen_oder_anlegen(session, config)
         katalog = await _katalog_laden(session)
@@ -85,6 +96,7 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
                 config.funktion,
             )
         gueltige_ids = {k["klassifikation_id"] for k in katalog}
+        klassifikation_zeilen = await _klassifikation_zeilen_laden(session)
         beispiele = await _beispiele_laden(session)
 
         for roh in rohmails:
@@ -130,14 +142,37 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
             session.add(mail)
             gespeichert += 1
 
+            klass_zeile = klassifikation_zeilen.get(klassifikation_id)
+            if klass_zeile and klass_zeile.aktion_id == "MAIL_VERSCHIEBEN" and klass_zeile.zielpostfach:
+                ziel_config = alle_postfaecher.get(klass_zeile.zielpostfach)
+                if ziel_config:
+                    zu_verschieben.append(
+                        (roh["uid"], ziel_config, klass_zeile.zielordner or "INBOX", geparst["message_id"])
+                    )
+                else:
+                    logger.warning(
+                        "Zielpostfach %s (Klassifikation %s) ist nicht konfiguriert — Mail bleibt in %s liegen.",
+                        klass_zeile.zielpostfach, klassifikation_id, config.funktion,
+                    )
+
         await session.commit()
+
+    # Verschieben erst nach dem Commit: die Mail ist damit in jedem Fall schon
+    # dauerhaft erfasst, auch wenn das IMAP-Verschieben selbst fehlschlägt.
+    for uid, ziel_config, ziel_ordner, message_id in zu_verschieben:
+        try:
+            mail_verschieben(config, uid, ziel_config, ziel_ordner)
+        except Exception:
+            logger.exception("Verschieben nach %s/%s fehlgeschlagen für %s", ziel_config.user, ziel_ordner, message_id)
+
     return gespeichert
 
 
 async def alle_postfaecher_abrufen() -> None:
-    for config in lade_postfaecher():
+    alle_postfaecher = {config.user: config for config in lade_postfaecher()}
+    for config in alle_postfaecher.values():
         try:
-            anzahl = await postfach_abrufen_und_klassifizieren(config)
+            anzahl = await postfach_abrufen_und_klassifizieren(config, alle_postfaecher)
             if anzahl:
                 logger.info("%s: %d neue Mail(s) klassifiziert", config.funktion, anzahl)
         except Exception:
