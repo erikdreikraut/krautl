@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
-  Search, ChevronRight, CheckCircle2, PenLine, Send, Paperclip, X,
-  Inbox as InboxIcon, Receipt, BookOpen, Check, FolderCog, Sparkles,
+  Search, ChevronRight, ChevronDown, CheckCircle2, PenLine, Send, Paperclip, X,
+  Inbox as InboxIcon, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
 } from "lucide-react";
 import { api } from "./api.js";
 
@@ -51,6 +51,20 @@ function formatBetrag(wert) {
   if (wert == null) return "";
   return wert.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
 }
+
+// Festes Set von Aktion_IDs (siehe data/mail-klassifikationen.csv). Neue
+// Aktionen brauchen jeweils eigenen Code in worker.py — dies ist nur die
+// Anzeige, welche davon aktuell tatsächlich etwas auslösen.
+const AKTION_LABEL = {
+  MAIL_VERSCHIEBEN: "Mail verschieben",
+  RECHNUNG_VERWALTEN: "Rechnung verwalten",
+  LIEFERANTENMAIL_BEARBEITEN: "Lieferantenmail bearbeiten",
+  MARKETINGMAIL_BEARBEITEN: "Marketingmail bearbeiten",
+  AUDIO_TRANSKRIBIEREN: "Audio transkribieren",
+  SYSTEMMELDUNG_BEARBEITEN: "Systemmeldung bearbeiten",
+  RECHTSSACHE_BEARBEITEN: "Rechtssache bearbeiten",
+};
+const AKTIVE_AKTIONEN = new Set(["MAIL_VERSCHIEBEN"]);
 
 function Badge({ label, color }) {
   return (
@@ -368,6 +382,83 @@ function WissensdatenbankView({ faqEintraege, faqVorschlaege, onReload }) {
   );
 }
 
+function EinstellungenMenu({ active, onWaehlen }) {
+  const [offen, setOffen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function aussenKlick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOffen(false);
+    }
+    document.addEventListener("mousedown", aussenKlick);
+    return () => document.removeEventListener("mousedown", aussenKlick);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOffen((o) => !o)} className="flex items-center gap-2 px-3.5 py-2.5 relative"
+        style={{ ...fontUI, fontSize: "13.5px", fontWeight: active ? 600 : 500, color: active ? tokens.mossDeep : tokens.inkMuted }}>
+        <Settings size={15} /> Einstellungen <ChevronDown size={12} />
+        {active && <span className="absolute left-0 right-0" style={{ bottom: "-1px", height: "2px", background: tokens.mossDeep }} />}
+      </button>
+      {offen && (
+        <div className="absolute z-10 py-1" style={{ top: "100%", left: 0, minWidth: "200px", background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
+          <button onClick={() => { onWaehlen("klassifikationen"); setOffen(false); }} className="w-full text-left px-3.5 py-2"
+            style={{ ...fontUI, fontSize: "13px", color: tokens.ink }}>
+            Mail-Klassifikationen
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KlassifikationenView({ katalog }) {
+  return (
+    <div className="flex-1 overflow-y-auto px-8 py-6">
+      <h2 style={{ ...fontDisplay, fontSize: "20px", color: tokens.mossDeep, marginBottom: "4px" }}>Mail-Klassifikationen</h2>
+      <p className="mb-5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
+        Legt fest, wie eingehende Mails eingeordnet werden und was danach automatisch passiert.
+        Nur lesbar — Bearbeiten folgt später. {katalog.length} Einträge.
+      </p>
+
+      <div style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
+        <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1.4fr 2fr 1fr 1fr 1.6fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
+          <div>ID</div><div>BESCHREIBUNG</div><div>PRIO</div><div>ZIEL</div><div>AKTION</div>
+        </div>
+        {katalog.map((k) => {
+          const aktiv = AKTIVE_AKTIONEN.has(k.aktion_id);
+          return (
+            <div key={k.klassifikation_id} className="grid items-start px-4 py-3" style={{ gridTemplateColumns: "1.4fr 2fr 1fr 1fr 1.6fr", borderBottom: `1px solid ${tokens.line}` }}>
+              <div>
+                <Badge label={k.klassifikation_id} color={farbeFuerKategorie(k.hauptkategorie)} />
+              </div>
+              <div>
+                <div style={{ ...fontSerif, fontSize: "14px", fontWeight: 600 }}>{k.hauptkategorie} · {k.unterkategorie}</div>
+                <div style={{ ...fontSerif, fontSize: "13px", color: tokens.inkMuted, marginTop: "2px" }}>{k.beschreibung}</div>
+              </div>
+              <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{k.standard_prio}</div>
+              <div style={{ ...fontMono, fontSize: "11.5px", color: tokens.inkMuted }}>
+                {k.zielpostfach ? <>{k.zielpostfach}<br />{k.zielordner}</> : "—"}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span title={aktiv ? "Läuft automatisch" : "Noch nicht automatisiert"}
+                  className="inline-block rounded-full" style={{ width: "7px", height: "7px", background: aktiv ? tokens.moss : tokens.line, flexShrink: 0 }} />
+                <span style={{ ...fontUI, fontSize: "12.5px" }}>{AKTION_LABEL[k.aktion_id] ?? k.aktion_id}</span>
+              </div>
+            </div>
+          );
+        })}
+        {katalog.length === 0 && (
+          <div className="px-4 py-6 text-center" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
+            Noch keine Klassifikationen importiert.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function verwendeKrautlDaten() {
   const [daten, setDaten] = useState(null);
   const [fehler, setFehler] = useState(null);
@@ -468,6 +559,7 @@ export default function KrautlUI() {
           <NavTab icon={InboxIcon} label="Posteingang" active={tab === "posteingang"} onClick={() => setTab("posteingang")} />
           <NavTab icon={Receipt} label="Rechnungen" count={offeneRechnungen} accent active={tab === "rechnungen"} onClick={() => setTab("rechnungen")} />
           <NavTab icon={BookOpen} label="Wissensdatenbank" count={abgeleitet.faqVorschlaege.length} accent active={tab === "wissen"} onClick={() => setTab("wissen")} />
+          <EinstellungenMenu active={tab === "klassifikationen"} onWaehlen={setTab} />
         </nav>
         <div className="ml-auto flex items-center gap-2">
           <PenLine size={13} style={{ color: tokens.amber }} />
@@ -478,6 +570,7 @@ export default function KrautlUI() {
       {tab === "posteingang" && <PosteingangView mails={abgeleitet.mails} katalog={daten.katalog} onReload={neuLaden} />}
       {tab === "rechnungen" && <RechnungenView rechnungen={daten.rechnungen} onReload={neuLaden} />}
       {tab === "wissen" && <WissensdatenbankView faqEintraege={daten.faq} faqVorschlaege={abgeleitet.faqVorschlaege} onReload={neuLaden} />}
+      {tab === "klassifikationen" && <KlassifikationenView katalog={daten.katalog} />}
     </div>
   );
 }
