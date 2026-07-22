@@ -8,7 +8,7 @@ kein Fine-Tuning nötig, siehe CLAUDE.md.
 """
 from datetime import datetime
 from sqlalchemy import (
-    String, Integer, Float, Boolean, DateTime, ForeignKey, Text, func
+    String, Integer, Float, Boolean, DateTime, ForeignKey, Text, JSON, UniqueConstraint, func
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -41,6 +41,36 @@ class Klassifikation(Base):
     zielordner: Mapped[str | None] = mapped_column(String(255), nullable=True)
     aktion_id: Mapped[str] = mapped_column(String(50))
 
+    aufgaben: Mapped[list["KlassifikationAufgabe"]] = relationship(
+        back_populates="klassifikation", order_by="KlassifikationAufgabe.position",
+        cascade="all, delete-orphan",
+    )
+
+
+class KlassifikationAufgabe(Base):
+    """Geordnete Aufgabenvorlage einer Klassifikation.
+
+    `bestaetiger_typ`/`bestaetiger_referenz` sind bewusst schon vorhanden,
+    obwohl Krautl aktuell noch keine Nutzer/Rollen kennt. Heute ist nur
+    `alle` aktiv; später kann hier `rolle` oder `nutzer` stehen.
+    """
+    __tablename__ = "klassifikation_aufgabe"
+    __table_args__ = (
+        UniqueConstraint("klassifikation_id", "position", name="uq_klassifikation_aufgabe_position"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    klassifikation_id: Mapped[str] = mapped_column(
+        ForeignKey("klassifikation.klassifikation_id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    aufgabe_typ: Mapped[str] = mapped_column(String(50))
+    parameter: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    bestaetiger_typ: Mapped[str] = mapped_column(String(20), default="alle")
+    bestaetiger_referenz: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    klassifikation: Mapped["Klassifikation"] = relationship(back_populates="aufgaben")
+
 
 class Mail(Base):
     __tablename__ = "mail"
@@ -70,10 +100,41 @@ class Mail(Base):
     # "offen" | "geprueft" — wird "geprueft" sobald der Mensch die Kategorie
     # bestätigt oder korrigiert hat.
     pruefstatus: Mapped[str] = mapped_column(String(20), default="offen")
+    im_krautl_posteingang: Mapped[bool] = mapped_column(Boolean, default=True)
 
     postfach: Mapped["Postfach"] = relationship(back_populates="mails")
     korrekturen: Mapped[list["Korrektur"]] = relationship(back_populates="mail")
     entwuerfe: Mapped[list["Entwurf"]] = relationship(back_populates="mail")
+    aufgaben: Mapped[list["MailAufgabe"]] = relationship(
+        back_populates="mail", order_by="MailAufgabe.position", cascade="all, delete-orphan"
+    )
+
+
+class MailAufgabe(Base):
+    """Konkreter, unveränderlicher Aufgabenplan einer einzelnen Mail."""
+    __tablename__ = "mail_aufgabe"
+    __table_args__ = (
+        UniqueConstraint("mail_id", "position", name="uq_mail_aufgabe_position"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    mail_id: Mapped[int] = mapped_column(ForeignKey("mail.id", ondelete="CASCADE"), index=True)
+    klassifikation_aufgabe_id: Mapped[int | None] = mapped_column(
+        ForeignKey("klassifikation_aufgabe.id", ondelete="SET NULL"), nullable=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    aufgabe_typ: Mapped[str] = mapped_column(String(50))
+    parameter: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # "blockiert" | "wartet" | "erledigt" | "fehlgeschlagen"
+    status: Mapped[str] = mapped_column(String(20), default="blockiert", index=True)
+    bestaetiger_typ: Mapped[str] = mapped_column(String(20), default="alle")
+    bestaetiger_referenz: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    bestaetigt_von: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    bestaetigt_am: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    erledigt_am: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fehler: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    mail: Mapped["Mail"] = relationship(back_populates="aufgaben")
 
 
 class Korrektur(Base):
@@ -155,7 +216,7 @@ class Aktionslog(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     mail_id: Mapped[int | None] = mapped_column(ForeignKey("mail.id"), nullable=True)
-    # "klassifiziert" | "verschoben" | "verschieben_fehlgeschlagen"
+    # "klassifiziert" | "bestaetigt" | "verschoben" | "verschieben_fehlgeschlagen"
     ereignis: Mapped[str] = mapped_column(String(50))
     detail: Mapped[str] = mapped_column(Text)
     erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

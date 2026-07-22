@@ -1,11 +1,16 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from fastapi import FastAPI, Depends
-from sqlalchemy import select
+from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy import delete, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import get_session, engine
-from .models import Aktionslog, Base, Mail, Rechnung, FaqEintrag, FaqVorschlag, Entwurf, Korrektur, Klassifikation
+from .aufgaben import aufgaben_fuer_mail_anlegen, bestaetigung_erfassen
+from .models import (
+    Aktionslog, Base, Mail, MailAufgabe, Rechnung, FaqEintrag, FaqVorschlag,
+    Entwurf, Korrektur, Klassifikation,
+)
 from .worker import alle_postfaecher_abrufen
 
 app = FastAPI(title="Krautl API")
@@ -42,14 +47,57 @@ async def health():
 
 @app.get("/mails")
 async def liste_mails(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Mail).order_by(Mail.empfangen_am.desc()).limit(100))
-    return result.scalars().all()
+    result = await session.execute(
+        select(Mail)
+        .options(selectinload(Mail.aufgaben))
+        .where(Mail.im_krautl_posteingang.is_(True))
+        .order_by(Mail.empfangen_am.desc())
+        .limit(100)
+    )
+    mails = result.scalars().all()
+    return [
+        {
+            **{spalte.name: getattr(mail, spalte.name) for spalte in Mail.__table__.columns},
+            "aufgaben": [
+                {spalte.name: getattr(aufgabe, spalte.name) for spalte in MailAufgabe.__table__.columns}
+                for aufgabe in mail.aufgaben
+            ],
+            "bestaetigung_erforderlich": any(
+                a.aufgabe_typ == "BESTAETIGUNG_EINHOLEN" and a.status == "wartet"
+                for a in mail.aufgaben
+            ),
+        }
+        for mail in mails
+    ]
 
 
 @app.get("/klassifikationen")
 async def liste_klassifikationen(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Klassifikation).order_by(Klassifikation.hauptkategorie))
-    return result.scalars().all()
+    result = await session.execute(
+        select(Klassifikation)
+        .options(selectinload(Klassifikation.aufgaben))
+        .order_by(Klassifikation.hauptkategorie)
+    )
+    return [
+        {
+            **{spalte.name: getattr(k, spalte.name) for spalte in Klassifikation.__table__.columns},
+            "aufgaben": [
+                {spalte.name: getattr(a, spalte.name) for spalte in a.__table__.columns}
+                for a in k.aufgaben
+            ],
+        }
+        for k in result.scalars().all()
+    ]
+
+
+@app.post("/mails/{mail_id}/bestaetigen")
+async def mail_bestaetigen(mail_id: int, bestaetigt_von: str | None = None):
+    ergebnis = await bestaetigung_erfassen(mail_id, bestaetigt_von)
+    if ergebnis["status"] == "mail_nicht_gefunden":
+        raise HTTPException(status_code=404, detail="Mail nicht gefunden")
+    if ergebnis["status"] == "keine_bestaetigung_offen":
+        raise HTTPException(status_code=409, detail="Für diese Mail wartet keine Bestätigung")
+    return ergebnis
 
 
 @app.get("/aktionslog")
@@ -75,6 +123,9 @@ async def korrigiere_klassifikation(
     mail.klassifikation_id = neue_klassifikation_id
     mail.pruefstatus = "geprueft"
     session.add(korrektur)
+    await session.execute(delete(MailAufgabe).where(MailAufgabe.mail_id == mail_id))
+    await session.flush()
+    await aufgaben_fuer_mail_anlegen(session, mail)
     await session.commit()
     return {"status": "ok"}
 

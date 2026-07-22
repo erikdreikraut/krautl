@@ -32,7 +32,11 @@
 5. Einmalig die Zeitzonen-Migration ausführen (bestehende Zeitstempel-Spalten
    auf `timestamptz` umstellen, sonst zeigt die Oberfläche falsche Uhrzeiten):
    `docker compose exec app python -m scripts.migrate_zeitzone`
-6. Der `frontend`-Dienst bindet TLS/Domain **nicht** selbst — er lauscht nur
+6. Einmalig die Aufgaben-Migration ausführen. Sie ergänzt geordnete
+   Aufgabenlisten, setzt vor alle bisherigen `MAIL_VERSCHIEBEN`-Aufgaben eine
+   Bestätigung und übernimmt offene Bestandsmails:
+   `docker compose exec app python -m scripts.migrate_aufgaben`
+7. Der `frontend`-Dienst bindet TLS/Domain **nicht** selbst — er lauscht nur
    intern auf Host-Port `8081`. Läuft davor bereits ein eigener Reverse Proxy
    (z. B. bei Elestio), muss dessen Domain-Routing auf Port `8081` dieses
    Servers zeigen. Ohne eigenen vorgeschalteten Proxy reicht ein simpler
@@ -55,5 +59,8 @@ kein separater Scheduler-Job nötig.
 - Dropbox-Upload-Modul für Anhänge
 - Klassifikationstabelle ist nur per Skript/DB editierbar, noch nicht über
   die Oberfläche
+- Bestätigungen gelten aktuell für alle Nutzer mit Zugriff auf Krautl. Das
+  Datenmodell enthält bereits Zieltyp/-referenz für spätere Rollen oder
+  einzelne Nutzer; Nutzerverwaltung und Rollenprüfung fehlen noch.
 - Authentifizierung für die API (aktuell komplett offen — nicht für den
   Produktivbetrieb geeignet, bevor das ergänzt ist)

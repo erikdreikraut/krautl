@@ -13,7 +13,9 @@ import csv
 import sys
 
 from app.db import SessionLocal
-from app.models import Klassifikation
+from sqlalchemy import delete
+
+from app.models import Klassifikation, KlassifikationAufgabe
 
 
 def _lese_csv(pfad: str) -> list[dict]:
@@ -40,7 +42,37 @@ async def importiere(pfad: str) -> None:
                 for feld, wert in werte.items():
                     setattr(bestehende, feld, wert)
             else:
-                session.add(Klassifikation(klassifikation_id=klassifikation_id, **werte))
+                bestehende = Klassifikation(klassifikation_id=klassifikation_id, **werte)
+                session.add(bestehende)
+
+            # Das bisherige Einzel-Feld Aktion_ID bleibt vorerst als
+            # Import-/Kompatibilitätsfeld erhalten. Die eigentliche Ausführung
+            # läuft über diese geordnete Aufgabenliste.
+            await session.execute(
+                delete(KlassifikationAufgabe).where(
+                    KlassifikationAufgabe.klassifikation_id == klassifikation_id
+                )
+            )
+            aufgabe_typ = werte["aktion_id"]
+            position = 1
+            if aufgabe_typ == "MAIL_VERSCHIEBEN":
+                session.add(KlassifikationAufgabe(
+                    klassifikation_id=klassifikation_id,
+                    position=position,
+                    aufgabe_typ="BESTAETIGUNG_EINHOLEN",
+                    bestaetiger_typ="alle",
+                ))
+                position += 1
+
+            session.add(KlassifikationAufgabe(
+                klassifikation_id=klassifikation_id,
+                position=position,
+                aufgabe_typ=aufgabe_typ,
+                parameter={
+                    "zielpostfach": werte["zielpostfach"],
+                    "zielordner": werte["zielordner"],
+                },
+            ))
         await session.commit()
     print(f"{len(zeilen)} Klassifikationen importiert/aktualisiert.")
 

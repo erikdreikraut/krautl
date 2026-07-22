@@ -18,6 +18,8 @@ export const api = {
   mails: () => anfrage("/mails"),
   klassifikationen: () => anfrage("/klassifikationen"),
   aktionslog: () => anfrage("/aktionslog"),
+  mailBestaetigen: (mailId) =>
+    anfrage(`/mails/${mailId}/bestaetigen`, { method: "POST" }),
   korrigiereKlassifikation: (mailId, neueKlassifikationId, notiz) =>
     postForm(`/mails/${mailId}/korrektur`, {
       neue_klassifikation_id: neueKlassifikationId,

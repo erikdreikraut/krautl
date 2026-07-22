@@ -66,9 +66,10 @@ function formatBetrag(wert) {
 }
 
 // Festes Set von Aktion_IDs (siehe data/mail-klassifikationen.csv). Neue
-// Aktionen brauchen jeweils eigenen Code in worker.py — dies ist nur die
+// Aktionen brauchen jeweils eigenen Code in app/aufgaben.py — dies ist nur die
 // Anzeige, welche davon aktuell tatsächlich etwas auslösen.
 const AKTION_LABEL = {
+  BESTAETIGUNG_EINHOLEN: "Bestätigung einholen",
   MAIL_VERSCHIEBEN: "Mail verschieben",
   RECHNUNG_VERWALTEN: "Rechnung verwalten",
   LIEFERANTENMAIL_BEARBEITEN: "Lieferantenmail bearbeiten",
@@ -77,16 +78,17 @@ const AKTION_LABEL = {
   SYSTEMMELDUNG_BEARBEITEN: "Systemmeldung bearbeiten",
   RECHTSSACHE_BEARBEITEN: "Rechtssache bearbeiten",
 };
-const AKTIVE_AKTIONEN = new Set(["MAIL_VERSCHIEBEN"]);
+const AKTIVE_AKTIONEN = new Set(["BESTAETIGUNG_EINHOLEN", "MAIL_VERSCHIEBEN"]);
 
 const EREIGNIS_LABEL = {
   klassifiziert: "Klassifiziert",
+  bestaetigt: "Bestätigt",
   verschoben: "Verschoben",
   verschieben_fehlgeschlagen: "Verschieben fehlgeschlagen",
 };
 function farbeFuerEreignis(ereignis) {
   if (ereignis === "verschieben_fehlgeschlagen") return tokens.rust;
-  if (ereignis === "verschoben") return tokens.moss;
+  if (ereignis === "verschoben" || ereignis === "bestaetigt") return tokens.moss;
   return tokens.inkMuted;
 }
 
@@ -172,6 +174,40 @@ function KategorieKorrektur({ mail, katalog, onKorrigiert }) {
   );
 }
 
+function BestaetigenButton({ mail, onBestaetigt }) {
+  const [laeuft, setLaeuft] = useState(false);
+  const [fehler, setFehler] = useState(null);
+
+  if (!mail.bestaetigungErforderlich) return null;
+
+  async function bestaetigen() {
+    setLaeuft(true);
+    setFehler(null);
+    try {
+      const ergebnis = await api.mailBestaetigen(mail.id);
+      if (ergebnis.status === "fehlgeschlagen") {
+        setFehler(ergebnis.detail || "Folgeaufgabe fehlgeschlagen");
+      }
+      await onBestaetigt();
+    } catch (e) {
+      setFehler(e.message);
+    } finally {
+      setLaeuft(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {fehler && <span title={fehler} style={{ ...fontUI, fontSize: "11px", color: tokens.rust }}>Aktion fehlgeschlagen</span>}
+      <button onClick={bestaetigen} disabled={laeuft}
+        className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-60"
+        style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}>
+        <Check size={14} /> {laeuft ? "Wird bestätigt …" : "Bestätigen"}
+      </button>
+    </div>
+  );
+}
+
 function PosteingangView({ mails, katalog, onReload }) {
   const [filter, setFilter] = useState(null);
   const [selectedId, setSelectedId] = useState(mails[0]?.id ?? null);
@@ -229,9 +265,12 @@ function PosteingangView({ mails, katalog, onReload }) {
         {selected && (
           <>
             <div className="px-6 pt-5 pb-4" style={{ borderBottom: `1px solid ${tokens.line}` }}>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <Badge label={selected.katId} color={farbeFuerKategorie(selected.kat)} />
-                <KategorieKorrektur mail={selected} katalog={katalog} onKorrigiert={onReload} />
+                <div className="flex items-center gap-2">
+                  <BestaetigenButton mail={selected} onBestaetigt={onReload} />
+                  <KategorieKorrektur mail={selected} katalog={katalog} onKorrigiert={onReload} />
+                </div>
               </div>
               <h2 style={{ ...fontDisplay, fontSize: "19px", marginTop: "12px" }}>{selected.betreff}</h2>
               <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, marginTop: "4px" }}>{selected.absender} · {selected.zeit} Uhr</div>
@@ -455,7 +494,7 @@ function KlassifikationenView({ katalog }) {
           <div>ID</div><div>BESCHREIBUNG</div><div>PRIO</div><div>ZIEL</div><div>AKTION</div>
         </div>
         {katalog.map((k) => {
-          const aktiv = AKTIVE_AKTIONEN.has(k.aktion_id);
+          const aufgaben = k.aufgaben?.length ? k.aufgaben : [{ aufgabe_typ: k.aktion_id }];
           return (
             <div key={k.klassifikation_id} className="grid items-start px-4 py-3" style={{ gridTemplateColumns: "1.4fr 2fr 1fr 1fr 1.6fr", borderBottom: `1px solid ${tokens.line}` }}>
               <div>
@@ -469,10 +508,20 @@ function KlassifikationenView({ katalog }) {
               <div style={{ ...fontMono, fontSize: "11.5px", color: tokens.inkMuted }}>
                 {k.zielpostfach ? <>{k.zielpostfach}<br />{k.zielordner}</> : "—"}
               </div>
-              <div className="flex items-center gap-1.5">
-                <span title={aktiv ? "Läuft automatisch" : "Noch nicht automatisiert"}
-                  className="inline-block rounded-full" style={{ width: "7px", height: "7px", background: aktiv ? tokens.moss : tokens.line, flexShrink: 0 }} />
-                <span style={{ ...fontUI, fontSize: "12.5px" }}>{AKTION_LABEL[k.aktion_id] ?? k.aktion_id}</span>
+              <div className="flex flex-col gap-1.5">
+                {aufgaben.map((aufgabe, index) => {
+                  const aktiv = AKTIVE_AKTIONEN.has(aufgabe.aufgabe_typ);
+                  return (
+                    <div key={`${aufgabe.aufgabe_typ}-${index}`} className="flex items-center gap-1.5">
+                      <span title={aktiv ? "Implementiert" : "Noch nicht automatisiert"}
+                        className="inline-block rounded-full" style={{ width: "7px", height: "7px", background: aktiv ? tokens.moss : tokens.line, flexShrink: 0 }} />
+                      <span style={{ ...fontUI, fontSize: "12.5px" }}>
+                        {index > 0 && <span style={{ color: tokens.inkMuted }}>danach </span>}
+                        {AKTION_LABEL[aufgabe.aufgabe_typ] ?? aufgabe.aufgabe_typ}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
@@ -492,7 +541,7 @@ function AktionslogView({ eintraege }) {
     <div className="flex-1 overflow-y-auto px-8 py-6">
       <h2 style={{ ...fontDisplay, fontSize: "20px", color: tokens.mossDeep, marginBottom: "4px" }}>Aktionslog</h2>
       <p className="mb-5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
-        Was der Postfach-Abruf tatsächlich getan hat — Klassifizierungen und Verschiebe-Versuche,
+        Was Krautl tatsächlich getan hat — Klassifizierungen, Bestätigungen und Verschiebe-Versuche,
         neueste zuerst.
       </p>
 
@@ -569,6 +618,8 @@ export default function KrautlUI() {
         snippet: m.text_auszug,
         zeit: formatZeit(m.empfangen_am),
         konfidenz: m.konfidenz,
+        aufgaben: m.aufgaben ?? [],
+        bestaetigungErforderlich: Boolean(m.bestaetigung_erforderlich),
         felder,
         entwurf: entwurfRoh ? { id: entwurfRoh.id, text: entwurfRoh.text_ki } : null,
       };
