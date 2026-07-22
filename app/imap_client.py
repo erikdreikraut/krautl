@@ -7,6 +7,8 @@ oder in Logs/Prompts an die Claude API weitergeben.
 """
 import os
 from dataclasses import dataclass
+from email import message_from_bytes, policy
+
 from imapclient import IMAPClient
 
 
@@ -78,14 +80,29 @@ def mail_verschieben(
         q.select_folder(quell_ordner)
         eml = q.fetch([quell_uid], ["RFC822"])[quell_uid][b"RFC822"]
 
+    # append() liefert nur die rohe Server-Antwort zurück, keine UID (siehe
+    # imapclient-Quelltext) — die neue UID muss über die Message-ID gesucht
+    # werden, sonst schickt remove_flags() einen unsinnigen Wert als uidset
+    # ("UID command error: BAD ... Invalid uidset").
+    message_id = message_from_bytes(eml, policy=policy.default).get("Message-ID")
+
     with IMAPClient(ziel.host, ssl=True) as z:
         z.login(ziel.user, ziel.password)
-        neue_uid = z.append(ziel_ordner, eml, flags=[b"\\Draft"])
+        z.append(ziel_ordner, eml, flags=[b"\\Draft"])
         # STORE (remove_flags) erfordert eine SELECTed Mailbox — APPEND allein
         # reicht dafür nicht, das war der Fehler hinter "command STORE illegal
         # in state AUTH".
         z.select_folder(ziel_ordner)
-        z.remove_flags(ziel_ordner, [neue_uid], [b"\\Draft"])
+
+        treffer = z.search(["HEADER", "Message-ID", message_id]) if message_id else []
+        if not treffer:
+            # Fallback, falls kein Message-ID-Header vorhanden ist oder die
+            # Suche aus anderem Grund leer bleibt: neueste Nachricht im
+            # Zielordner nehmen (UIDs sind innerhalb einer UIDVALIDITY streng
+            # aufsteigend).
+            treffer = z.search(["ALL"])
+        if treffer:
+            z.remove_flags(ziel_ordner, [max(treffer)], [b"\\Draft"])
 
     with IMAPClient(quelle.host, ssl=True) as q:
         q.login(quelle.user, quelle.password)
