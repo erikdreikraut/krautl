@@ -81,6 +81,10 @@ def mail_verschieben(
     with IMAPClient(ziel.host, ssl=True) as z:
         z.login(ziel.user, ziel.password)
         neue_uid = z.append(ziel_ordner, eml, flags=[b"\\Draft"])
+        # STORE (remove_flags) erfordert eine SELECTed Mailbox — APPEND allein
+        # reicht dafür nicht, das war der Fehler hinter "command STORE illegal
+        # in state AUTH".
+        z.select_folder(ziel_ordner)
         z.remove_flags(ziel_ordner, [neue_uid], [b"\\Draft"])
 
     with IMAPClient(quelle.host, ssl=True) as q:

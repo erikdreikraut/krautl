@@ -47,6 +47,11 @@ function formatDatum(iso) {
   return new Date(iso).toLocaleDateString("de-DE");
 }
 
+function formatZeitpunkt(iso) {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
 function formatBetrag(wert) {
   if (wert == null) return "";
   return wert.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
@@ -65,6 +70,17 @@ const AKTION_LABEL = {
   RECHTSSACHE_BEARBEITEN: "Rechtssache bearbeiten",
 };
 const AKTIVE_AKTIONEN = new Set(["MAIL_VERSCHIEBEN"]);
+
+const EREIGNIS_LABEL = {
+  klassifiziert: "Klassifiziert",
+  verschoben: "Verschoben",
+  verschieben_fehlgeschlagen: "Verschieben fehlgeschlagen",
+};
+function farbeFuerEreignis(ereignis) {
+  if (ereignis === "verschieben_fehlgeschlagen") return tokens.rust;
+  if (ereignis === "verschoben") return tokens.moss;
+  return tokens.inkMuted;
+}
 
 function Badge({ label, color }) {
   return (
@@ -407,6 +423,10 @@ function EinstellungenMenu({ active, onWaehlen }) {
             style={{ ...fontUI, fontSize: "13px", color: tokens.ink }}>
             Mail-Klassifikationen
           </button>
+          <button onClick={() => { onWaehlen("aktionslog"); setOffen(false); }} className="w-full text-left px-3.5 py-2"
+            style={{ ...fontUI, fontSize: "13px", color: tokens.ink }}>
+            Aktionslog
+          </button>
         </div>
       )}
     </div>
@@ -459,16 +479,49 @@ function KlassifikationenView({ katalog }) {
   );
 }
 
+function AktionslogView({ eintraege }) {
+  return (
+    <div className="flex-1 overflow-y-auto px-8 py-6">
+      <h2 style={{ ...fontDisplay, fontSize: "20px", color: tokens.mossDeep, marginBottom: "4px" }}>Aktionslog</h2>
+      <p className="mb-5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
+        Was der Postfach-Abruf tatsächlich getan hat — Klassifizierungen und Verschiebe-Versuche,
+        neueste zuerst.
+      </p>
+
+      <div style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
+        <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1.1fr 1.4fr 1.6fr 2.5fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
+          <div>ZEIT</div><div>EREIGNIS</div><div>MAIL</div><div>DETAIL</div>
+        </div>
+        {eintraege.map((e) => (
+          <div key={e.id} className="grid items-start px-4 py-3" style={{ gridTemplateColumns: "1.1fr 1.4fr 1.6fr 2.5fr", borderBottom: `1px solid ${tokens.line}` }}>
+            <div style={{ ...fontMono, fontSize: "12px", color: tokens.inkMuted }}>{formatZeitpunkt(e.erstellt_am)}</div>
+            <div>
+              <Badge label={(EREIGNIS_LABEL[e.ereignis] ?? e.ereignis).toUpperCase()} color={farbeFuerEreignis(e.ereignis)} />
+            </div>
+            <div style={{ ...fontSerif, fontSize: "13.5px" }}>{e.mailLabel}</div>
+            <div style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, wordBreak: "break-word" }}>{e.detail}</div>
+          </div>
+        ))}
+        {eintraege.length === 0 && (
+          <div className="px-4 py-6 text-center" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
+            Noch keine Aktionen protokolliert.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function verwendeKrautlDaten() {
   const [daten, setDaten] = useState(null);
   const [fehler, setFehler] = useState(null);
 
   async function laden() {
     try {
-      const [mails, katalog, rechnungen, faq, faqVorschlaege, entwuerfe] = await Promise.all([
-        api.mails(), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.entwuerfe(),
+      const [mails, katalog, rechnungen, faq, faqVorschlaege, entwuerfe, aktionslog] = await Promise.all([
+        api.mails(), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.entwuerfe(), api.aktionslog(),
       ]);
-      setDaten({ mails, katalog, rechnungen, faq, faqVorschlaege, entwuerfe });
+      setDaten({ mails, katalog, rechnungen, faq, faqVorschlaege, entwuerfe, aktionslog });
       setFehler(null);
     } catch (e) {
       setFehler(e.message);
@@ -526,7 +579,15 @@ export default function KrautlUI() {
       };
     });
 
-    return { mails, faqVorschlaege };
+    const aktionslog = daten.aktionslog.map((e) => {
+      const mail = e.mail_id != null ? mailsNachId[e.mail_id] : null;
+      return {
+        ...e,
+        mailLabel: mail ? mail.betreff : e.mail_id != null ? `Mail #${e.mail_id}` : "—",
+      };
+    });
+
+    return { mails, faqVorschlaege, aktionslog };
   }, [daten]);
 
   if (fehler) {
@@ -559,7 +620,7 @@ export default function KrautlUI() {
           <NavTab icon={InboxIcon} label="Posteingang" active={tab === "posteingang"} onClick={() => setTab("posteingang")} />
           <NavTab icon={Receipt} label="Rechnungen" count={offeneRechnungen} accent active={tab === "rechnungen"} onClick={() => setTab("rechnungen")} />
           <NavTab icon={BookOpen} label="Wissensdatenbank" count={abgeleitet.faqVorschlaege.length} accent active={tab === "wissen"} onClick={() => setTab("wissen")} />
-          <EinstellungenMenu active={tab === "klassifikationen"} onWaehlen={setTab} />
+          <EinstellungenMenu active={tab === "klassifikationen" || tab === "aktionslog"} onWaehlen={setTab} />
         </nav>
         <div className="ml-auto flex items-center gap-2">
           <PenLine size={13} style={{ color: tokens.amber }} />
@@ -571,6 +632,7 @@ export default function KrautlUI() {
       {tab === "rechnungen" && <RechnungenView rechnungen={daten.rechnungen} onReload={neuLaden} />}
       {tab === "wissen" && <WissensdatenbankView faqEintraege={daten.faq} faqVorschlaege={abgeleitet.faqVorschlaege} onReload={neuLaden} />}
       {tab === "klassifikationen" && <KlassifikationenView katalog={daten.katalog} />}
+      {tab === "aktionslog" && <AktionslogView eintraege={abgeleitet.aktionslog} />}
     </div>
   );
 }

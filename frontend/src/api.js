@@ -17,6 +17,7 @@ function postForm(pfad, params) {
 export const api = {
   mails: () => anfrage("/mails"),
   klassifikationen: () => anfrage("/klassifikationen"),
+  aktionslog: () => anfrage("/aktionslog"),
   korrigiereKlassifikation: (mailId, neueKlassifikationId, notiz) =>
     postForm(`/mails/${mailId}/korrektur`, {
       neue_klassifikation_id: neueKlassifikationId,

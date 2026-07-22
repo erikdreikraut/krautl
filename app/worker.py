@@ -13,7 +13,7 @@ from .agent import klassifiziere
 from .db import SessionLocal
 from .imap_client import PostfachConfig, lade_postfaecher, mail_verschieben, neue_mails_abrufen
 from .mail_parser import parse_eml
-from .models import Klassifikation, Korrektur, Mail, Postfach
+from .models import Aktionslog, Klassifikation, Korrektur, Mail, Postfach
 
 logger = logging.getLogger("krautl.worker")
 
@@ -84,7 +84,7 @@ async def postfach_abrufen_und_klassifizieren(
         return 0
 
     gespeichert = 0
-    zu_verschieben: list[tuple[int, PostfachConfig, str, str]] = []
+    zu_verschieben: list[tuple[int, int, PostfachConfig, str, str]] = []
 
     async with SessionLocal() as session:
         postfach = await _postfach_holen_oder_anlegen(session, config)
@@ -140,14 +140,21 @@ async def postfach_abrufen_und_klassifizieren(
                 rechnungsnummer=klass.get("rechnungsnummer"),
             )
             session.add(mail)
+            await session.flush()  # weist mail.id zu, fürs Aktionslog gebraucht
             gespeichert += 1
+
+            session.add(Aktionslog(
+                mail_id=mail.id,
+                ereignis="klassifiziert",
+                detail=f"{klassifikation_id or 'UNKLASSIFIZIERT'} (Konfidenz {mail.konfidenz:.2f})",
+            ))
 
             klass_zeile = klassifikation_zeilen.get(klassifikation_id)
             if klass_zeile and klass_zeile.aktion_id == "MAIL_VERSCHIEBEN" and klass_zeile.zielpostfach:
                 ziel_config = alle_postfaecher.get(klass_zeile.zielpostfach)
                 if ziel_config:
                     zu_verschieben.append(
-                        (roh["uid"], ziel_config, klass_zeile.zielordner or "INBOX", geparst["message_id"])
+                        (mail.id, roh["uid"], ziel_config, klass_zeile.zielordner or "INBOX", geparst["message_id"])
                     )
                 else:
                     logger.warning(
@@ -159,11 +166,21 @@ async def postfach_abrufen_und_klassifizieren(
 
     # Verschieben erst nach dem Commit: die Mail ist damit in jedem Fall schon
     # dauerhaft erfasst, auch wenn das IMAP-Verschieben selbst fehlschlägt.
-    for uid, ziel_config, ziel_ordner, message_id in zu_verschieben:
-        try:
-            mail_verschieben(config, uid, ziel_config, ziel_ordner)
-        except Exception:
-            logger.exception("Verschieben nach %s/%s fehlgeschlagen für %s", ziel_config.user, ziel_ordner, message_id)
+    for mail_id, uid, ziel_config, ziel_ordner, message_id in zu_verschieben:
+        async with SessionLocal() as log_session:
+            try:
+                mail_verschieben(config, uid, ziel_config, ziel_ordner)
+                log_session.add(Aktionslog(
+                    mail_id=mail_id, ereignis="verschoben",
+                    detail=f"nach {ziel_config.user}/{ziel_ordner}",
+                ))
+            except Exception as exc:
+                logger.exception("Verschieben nach %s/%s fehlgeschlagen für %s", ziel_config.user, ziel_ordner, message_id)
+                log_session.add(Aktionslog(
+                    mail_id=mail_id, ereignis="verschieben_fehlgeschlagen",
+                    detail=f"nach {ziel_config.user}/{ziel_ordner}: {exc}",
+                ))
+            await log_session.commit()
 
     return gespeichert
 

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import get_session, engine
-from .models import Base, Mail, Rechnung, FaqEintrag, FaqVorschlag, Entwurf, Korrektur, Klassifikation
+from .models import Aktionslog, Base, Mail, Rechnung, FaqEintrag, FaqVorschlag, Entwurf, Korrektur, Klassifikation
 from .worker import alle_postfaecher_abrufen
 
 app = FastAPI(title="Krautl API")
@@ -49,6 +49,14 @@ async def liste_mails(session: AsyncSession = Depends(get_session)):
 @app.get("/klassifikationen")
 async def liste_klassifikationen(session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(Klassifikation).order_by(Klassifikation.hauptkategorie))
+    return result.scalars().all()
+
+
+@app.get("/aktionslog")
+async def liste_aktionslog(session: AsyncSession = Depends(get_session)):
+    result = await session.execute(
+        select(Aktionslog).order_by(Aktionslog.erstellt_am.desc()).limit(200)
+    )
     return result.scalars().all()
 
 

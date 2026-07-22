@@ -145,3 +145,17 @@ class FaqVorschlag(Base):
     # "offen" | "uebernommen" | "verworfen"
     status: Mapped[str] = mapped_column(String(20), default="offen")
     erstellt_am: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Aktionslog(Base):
+    """Protokoll tatsächlich ausgeführter Worker-Aktionen (Klassifizierung,
+    Verschieben) — zum Nachvollziehen, was mit einer Mail passiert ist, ohne
+    in die Server-Logs schauen zu müssen."""
+    __tablename__ = "aktionslog"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    mail_id: Mapped[int | None] = mapped_column(ForeignKey("mail.id"), nullable=True)
+    # "klassifiziert" | "verschoben" | "verschieben_fehlgeschlagen"
+    ereignis: Mapped[str] = mapped_column(String(50))
+    detail: Mapped[str] = mapped_column(Text)
+    erstellt_am: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
