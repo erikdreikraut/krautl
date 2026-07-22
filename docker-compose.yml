@@ -26,16 +26,8 @@ services:
     build: ./frontend
     depends_on:
       - app
-    environment:
-      KRAUTL_DOMAIN: ${KRAUTL_DOMAIN:-}
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - caddy_data:/data
-      - caddy_config:/config
+      - "8081:80"
 
 volumes:
   krautl_db:
-  caddy_data:
-  caddy_config:

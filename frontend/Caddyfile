@@ -1,4 +1,7 @@
-{$KRAUTL_DOMAIN:-:80} {
+:80 {
+	# TLS/Domain übernimmt Elestios eigener Reverse Proxy davor — dieser
+	# Caddy-Dienst spricht intern nur unverschlüsseltes HTTP.
+
 	# Alles unter /api/* geht an das FastAPI-Backend — Vite-Dev-Proxy und
 	# Produktion verhalten sich damit identisch (siehe vite.config.js).
 	handle_path /api/* {

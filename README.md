@@ -25,14 +25,15 @@
 1. Dieses Verzeichnis auf den Server bringen (`git clone`).
 2. `cp .env.example .env` und dort die echten Werte eintragen:
    IMAP-Zugangsdaten je Postfach, `ANTHROPIC_API_KEY`, `DROPBOX_ACCESS_TOKEN`,
-   `POSTGRES_PASSWORD`, optional `KRAUTL_DOMAIN` —
-   **niemals in den Chat einfügen, niemals committen.**
+   `POSTGRES_PASSWORD` — **niemals in den Chat einfügen, niemals committen.**
 3. `docker compose up -d --build` — startet Datenbank, API und Frontend/Caddy.
 4. Einmalig die Klassifikationstabelle importieren (im laufenden `app`-Container):
    `docker compose exec app python -m scripts.import_klassifikationen data/mail-klassifikationen.csv`
-5. Ist `KRAUTL_DOMAIN` gesetzt und zeigt die DNS-A-Record auf den Server,
-   holt sich Caddy automatisch ein Let's-Encrypt-Zertifikat. Ohne Domain ist
-   die Oberfläche vorerst nur per `http://<server-ip>` erreichbar.
+5. Der `frontend`-Dienst bindet TLS/Domain **nicht** selbst — er lauscht nur
+   intern auf Host-Port `8081`. Läuft davor bereits ein eigener Reverse Proxy
+   (z. B. bei Elestio), muss dessen Domain-Routing auf Port `8081` dieses
+   Servers zeigen. Ohne eigenen vorgeschalteten Proxy reicht ein simpler
+   Reverse Proxy (Caddy/nginx) mit eigener Domain + TLS vor Port `8081`.
 
 Der minütliche Mail-Abruf läuft danach automatisch im `app`-Container mit —
 kein separater Scheduler-Job nötig.
