@@ -4,7 +4,7 @@ import {
   Inbox as InboxIcon, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
 } from "lucide-react";
 import { api } from "./api.js";
-import logo from "./assets/dreikraut-logo.png";
+import logo from "./assets/krautl-logo.png";
 
 // Grün/Creme an den Logo-Farben ausgerichtet (#509B32 dunkelgrün,
 // #FFFFD2 creme, #BEDC0F helles Blattgrün) — Amber/Rost bleiben als
@@ -621,8 +621,7 @@ export default function KrautlUI() {
     <div className="w-full h-full flex flex-col" style={{ background: tokens.paper, minHeight: "640px", color: tokens.ink }}>
       <header className="flex items-center px-5" style={{ borderBottom: `1px solid ${tokens.line}`, background: tokens.paperRaised }}>
         <div className="flex items-center gap-2.5 pr-5 py-2" style={{ borderRight: `1px solid ${tokens.line}`, marginRight: "8px" }}>
-          <img src={logo} alt="dreikraut" style={{ height: "30px", width: "auto" }} />
-          <span style={{ ...fontDisplay, fontSize: "19px", color: tokens.mossDeep }}>Krautl</span>
+          <img src={logo} alt="Krautl" style={{ height: "34px", width: "auto" }} />
         </div>
         <nav className="flex items-center">
           <NavTab icon={InboxIcon} label="Posteingang" active={tab === "posteingang"} onClick={() => setTab("posteingang")} />
