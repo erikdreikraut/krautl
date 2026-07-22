@@ -89,6 +89,29 @@ class AufgabenPipelineTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(["bestaetigt", "verschoben"], list(ereignisse))
             self.assertEqual([], await liste_mails(session))
 
+    async def test_fehlgeschlagenes_verschieben_wird_protokolliert_und_mail_ausgeblendet(self):
+        fake_config = type("Config", (), {
+            "user": "info@dreikraut.de", "host": "imap.example.test",
+            "password": "secret", "funktion": "info",
+        })()
+        with patch("app.aufgaben.lade_postfaecher", return_value=[fake_config]), \
+             patch("app.aufgaben.mail_verschieben", side_effect=RuntimeError("IMAP-Testfehler")):
+            ergebnis = await bestaetigung_erfassen(self.mail_id)
+        self.assertEqual("fehlgeschlagen", ergebnis["status"])
+
+        async with SessionLocal() as session:
+            self.assertEqual([], await liste_mails(session))
+            mail = await session.get(Mail, self.mail_id)
+            self.assertFalse(mail.im_krautl_posteingang)
+            aufgabe = (await session.execute(
+                select(MailAufgabe).where(MailAufgabe.status == "fehlgeschlagen")
+            )).scalar_one()
+            self.assertEqual("IMAP-Testfehler", aufgabe.fehler)
+            log = (await session.execute(
+                select(Aktionslog).where(Aktionslog.ereignis == "verschieben_fehlgeschlagen")
+            )).scalar_one()
+            self.assertIn("aus Krautl-Posteingang entfernt", log.detail)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -116,7 +116,11 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
             fehler = "Quell-/Zielpostfach oder IMAP-UID nicht konfiguriert"
             wartend.status = "fehlgeschlagen"
             wartend.fehler = fehler
-            session.add(Aktionslog(mail_id=mail.id, ereignis="verschieben_fehlgeschlagen", detail=fehler))
+            mail.im_krautl_posteingang = False
+            session.add(Aktionslog(
+                mail_id=mail.id, ereignis="verschieben_fehlgeschlagen",
+                detail=f"{fehler}; aus Krautl-Posteingang entfernt",
+            ))
             await session.commit()
             return {"status": "fehlgeschlagen", "detail": fehler}
 
@@ -130,11 +134,16 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
         logger.exception("Verschieben nach %s/%s fehlgeschlagen für %s", ziel.user, zielordner, message_id)
         async with SessionLocal() as session:
             aufgabe = await session.get(MailAufgabe, aufgabe_id)
+            mail = await session.get(Mail, mail_id)
             aufgabe.status = "fehlgeschlagen"
             aufgabe.fehler = str(exc)
+            mail.im_krautl_posteingang = False
             session.add(Aktionslog(
                 mail_id=mail_id, ereignis="verschieben_fehlgeschlagen",
-                detail=f"nach {ziel.user}/{zielordner}: {exc}",
+                detail=(
+                    f"nach {ziel.user}/{zielordner}: {exc}; "
+                    "aus Krautl-Posteingang entfernt"
+                ),
             ))
             await session.commit()
         return {"status": "fehlgeschlagen", "detail": str(exc)}
