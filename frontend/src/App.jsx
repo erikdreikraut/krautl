@@ -36,20 +36,24 @@ function farbeFuerKategorie(name) {
   return FARB_ZYKLUS[hash % FARB_ZYKLUS.length];
 }
 
+// Immer Berlin anzeigen — dreikraut sitzt dort, unabhängig davon, wessen
+// Rechner/Zeitzone gerade auf die Oberfläche zugreift.
+const ZEITZONE = "Europe/Berlin";
+
 function formatZeit(iso) {
   if (!iso) return "";
   const d = new Date(iso);
-  return d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: ZEITZONE });
 }
 
 function formatDatum(iso) {
   if (!iso) return "";
-  return new Date(iso).toLocaleDateString("de-DE");
+  return new Date(iso).toLocaleDateString("de-DE", { timeZone: ZEITZONE });
 }
 
 function formatZeitpunkt(iso) {
   if (!iso) return "";
-  return new Date(iso).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: ZEITZONE });
 }
 
 function formatBetrag(wert) {

@@ -37,10 +37,12 @@ def parse_eml(raw: bytes) -> dict:
     empfangen_am: datetime
     try:
         empfangen_am = parsedate_to_datetime(msg.get("Date"))
-        if empfangen_am.tzinfo is not None:
-            empfangen_am = empfangen_am.astimezone(timezone.utc).replace(tzinfo=None)
+        if empfangen_am.tzinfo is None:
+            empfangen_am = empfangen_am.replace(tzinfo=timezone.utc)
+        else:
+            empfangen_am = empfangen_am.astimezone(timezone.utc)
     except (TypeError, ValueError):
-        empfangen_am = datetime.utcnow()
+        empfangen_am = datetime.now(timezone.utc)
 
     body_teil = msg.get_body(preferencelist=("plain", "html"))
     if body_teil is not None:

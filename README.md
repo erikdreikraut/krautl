@@ -29,7 +29,10 @@
 3. `docker compose up -d --build` — startet Datenbank, API und Frontend/Caddy.
 4. Einmalig die Klassifikationstabelle importieren (im laufenden `app`-Container):
    `docker compose exec app python -m scripts.import_klassifikationen data/mail-klassifikationen.csv`
-5. Der `frontend`-Dienst bindet TLS/Domain **nicht** selbst — er lauscht nur
+5. Einmalig die Zeitzonen-Migration ausführen (bestehende Zeitstempel-Spalten
+   auf `timestamptz` umstellen, sonst zeigt die Oberfläche falsche Uhrzeiten):
+   `docker compose exec app python -m scripts.migrate_zeitzone`
+6. Der `frontend`-Dienst bindet TLS/Domain **nicht** selbst — er lauscht nur
    intern auf Host-Port `8081`. Läuft davor bereits ein eigener Reverse Proxy
    (z. B. bei Elestio), muss dessen Domain-Routing auf Port `8081` dieses
    Servers zeigen. Ohne eigenen vorgeschalteten Proxy reicht ein simpler

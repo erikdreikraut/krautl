@@ -54,7 +54,7 @@ class Mail(Base):
     absender_adresse: Mapped[str] = mapped_column(String(255))
     betreff: Mapped[str] = mapped_column(Text)
     text_auszug: Mapped[str] = mapped_column(Text)
-    empfangen_am: Mapped[datetime] = mapped_column(DateTime)
+    empfangen_am: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     spam_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     klassifikation_id: Mapped[str | None] = mapped_column(
@@ -85,7 +85,7 @@ class Korrektur(Base):
     alte_klassifikation_id: Mapped[str] = mapped_column(String(50))
     neue_klassifikation_id: Mapped[str] = mapped_column(String(50))
     notiz: Mapped[str | None] = mapped_column(Text, nullable=True)
-    erstellt_am: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     mail: Mapped["Mail"] = relationship(back_populates="korrekturen")
 
@@ -100,8 +100,8 @@ class Entwurf(Base):
     text_final: Mapped[str | None] = mapped_column(Text, nullable=True)
     # "wartet" | "freigegeben" | "verworfen"
     status: Mapped[str] = mapped_column(String(20), default="wartet")
-    erstellt_am: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    versendet_am: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    versendet_am: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     mail: Mapped["Mail"] = relationship(back_populates="entwuerfe")
 
@@ -113,8 +113,8 @@ class Rechnung(Base):
     mail_id: Mapped[int | None] = mapped_column(ForeignKey("mail.id"), nullable=True)
     aussteller: Mapped[str] = mapped_column(String(255))
     rechnungsnummer: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    rechnungsdatum: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    faellig_am: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rechnungsdatum: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    faellig_am: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     bruttobetrag: Mapped[float | None] = mapped_column(Float, nullable=True)
     waehrung: Mapped[str] = mapped_column(String(10), default="EUR")
     # "offen" | "bezahlt" | "unklar"
@@ -144,7 +144,7 @@ class FaqVorschlag(Base):
     entwurf_antwort: Mapped[str] = mapped_column(Text)
     # "offen" | "uebernommen" | "verworfen"
     status: Mapped[str] = mapped_column(String(20), default="offen")
-    erstellt_am: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Aktionslog(Base):
@@ -158,4 +158,4 @@ class Aktionslog(Base):
     # "klassifiziert" | "verschoben" | "verschieben_fehlgeschlagen"
     ereignis: Mapped[str] = mapped_column(String(50))
     detail: Mapped[str] = mapped_column(Text)
-    erstellt_am: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
