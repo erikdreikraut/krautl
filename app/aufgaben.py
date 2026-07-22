@@ -8,11 +8,13 @@ from sqlalchemy.orm import selectinload
 from .db import SessionLocal
 from .imap_client import lade_postfaecher, mail_verschieben
 from .models import Aktionslog, KlassifikationAufgabe, Mail, MailAufgabe, Postfach
+from .rechnungen import rechnung_verarbeiten
 
 logger = logging.getLogger("krautl.aufgaben")
 
 BESTAETIGUNG_EINHOLEN = "BESTAETIGUNG_EINHOLEN"
 MAIL_VERSCHIEBEN = "MAIL_VERSCHIEBEN"
+RECHNUNG_VERWALTEN = "RECHNUNG_VERWALTEN"
 
 
 async def aufgaben_fuer_mail_anlegen(session, mail: Mail) -> None:
@@ -101,6 +103,29 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
         wartend = next((a for a in mail.aufgaben if a.status == "wartet"), None)
         if wartend is None:
             return {"status": "keine_aufgabe_offen"}
+        if wartend.aufgabe_typ == RECHNUNG_VERWALTEN:
+            try:
+                ergebnis = await rechnung_verarbeiten(session, mail)
+            except Exception as exc:
+                logger.exception("Rechnungsverarbeitung fehlgeschlagen für %s", mail.message_id)
+                wartend.status = "fehlgeschlagen"
+                wartend.fehler = str(exc)
+                session.add(Aktionslog(
+                    mail_id=mail.id, ereignis="rechnung_fehlgeschlagen", detail=str(exc),
+                ))
+                await session.commit()
+                return {"status": "fehlgeschlagen", "detail": str(exc)}
+            wartend.status = "erledigt"
+            wartend.erledigt_am = datetime.now(timezone.utc)
+            wartend.fehler = None
+            session.add(Aktionslog(
+                mail_id=mail.id, ereignis="rechnung_verarbeitet",
+                detail=f"{len(ergebnis['rechnungen'])} Rechnung(en) ausgewertet und in Dropbox abgelegt",
+            ))
+            await _naechste_freischalten(session, mail.id, wartend.position)
+            await session.commit()
+            return await wartende_aufgaben_ausfuehren(mail_id)
+
         if wartend.aufgabe_typ != MAIL_VERSCHIEBEN:
             return {"status": "wartet", "aufgabe_typ": wartend.aufgabe_typ}
 

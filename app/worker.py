@@ -10,7 +10,7 @@ import logging
 from sqlalchemy import select
 
 from .agent import klassifiziere
-from .aufgaben import aufgaben_fuer_mail_anlegen
+from .aufgaben import aufgaben_fuer_mail_anlegen, wartende_aufgaben_ausfuehren
 from .db import SessionLocal
 from .imap_client import PostfachConfig, lade_postfaecher, neue_mails_abrufen
 from .mail_parser import parse_eml
@@ -77,6 +77,7 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
         return 0
 
     gespeichert = 0
+    neue_mail_ids = []
     async with SessionLocal() as session:
         postfach = await _postfach_holen_oder_anlegen(session, config)
         katalog = await _katalog_laden(session)
@@ -132,6 +133,7 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
             session.add(mail)
             await session.flush()  # weist mail.id zu, fürs Aktionslog gebraucht
             gespeichert += 1
+            neue_mail_ids.append(mail.id)
 
             session.add(Aktionslog(
                 mail_id=mail.id,
@@ -142,6 +144,14 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
             await aufgaben_fuer_mail_anlegen(session, mail)
 
         await session.commit()
+
+    # Nicht blockierende Aufgaben (derzeit Rechnungsverarbeitung) beginnen
+    # direkt nach dem sicheren Speichern der Mail. Bestätigungen bleiben stehen.
+    for mail_id in neue_mail_ids:
+        try:
+            await wartende_aufgaben_ausfuehren(mail_id)
+        except Exception:
+            logger.exception("Automatische Aufgabe für Mail %s fehlgeschlagen", mail_id)
 
     return gespeichert
 

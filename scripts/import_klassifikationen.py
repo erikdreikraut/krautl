@@ -73,6 +73,16 @@ async def importiere(pfad: str) -> None:
                     "zielordner": werte["zielordner"],
                 },
             ))
+            if aufgabe_typ == "RECHNUNG_VERWALTEN":
+                session.add(KlassifikationAufgabe(
+                    klassifikation_id=klassifikation_id,
+                    position=position + 1,
+                    aufgabe_typ="MAIL_VERSCHIEBEN",
+                    parameter={
+                        "zielpostfach": werte["zielpostfach"],
+                        "zielordner": werte["zielordner"],
+                    },
+                ))
         await session.commit()
     print(f"{len(zeilen)} Klassifikationen importiert/aktualisiert.")
 

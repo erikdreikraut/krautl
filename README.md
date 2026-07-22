@@ -9,6 +9,8 @@
 - `app/mail_parser.py` — parst rohe EML-Bytes in die Felder für Klassifizierung/DB
 - `app/agent.py` — Klassifizierungs-Prompt + Tool-Schema für die Claude API
   (kein Versand-Tool — Sicherheitsprinzip aus CLAUDE.md)
+- `app/rechnungen.py` — wertet PDF-, XML- und Bildrechnungen aus, erkennt
+  Dubletten und legt Originale nach Jahr sortiert in Dropbox ab
 - `app/worker.py` — läuft minütlich (siehe `app/main.py`, `apscheduler`):
   ruft neue Mails aus allen konfigurierten Postfächern ab, klassifiziert sie
   und führt die `MAIL_VERSCHIEBEN`-Aktion der Klassifikation aus, sofern das
@@ -36,7 +38,11 @@
    Aufgabenlisten, setzt vor alle bisherigen `MAIL_VERSCHIEBEN`-Aufgaben eine
    Bestätigung und übernimmt offene Bestandsmails:
    `docker compose exec app python -m scripts.migrate_aufgaben`
-7. Der `frontend`-Dienst bindet TLS/Domain **nicht** selbst — er lauscht nur
+7. Für die Rechnungsverarbeitung einmalig das Schema ergänzen und den
+   Klassifikationskatalog neu importieren:
+   `docker compose exec app python -m scripts.migrate_rechnungen`
+   `docker compose exec app python -m scripts.import_klassifikationen data/mail-klassifikationen.csv`
+8. Der `frontend`-Dienst bindet TLS/Domain **nicht** selbst — er lauscht nur
    intern auf Host-Port `8081`. Läuft davor bereits ein eigener Reverse Proxy
    (z. B. bei Elestio), muss dessen Domain-Routing auf Port `8081` dieses
    Servers zeigen. Ohne eigenen vorgeschalteten Proxy reicht ein simpler
@@ -47,16 +53,13 @@ kein separater Scheduler-Job nötig.
 
 ## Bekannt fehlend / bewusst noch nicht eingebunden
 
-- `erik@dreikraut.de` ist in der Klassifikationstabelle als Zielpostfach für
-  Rechnungen/Bewerbungen vorgesehen, aber aktuell **nicht** konfiguriert
-  (siehe `.env.example`) — so klassifizierte Mails bleiben bis auf Weiteres
-  im Ursprungspostfach liegen, es passiert nichts Kaputtes.
+- Für das Verschieben von Rechnungen müssen `IMAP_ERIK_HOST`,
+  `IMAP_ERIK_USER` und `IMAP_ERIK_PASSWORD` auf dem Server gesetzt sein.
 - Antwortentwürfe (`Entwurf`-Tabelle) werden noch nirgends automatisch
   generiert — die Oberfläche kann sie anzeigen/freigeben, sobald es passiert.
 - FAQ-Vorschläge (`FaqVorschlag`) werden ebenfalls noch nicht automatisch
   erkannt.
 - SMTP-Versandmodul (separat vom Freigabe-Endpunkt, siehe Sicherheitsprinzip)
-- Dropbox-Upload-Modul für Anhänge
 - Klassifikationstabelle ist nur per Skript/DB editierbar, noch nicht über
   die Oberfläche
 - Bestätigungen gelten aktuell für alle Nutzer mit Zugriff auf Krautl. Das

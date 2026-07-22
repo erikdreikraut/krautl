@@ -63,6 +63,16 @@ async def migriere() -> None:
                     "zielordner": klassifikation.zielordner,
                 },
             ))
+            if klassifikation.aktion_id == "RECHNUNG_VERWALTEN":
+                session.add(KlassifikationAufgabe(
+                    klassifikation_id=klassifikation.klassifikation_id,
+                    position=position + 1,
+                    aufgabe_typ="MAIL_VERSCHIEBEN",
+                    parameter={
+                        "zielpostfach": klassifikation.zielpostfach,
+                        "zielordner": klassifikation.zielordner,
+                    },
+                ))
         await session.flush()
 
         # Bestätigte Bestandsmails sind für Krautl abgeschlossen: sowohl bei

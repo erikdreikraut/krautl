@@ -55,6 +55,17 @@ def neue_mails_abrufen(config: PostfachConfig, ordner: str = "INBOX") -> list[di
         return ergebnisse
 
 
+def mail_rohdaten_laden(config: PostfachConfig, uid: int, ordner: str = "INBOX") -> bytes:
+    """Lädt eine bereits bekannte Mail erneut, etwa zur Anhangsverarbeitung."""
+    with IMAPClient(config.host, ssl=True) as client:
+        client.login(config.user, config.password)
+        client.select_folder(ordner)
+        daten = client.fetch([uid], ["RFC822"])
+        if uid not in daten:
+            raise RuntimeError(f"Mail mit UID {uid} nicht mehr im Ordner {ordner} gefunden")
+        return daten[uid][b"RFC822"]
+
+
 def mail_verschieben(
     quelle: PostfachConfig,
     quell_uid: int,

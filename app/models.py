@@ -169,6 +169,7 @@ class Entwurf(Base):
 
 class Rechnung(Base):
     __tablename__ = "rechnung"
+    __table_args__ = (UniqueConstraint("dublettenschluessel", name="uq_rechnung_dublette"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     mail_id: Mapped[int | None] = mapped_column(ForeignKey("mail.id"), nullable=True)
@@ -180,7 +181,10 @@ class Rechnung(Base):
     waehrung: Mapped[str] = mapped_column(String(10), default="EUR")
     # "offen" | "bezahlt" | "unklar"
     zahlungsstatus: Mapped[str] = mapped_column(String(20), default="unklar")
+    zahlungshinweis: Mapped[str | None] = mapped_column(Text, nullable=True)
     dateipfad: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    dateipfade: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    dublettenschluessel: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class FaqEintrag(Base):

@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import get_session, engine
-from .aufgaben import aufgaben_fuer_mail_anlegen, bestaetigung_erfassen
+from .aufgaben import aufgaben_fuer_mail_anlegen, bestaetigung_erfassen, wartende_aufgaben_ausfuehren
 from .models import (
     Aktionslog, Base, Mail, MailAufgabe, Rechnung, FaqEintrag, FaqVorschlag,
     Entwurf, Korrektur, Klassifikation,
@@ -127,12 +127,17 @@ async def korrigiere_klassifikation(
     await session.flush()
     await aufgaben_fuer_mail_anlegen(session, mail)
     await session.commit()
+    await wartende_aufgaben_ausfuehren(mail_id)
     return {"status": "ok"}
 
 
 @app.get("/rechnungen")
 async def liste_rechnungen(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Rechnung).order_by(Rechnung.faellig_am))
+    result = await session.execute(
+        select(Rechnung)
+        .where(Rechnung.zahlungsstatus.in_(["offen", "unklar", "bezahlt"]))
+        .order_by(Rechnung.faellig_am.nulls_last(), Rechnung.rechnungsdatum.desc())
+    )
     return result.scalars().all()
 
 

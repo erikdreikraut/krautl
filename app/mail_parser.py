@@ -4,6 +4,8 @@ Felder, die Mail-Modell und agent.klassifiziere() erwarten.
 """
 import re
 import uuid
+import hashlib
+from pathlib import Path
 from datetime import datetime, timezone
 from email import message_from_bytes, policy
 from email.utils import parseaddr, parsedate_to_datetime
@@ -65,3 +67,30 @@ def parse_eml(raw: bytes) -> dict:
         "empfangen_am": empfangen_am,
         "spam_score": _spam_score(msg),
     }
+
+
+ERLAUBTE_RECHNUNGSENDUNGEN = {
+    ".pdf", ".xml", ".jpg", ".jpeg", ".png", ".gif", ".webp",
+}
+
+
+def rechnungsanhaenge(raw: bytes) -> list[dict]:
+    """Extrahiert gängige, tatsächlich angehängte Rechnungsdateien aus EML."""
+    msg = message_from_bytes(raw, policy=policy.default)
+    ergebnis = []
+    for teil in msg.iter_attachments():
+        dateiname = teil.get_filename() or "anhang"
+        endung = Path(dateiname).suffix.lower()
+        if endung not in ERLAUBTE_RECHNUNGSENDUNGEN:
+            continue
+        inhalt = teil.get_payload(decode=True)
+        if not inhalt:
+            continue
+        ergebnis.append({
+            "dateiname": dateiname,
+            "endung": endung,
+            "mime_type": teil.get_content_type(),
+            "inhalt": inhalt,
+            "sha256": hashlib.sha256(inhalt).hexdigest(),
+        })
+    return ergebnis

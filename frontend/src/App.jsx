@@ -60,9 +60,9 @@ function formatZeitpunkt(iso) {
   return new Date(iso).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: ZEITZONE });
 }
 
-function formatBetrag(wert) {
+function formatBetrag(wert, waehrung = "EUR") {
   if (wert == null) return "";
-  return wert.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
+  return wert.toLocaleString("de-DE", { style: "currency", currency: waehrung || "EUR" });
 }
 
 // Festes Set von Aktion_IDs (siehe data/mail-klassifikationen.csv). Neue
@@ -78,7 +78,7 @@ const AKTION_LABEL = {
   SYSTEMMELDUNG_BEARBEITEN: "Systemmeldung bearbeiten",
   RECHTSSACHE_BEARBEITEN: "Rechtssache bearbeiten",
 };
-const AKTIVE_AKTIONEN = new Set(["BESTAETIGUNG_EINHOLEN", "MAIL_VERSCHIEBEN"]);
+const AKTIVE_AKTIONEN = new Set(["BESTAETIGUNG_EINHOLEN", "MAIL_VERSCHIEBEN", "RECHNUNG_VERWALTEN"]);
 
 const EREIGNIS_LABEL = {
   klassifiziert: "Klassifiziert",
@@ -86,10 +86,12 @@ const EREIGNIS_LABEL = {
   posteingang_bereinigt: "Posteingang bereinigt",
   verschoben: "Verschoben",
   verschieben_fehlgeschlagen: "Verschieben fehlgeschlagen",
+  rechnung_verarbeitet: "Rechnung verarbeitet",
+  rechnung_fehlgeschlagen: "Rechnung fehlgeschlagen",
 };
 function farbeFuerEreignis(ereignis) {
-  if (ereignis === "verschieben_fehlgeschlagen") return tokens.rust;
-  if (ereignis === "verschoben" || ereignis === "bestaetigt") return tokens.moss;
+  if (ereignis.endsWith("fehlgeschlagen")) return tokens.rust;
+  if (["verschoben", "bestaetigt", "rechnung_verarbeitet"].includes(ereignis)) return tokens.moss;
   return tokens.inkMuted;
 }
 
@@ -331,7 +333,7 @@ function EntwurfPanel({ entwurf, onErledigt }) {
 }
 
 function RechnungenView({ rechnungen, onReload }) {
-  const offen = rechnungen.filter((r) => r.zahlungsstatus !== "bezahlt");
+  const offen = rechnungen.filter((r) => ["offen", "unklar"].includes(r.zahlungsstatus));
   const bezahlt = rechnungen.filter((r) => r.zahlungsstatus === "bezahlt");
 
   async function alsBezahlt(id) {
@@ -344,7 +346,7 @@ function RechnungenView({ rechnungen, onReload }) {
       <h2 style={{ ...fontDisplay, fontSize: "20px", color: tokens.mossDeep, marginBottom: "4px" }}>Offene Rechnungen</h2>
       <div className="flex items-center gap-1.5 mb-5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
         <FolderCog size={13} />
-        Anhänge werden unabhängig hiervon automatisch abgelegt unter <span style={{ ...fontMono, fontSize: "11.5px" }}>/Rechnungen/{"{Jahr}"}/{"{Monat}"}/</span>
+        Rechnungsoriginale werden automatisch abgelegt unter <span style={{ ...fontMono, fontSize: "11.5px" }}>/Rechnungen/{"{Jahr}"}/</span>. Automatisch bezahlte Rechnungen und Gutschriften erscheinen hier nicht.
       </div>
 
       <div style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
@@ -353,9 +355,12 @@ function RechnungenView({ rechnungen, onReload }) {
         </div>
         {offen.map((r) => (
           <div key={r.id} className="grid items-center px-4 py-3" style={{ gridTemplateColumns: "1.6fr 1fr 1fr 1fr 1.2fr", borderBottom: `1px solid ${tokens.line}` }}>
-            <div style={{ ...fontSerif, fontSize: "14.5px", fontWeight: 600 }}>{r.aussteller}</div>
+            <div>
+              <div style={{ ...fontSerif, fontSize: "14.5px", fontWeight: 600 }}>{r.aussteller}</div>
+              {r.zahlungsstatus === "unklar" && <span title={r.zahlungshinweis || "Zahlungsweg unklar"} style={{ ...fontUI, fontSize: "11px", color: tokens.rust }}>Zahlungsweg prüfen</span>}
+            </div>
             <div style={{ ...fontMono, fontSize: "12.5px", color: tokens.inkMuted }}>{r.rechnungsnummer}</div>
-            <div style={{ ...fontMono, fontSize: "13px" }}>{formatBetrag(r.bruttobetrag)}</div>
+            <div style={{ ...fontMono, fontSize: "13px" }}>{formatBetrag(r.bruttobetrag, r.waehrung)}</div>
             <div style={{ ...fontUI, fontSize: "13px", color: tokens.amber, fontWeight: 600 }}>{formatDatum(r.faellig_am)}</div>
             <button onClick={() => alsBezahlt(r.id)} className="flex items-center gap-1.5 px-2.5 py-1 justify-self-start"
               style={{ ...fontUI, fontSize: "12px", color: tokens.moss, border: `1px solid ${tokens.moss}`, borderRadius: "6px" }}>
@@ -374,7 +379,7 @@ function RechnungenView({ rechnungen, onReload }) {
           <div key={r.id} className="flex items-center gap-3 px-3 py-2" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
             <CheckCircle2 size={14} style={{ color: tokens.moss }} />
             <span style={{ textDecoration: "line-through" }}>{r.aussteller} · {r.rechnungsnummer}</span>
-            <span style={{ ...fontMono, fontSize: "12px", marginLeft: "auto" }}>{formatBetrag(r.bruttobetrag)}</span>
+            <span style={{ ...fontMono, fontSize: "12px", marginLeft: "auto" }}>{formatBetrag(r.bruttobetrag, r.waehrung)}</span>
           </div>
         ))}
       </div>
