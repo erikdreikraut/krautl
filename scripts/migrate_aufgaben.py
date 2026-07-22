@@ -65,16 +65,23 @@ async def migriere() -> None:
             ))
         await session.flush()
 
-        # Erfolgreich verschobene Bestandsmails sind bereits abgeschlossen und
-        # sollen beim neuen Posteingangsfilter nicht wieder erscheinen.
-        verschobene_ids = (await session.execute(
+        # Bestätigte Bestandsmails sind für Krautl abgeschlossen: sowohl bei
+        # erfolgreichem Verschieben als auch bei einem protokollierten Fehler.
+        verschobene_ids = set((await session.execute(
             select(Aktionslog.mail_id).where(
                 Aktionslog.ereignis == "verschoben", Aktionslog.mail_id.is_not(None)
             )
-        )).scalars().all()
-        if verschobene_ids:
+        )).scalars().all())
+        fehlgeschlagene_move_ids = set((await session.execute(
+            select(MailAufgabe.mail_id).where(
+                MailAufgabe.aufgabe_typ == "MAIL_VERSCHIEBEN",
+                MailAufgabe.status == "fehlgeschlagen",
+            )
+        )).scalars().all())
+        abgeschlossene_ids = verschobene_ids | fehlgeschlagene_move_ids
+        if abgeschlossene_ids:
             mails = (await session.execute(
-                select(Mail).where(Mail.id.in_(set(verschobene_ids)))
+                select(Mail).where(Mail.id.in_(abgeschlossene_ids))
             )).scalars().all()
             for mail in mails:
                 mail.im_krautl_posteingang = False
