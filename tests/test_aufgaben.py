@@ -14,6 +14,7 @@ from app.main import liste_mails
 from app.models import (
     Aktionslog, Base, Klassifikation, KlassifikationAufgabe, Mail, MailAufgabe, Postfach,
 )
+from scripts.bereinige_posteingang import bereinige
 
 
 class AufgabenPipelineTest(unittest.IsolatedAsyncioTestCase):
@@ -111,6 +112,29 @@ class AufgabenPipelineTest(unittest.IsolatedAsyncioTestCase):
                 select(Aktionslog).where(Aktionslog.ereignis == "verschieben_fehlgeschlagen")
             )).scalar_one()
             self.assertIn("aus Krautl-Posteingang entfernt", log.detail)
+
+    async def test_bereinigung_blendet_nur_alte_mail_ohne_offene_bestaetigung_aus(self):
+        async with SessionLocal() as session:
+            postfach_id = (await session.execute(select(Postfach.id))).scalar_one()
+            alt = Mail(
+                message_id="<historisch@example.test>", imap_uid=43,
+                postfach_id=postfach_id, absender_name="Alt",
+                absender_adresse="alt@example.test", betreff="Historisch",
+                text_auszug="Alt", empfangen_am=datetime(2026, 7, 22, 12, tzinfo=timezone.utc),
+                klassifikation_id=None,
+            )
+            session.add(alt)
+            await session.commit()
+            alte_id = alt.id
+
+        anzahl = await bereinige(datetime(2026, 7, 22, 14, 22, tzinfo=timezone.utc))
+        self.assertEqual(1, anzahl)
+
+        async with SessionLocal() as session:
+            alt = await session.get(Mail, alte_id)
+            bestaetigbar = await session.get(Mail, self.mail_id)
+            self.assertFalse(alt.im_krautl_posteingang)
+            self.assertTrue(bestaetigbar.im_krautl_posteingang)
 
 
 if __name__ == "__main__":

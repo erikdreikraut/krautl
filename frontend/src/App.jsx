@@ -83,6 +83,7 @@ const AKTIVE_AKTIONEN = new Set(["BESTAETIGUNG_EINHOLEN", "MAIL_VERSCHIEBEN"]);
 const EREIGNIS_LABEL = {
   klassifiziert: "Klassifiziert",
   bestaetigt: "Bestätigt",
+  posteingang_bereinigt: "Posteingang bereinigt",
   verschoben: "Verschoben",
   verschieben_fehlgeschlagen: "Verschieben fehlgeschlagen",
 };
