@@ -4,16 +4,20 @@ import {
   Inbox as InboxIcon, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
 } from "lucide-react";
 import { api } from "./api.js";
+import logo from "./assets/dreikraut-logo.png";
 
+// Grün/Creme an den Logo-Farben ausgerichtet (#509B32 dunkelgrün,
+// #FFFFD2 creme, #BEDC0F helles Blattgrün) — Amber/Rost bleiben als
+// funktionale Signalfarben (Warnung/Fehler) unverändert.
 const tokens = {
-  paper: "#F5F3E6",
-  paperRaised: "#FCFBF4",
+  paper: "#F8F6D9",
+  paperRaised: "#FDFCEE",
   ink: "#242A1F",
   inkMuted: "#6C6F5F",
   line: "#DDD9C4",
-  moss: "#4C9A2A",
-  mossDeep: "#2F5E1C",
-  mossPale: "#E5EFD5",
+  moss: "#4F9B2E",
+  mossDeep: "#2C5A18",
+  mossPale: "#E8F0C8",
   amber: "#B07B2E",
   amberPale: "#F3E7D2",
   rust: "#A5462F",
@@ -616,9 +620,9 @@ export default function KrautlUI() {
   return (
     <div className="w-full h-full flex flex-col" style={{ background: tokens.paper, minHeight: "640px", color: tokens.ink }}>
       <header className="flex items-center px-5" style={{ borderBottom: `1px solid ${tokens.line}`, background: tokens.paperRaised }}>
-        <div className="flex items-baseline gap-1.5 pr-5 py-2.5" style={{ borderRight: `1px solid ${tokens.line}`, marginRight: "8px" }}>
+        <div className="flex items-center gap-2.5 pr-5 py-2" style={{ borderRight: `1px solid ${tokens.line}`, marginRight: "8px" }}>
+          <img src={logo} alt="dreikraut" style={{ height: "30px", width: "auto" }} />
           <span style={{ ...fontDisplay, fontSize: "19px", color: tokens.mossDeep }}>Krautl</span>
-          <span style={{ ...fontMono, fontSize: "10px", color: tokens.inkMuted }}>dreikraut</span>
         </div>
         <nav className="flex items-center">
           <NavTab icon={InboxIcon} label="Posteingang" active={tab === "posteingang"} onClick={() => setTab("posteingang")} />
