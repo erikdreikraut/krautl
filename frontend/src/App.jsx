@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   Search, ChevronRight, ChevronDown, CheckCircle2, PenLine, Send, Paperclip, X,
   Inbox as InboxIcon, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
@@ -572,8 +572,11 @@ function AktionslogView({ eintraege }) {
 function verwendeKrautlDaten() {
   const [daten, setDaten] = useState(null);
   const [fehler, setFehler] = useState(null);
+  const laedt = useRef(false);
 
-  async function laden() {
+  const laden = useCallback(async ({ imHintergrund = false } = {}) => {
+    if (laedt.current) return;
+    laedt.current = true;
     try {
       const [mails, katalog, rechnungen, faq, faqVorschlaege, entwuerfe, aktionslog] = await Promise.all([
         api.mails(), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.entwuerfe(), api.aktionslog(),
@@ -581,11 +584,33 @@ function verwendeKrautlDaten() {
       setDaten({ mails, katalog, rechnungen, faq, faqVorschlaege, entwuerfe, aktionslog });
       setFehler(null);
     } catch (e) {
-      setFehler(e.message);
+      // Ein vorübergehender Hintergrundfehler soll die bereits sichtbare
+      // Oberfläche nicht durch eine Fehlerseite ersetzen.
+      if (!imHintergrund) setFehler(e.message);
+    } finally {
+      laedt.current = false;
     }
-  }
+  }, []);
 
-  useEffect(() => { laden(); }, []);
+  useEffect(() => {
+    laden();
+
+    const intervall = window.setInterval(
+      () => laden({ imHintergrund: true }),
+      30_000,
+    );
+    const beiRueckkehr = () => {
+      if (document.visibilityState === "visible") laden({ imHintergrund: true });
+    };
+    document.addEventListener("visibilitychange", beiRueckkehr);
+    window.addEventListener("focus", beiRueckkehr);
+
+    return () => {
+      window.clearInterval(intervall);
+      document.removeEventListener("visibilitychange", beiRueckkehr);
+      window.removeEventListener("focus", beiRueckkehr);
+    };
+  }, [laden]);
 
   return { daten, fehler, neuLaden: laden };
 }
