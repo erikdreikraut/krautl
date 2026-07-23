@@ -99,21 +99,30 @@ def mail_verschieben(
 
     with IMAPClient(ziel.host, ssl=True) as z:
         z.login(ziel.user, ziel.password)
-        z.append(ziel_ordner, eml, flags=[b"\\Draft"])
-        # STORE (remove_flags) erfordert eine SELECTed Mailbox — APPEND allein
-        # reicht dafür nicht, das war der Fehler hinter "command STORE illegal
-        # in state AUTH".
         z.select_folder(ziel_ordner)
-
         treffer = z.search(["HEADER", "Message-ID", message_id]) if message_id else []
+
+        # Ein früherer Versuch kann die Mail bereits angehängt haben und erst
+        # danach gescheitert sein. In diesem Fall nicht noch einmal anhängen.
         if not treffer:
-            # Fallback, falls kein Message-ID-Header vorhanden ist oder die
-            # Suche aus anderem Grund leer bleibt: neueste Nachricht im
-            # Zielordner nehmen (UIDs sind innerhalb einer UIDVALIDITY streng
-            # aufsteigend).
-            treffer = z.search(["ALL"])
+            z.append(ziel_ordner, eml, flags=[b"\\Draft"])
+            # STORE erfordert eine ausgewählte Mailbox. Nach APPEND erneut
+            # auswählen, damit auch eigenwillige Serverzustände sauber sind.
+            z.select_folder(ziel_ordner)
+            treffer = z.search(["HEADER", "Message-ID", message_id]) if message_id else []
+            if not treffer:
+                # Nur direkt nach unserem APPEND auf die neueste UID
+                # zurückfallen. Bei einem Wiederholungsversuch ohne Message-ID
+                # wäre ein blindes Wiederverwenden einer fremden Mail riskant.
+                alle = z.search(["ALL"])
+                treffer = [max(alle)] if alle else []
         if treffer:
-            z.remove_flags(ziel_ordner, [max(treffer)], [b"\\Draft"])
+            # Signatur von IMAPClient: remove_flags(messages, flags).
+            # Der Ordnername gehört hier nicht hinein; genau das verursachte
+            # "expected str instance, int found".
+            z.remove_flags(treffer, [b"\\Draft"])
+        else:
+            raise RuntimeError("Mail konnte im Zielordner nicht wiedergefunden werden")
 
     with IMAPClient(quelle.host, ssl=True) as q:
         q.login(quelle.user, quelle.password)
