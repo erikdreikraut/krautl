@@ -1,4 +1,5 @@
 """Geordnete Aufgaben-Pipeline für klassifizierte Mails."""
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -154,7 +155,9 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
         message_id = mail.message_id
 
     try:
-        mail_verschieben(quelle, mail.imap_uid, ziel, zielordner)
+        await asyncio.to_thread(
+            mail_verschieben, quelle, mail.imap_uid, ziel, zielordner
+        )
     except Exception as exc:
         logger.exception("Verschieben nach %s/%s fehlgeschlagen für %s", ziel.user, zielordner, message_id)
         async with SessionLocal() as session:

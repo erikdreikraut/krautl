@@ -1,4 +1,5 @@
 """Auswertung und revisionsschonende Ablage eingehender Rechnungsanhänge."""
+import asyncio
 import base64
 import hashlib
 import os
@@ -115,15 +116,16 @@ async def rechnung_verarbeiten(session, mail: Mail) -> dict:
     quelle = configs.get(postfach.adresse) if postfach else None
     if not quelle or mail.imap_uid is None:
         raise RuntimeError("Quellpostfach oder IMAP-UID nicht konfiguriert")
-    anhaenge = rechnungsanhaenge(mail_rohdaten_laden(quelle, mail.imap_uid))
+    raw = await asyncio.to_thread(mail_rohdaten_laden, quelle, mail.imap_uid)
+    anhaenge = await asyncio.to_thread(rechnungsanhaenge, raw)
     if not anhaenge:
         raise RuntimeError("Kein unterstützter Rechnungsanhang gefunden")
 
-    dbx = _dropbox_client()
+    dbx = await asyncio.to_thread(_dropbox_client)
     verarbeitet = []
     gruppen: dict[str, dict] = {}
     for anhang in anhaenge:
-        daten = _analysiere(anhang, mail)
+        daten = await asyncio.to_thread(_analysiere, anhang, mail)
         if not daten.get("ist_rechnung"):
             continue
         schluessel = _dublettenschluessel(daten)
@@ -159,7 +161,13 @@ async def rechnung_verarbeiten(session, mail: Mail) -> dict:
             pfad = f"/Rechnungen/{rechnungsdatum.year}/{basis}{suffix}{endung}"
             # Deterministischer Pfad: Ein Wiederholungsversuch erzeugt keine
             # zweite Datei, sondern stellt denselben Originalinhalt wieder her.
-            dbx.files_upload(anhang["inhalt"], pfad, mode=WriteMode.overwrite, autorename=False)
+            await asyncio.to_thread(
+                dbx.files_upload,
+                anhang["inhalt"],
+                pfad,
+                mode=WriteMode.overwrite,
+                autorename=False,
+            )
             pfade.append(pfad)
         betrag = daten.get("bruttobetrag")
         rechnung = Rechnung(

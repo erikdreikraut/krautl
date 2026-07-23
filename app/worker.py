@@ -5,6 +5,7 @@ klassifiziert sie über den Agent und schreibt sie in die Datenbank.
 Läuft im selben Prozess wie die API (siehe main.py) — es gibt aktuell keinen
 separaten Worker-Container in docker-compose.yml.
 """
+import asyncio
 import logging
 
 from sqlalchemy import select
@@ -72,7 +73,10 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
     """Ruft neue Mails eines Postfachs ab, klassifiziert und speichert sie.
     Legt den geordneten Aufgabenplan der Klassifikation an. Blockierende
     Bestätigungen werden später über die Oberfläche erledigt."""
-    rohmails = neue_mails_abrufen(config)
+    # IMAP und Claude verwenden synchrone Bibliotheken. Sie dürfen deshalb
+    # nicht direkt im FastAPI-Ereignisloop laufen, sonst friert während eines
+    # größeren Mail-Rückstaus auch die Weboberfläche ein.
+    rohmails = await asyncio.to_thread(neue_mails_abrufen, config)
     if not rohmails:
         return 0
 
@@ -98,7 +102,9 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
             klass: dict = {}
             if katalog:
                 try:
-                    klass = klassifiziere(geparst, katalog, beispiele)
+                    klass = await asyncio.to_thread(
+                        klassifiziere, geparst, katalog, beispiele
+                    )
                 except Exception:
                     logger.exception(
                         "Klassifizierung fehlgeschlagen für %s", geparst["message_id"]
