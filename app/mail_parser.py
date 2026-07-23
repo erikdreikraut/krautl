@@ -6,6 +6,7 @@ import re
 import uuid
 import hashlib
 from pathlib import Path
+from html.parser import HTMLParser
 from datetime import datetime, timezone
 from email import message_from_bytes, policy
 from email.utils import parseaddr, parsedate_to_datetime
@@ -13,11 +14,49 @@ from email.utils import parseaddr, parsedate_to_datetime
 TEXT_AUSZUG_MAX_LAENGE = 4000
 
 _SPAM_SCORE_MUSTER = re.compile(r"score=(-?\d+(?:\.\d+)?)")
-_HTML_TAG_MUSTER = re.compile(r"<[^>]+>")
+_BLOCK_ELEMENTE = {
+    "address", "article", "aside", "blockquote", "br", "div", "footer",
+    "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "main",
+    "nav", "p", "section", "table", "tr",
+}
+_UNSICHTBARE_ELEMENTE = {"head", "style", "script", "noscript", "template", "svg"}
+
+
+class _LesbarerHTMLText(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.teile: list[str] = []
+        self.unsichtbar_tiefe = 0
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in _UNSICHTBARE_ELEMENTE:
+            self.unsichtbar_tiefe += 1
+        elif not self.unsichtbar_tiefe and tag in _BLOCK_ELEMENTE:
+            self.teile.append("\n")
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in _UNSICHTBARE_ELEMENTE:
+            self.unsichtbar_tiefe = max(0, self.unsichtbar_tiefe - 1)
+        elif not self.unsichtbar_tiefe and tag in _BLOCK_ELEMENTE:
+            self.teile.append("\n")
+
+    def handle_data(self, data):
+        if not self.unsichtbar_tiefe:
+            self.teile.append(data)
 
 
 def _text_aus_html(html: str) -> str:
-    return re.sub(r"\s+", " ", _HTML_TAG_MUSTER.sub(" ", html)).strip()
+    parser = _LesbarerHTMLText()
+    parser.feed(html)
+    parser.close()
+    zeilen = []
+    for zeile in "".join(parser.teile).splitlines():
+        bereinigt = re.sub(r"[^\S\r\n]+", " ", zeile).strip()
+        if bereinigt and (not zeilen or bereinigt != zeilen[-1]):
+            zeilen.append(bereinigt)
+    return "\n\n".join(zeilen)
 
 
 def _spam_score(msg) -> float | None:

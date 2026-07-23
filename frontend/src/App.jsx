@@ -278,7 +278,7 @@ function PosteingangView({ mails, katalog, onReload }) {
               <h2 style={{ ...fontDisplay, fontSize: "19px", marginTop: "12px" }}>{selected.betreff}</h2>
               <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, marginTop: "4px" }}>{selected.absender} · {selected.zeit} Uhr</div>
             </div>
-            <div className="px-6 py-4" style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, borderBottom: `1px solid ${tokens.line}` }}>{selected.snippet}</div>
+            <div className="px-6 py-4" style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere", borderBottom: `1px solid ${tokens.line}` }}>{selected.snippet}</div>
             {Object.keys(selected.felder).length > 0 && (
               <div className="px-6 py-4 grid grid-cols-2 gap-3" style={{ borderBottom: `1px solid ${tokens.line}` }}>
                 {Object.entries(selected.felder).map(([k, v]) => (
