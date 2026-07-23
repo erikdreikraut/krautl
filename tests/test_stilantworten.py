@@ -20,6 +20,33 @@ class StilantwortenTest(unittest.TestCase):
         text = "Hallo,\n\ndas bekommen wir hin.\n\nViele Grüße\nThomas Meier"
         self.assertEqual(("Thomas Meier", "Signatur"), autor_bestimmen(msg, text))
 
+    def test_autor_aus_vorname_in_signatur(self):
+        msg = message_from_string(
+            "From: dreikraut Kundenservice <service@dreikraut.de>\n\nHallo!",
+            policy=policy.default,
+        )
+        text = "Hallo Anna,\n\ndas bekommen wir hin.\n\nLiebe Grüße\nErik"
+        self.assertEqual(
+            ("Erik Schweitzer", "Vorname in Signatur"),
+            autor_bestimmen(msg, text),
+        )
+
+    def test_vorname_im_fliesstext_genuegt_nicht(self):
+        msg = message_from_string(
+            "From: dreikraut Kundenservice <service@dreikraut.de>\n\nHallo!",
+            policy=policy.default,
+        )
+        text = "Hallo,\n\nErik kümmert sich morgen darum.\n\nViele Grüße"
+        self.assertEqual((None, "nicht erkannt"), autor_bestimmen(msg, text))
+
+    def test_gursewak_wird_ausgeschlossen(self):
+        msg = message_from_string(
+            "From: dreikraut Kundenservice <service@dreikraut.de>\n\nHallo!",
+            policy=policy.default,
+        )
+        text = "Hallo,\n\ndas bekommen wir hin.\n\nViele Grüße\nGursewak"
+        self.assertEqual((None, "ausgeschlossen"), autor_bestimmen(msg, text))
+
     def test_zitierter_verlauf_wird_entfernt(self):
         text = (
             "Hallo,\n\ngern helfen wir weiter.\n\nViele Grüße\nErik Schweitzer\n\n"

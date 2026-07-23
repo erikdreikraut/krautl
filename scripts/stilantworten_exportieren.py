@@ -24,6 +24,7 @@ from app.imap_client import lade_postfaecher
 from app.mail_parser import nachrichtentext
 
 AUTOREN = ("Thomas Meier", "Erik Schweitzer")
+AUSGESCHLOSSENE_AUTOREN = ("Gursewak",)
 ORDNER_NAMEN = ("gesendet", "sent", "sent items", "sent messages")
 ZITAT_START = (
     re.compile(r"^\s*>"),
@@ -73,10 +74,43 @@ def autor_bestimmen(msg, antworttext: str) -> tuple[str | None, str]:
     kopf_treffer = [a for a in AUTOREN if _enthaelt_name(absender_name, a)]
     signaturbereich = antworttext[-1600:]
     signatur_treffer = [a for a in AUTOREN if _enthaelt_name(signaturbereich, a)]
-    alle = set(kopf_treffer) | set(signatur_treffer)
+
+    # Bei persönlicher Du-Ansprache wird bewusst häufig nur mit dem Vornamen
+    # unterschrieben. Nur eine alleinstehende Zeile nahe dem Mailende zählt,
+    # damit ein zufällig im Fließtext erwähnter Vorname nicht genügt.
+    letzte_zeilen = [
+        zeile.strip() for zeile in signaturbereich.splitlines() if zeile.strip()
+    ][-12:]
+    vorname_treffer = [
+        autor for autor in AUTOREN
+        if any(
+            _normalisieren(zeile) == _normalisieren(autor.split()[0])
+            for zeile in letzte_zeilen
+        )
+    ]
+    ausgeschlossen = [
+        autor for autor in AUSGESCHLOSSENE_AUTOREN
+        if _enthaelt_name(absender_name, autor)
+        or any(
+            _normalisieren(zeile) in {
+                _normalisieren(autor),
+                _normalisieren(autor.split()[0]),
+            }
+            for zeile in letzte_zeilen
+        )
+    ]
+    if ausgeschlossen:
+        return None, "ausgeschlossen"
+
+    alle = set(kopf_treffer) | set(signatur_treffer) | set(vorname_treffer)
     if len(alle) == 1:
         autor = next(iter(alle))
-        grund = "Absendername" if kopf_treffer else "Signatur"
+        if kopf_treffer:
+            grund = "Absendername"
+        elif signatur_treffer:
+            grund = "Signatur"
+        else:
+            grund = "Vorname in Signatur"
         return autor, grund
     if len(alle) > 1:
         return None, "widersprüchig"
@@ -146,7 +180,9 @@ def analysieren(ausgabe: Path, export: bool, limit: int | None) -> dict:
                 msg = message_from_bytes(roh, policy=policy.default)
                 antwort = antwort_ohne_zitate(nachrichtentext(msg))
                 autor, grund = autor_bestimmen(msg, antwort)
-                kategorie = autor or "Unklar"
+                kategorie = autor or (
+                    "Ausgeschlossen" if grund == "ausgeschlossen" else "Unklar"
+                )
                 zaehler[kategorie] += 1
                 kontrollzeilen.append({
                     "kennung": hashlib.sha256(
@@ -187,6 +223,7 @@ def analysieren(ausgabe: Path, export: bool, limit: int | None) -> dict:
         f"- Thomas Meier: {zaehler['Thomas Meier']}",
         f"- Erik Schweitzer: {zaehler['Erik Schweitzer']}",
         f"- Unklar oder widersprüchlich: {zaehler['Unklar']}",
+        f"- Ausdrücklich ausgeschlossen: {zaehler['Ausgeschlossen']}",
         f"- Lesefehler: {zaehler['Lesefehler']}",
         "",
         "Der Vorschau-Bericht enthält keine Mailtexte oder Empfängeradressen.",
@@ -200,6 +237,7 @@ def analysieren(ausgabe: Path, export: bool, limit: int | None) -> dict:
         "thomas": zaehler["Thomas Meier"],
         "erik": zaehler["Erik Schweitzer"],
         "unklar": zaehler["Unklar"],
+        "ausgeschlossen": zaehler["Ausgeschlossen"],
         "exportiert": len(exportzeilen),
     }
 
