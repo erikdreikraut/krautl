@@ -59,6 +59,17 @@ def _text_aus_html(html: str) -> str:
     return "\n\n".join(zeilen)
 
 
+def nachrichtentext(msg) -> str:
+    """Liefert den vollständigen, lesbaren Text einer E-Mail-Nachricht."""
+    body_teil = msg.get_body(preferencelist=("plain", "html"))
+    if body_teil is None:
+        return ""
+    inhalt = body_teil.get_content()
+    if body_teil.get_content_type() == "text/html":
+        return _text_aus_html(inhalt)
+    return inhalt
+
+
 def _spam_score(msg) -> float | None:
     for header in ("X-Spam-Score", "X-Spam-Status", "X-Spam-Level"):
         wert = msg.get(header)
@@ -85,13 +96,7 @@ def parse_eml(raw: bytes) -> dict:
     except (TypeError, ValueError):
         empfangen_am = datetime.now(timezone.utc)
 
-    body_teil = msg.get_body(preferencelist=("plain", "html"))
-    if body_teil is not None:
-        inhalt = body_teil.get_content()
-        if body_teil.get_content_type() == "text/html":
-            inhalt = _text_aus_html(inhalt)
-    else:
-        inhalt = ""
+    inhalt = nachrichtentext(msg)
 
     message_id = (msg.get("Message-ID") or "").strip()
     if not message_id:
