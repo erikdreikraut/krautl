@@ -24,11 +24,8 @@ def _lese_csv(pfad: str) -> list[dict]:
 
 
 def _bestaetigung_noetig(hauptkategorie: str, aufgabe_typ: str) -> bool:
-    """Spam wird automatisch verschoben, alle anderen Verschiebeaktionen bestätigt."""
-    return (
-        aufgabe_typ == "MAIL_VERSCHIEBEN"
-        and hauptkategorie.strip().casefold() != "spam"
-    )
+    """Nur Spam läuft ohne menschliche Bestätigung."""
+    return hauptkategorie.strip().casefold() != "spam"
 
 
 async def importiere(pfad: str) -> None:

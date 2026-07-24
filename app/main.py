@@ -49,7 +49,7 @@ async def health():
 async def liste_mails(session: AsyncSession = Depends(get_session)):
     result = await session.execute(
         select(Mail)
-        .options(selectinload(Mail.aufgaben))
+        .options(selectinload(Mail.aufgaben), selectinload(Mail.postfach))
         .where(Mail.im_krautl_posteingang.is_(True))
         .order_by(Mail.empfangen_am.desc())
         .limit(100)
@@ -58,6 +58,7 @@ async def liste_mails(session: AsyncSession = Depends(get_session)):
     return [
         {
             **{spalte.name: getattr(mail, spalte.name) for spalte in Mail.__table__.columns},
+            "quellpostfach": mail.postfach.adresse if mail.postfach else None,
             "aufgaben": [
                 {spalte.name: getattr(aufgabe, spalte.name) for spalte in MailAufgabe.__table__.columns}
                 for aufgabe in mail.aufgaben

@@ -269,7 +269,12 @@ function PosteingangView({ mails, katalog, onReload }) {
           <>
             <div className="px-6 pt-5 pb-4" style={{ borderBottom: `1px solid ${tokens.line}` }}>
               <div className="flex items-center justify-between gap-3">
-                <Badge label={selected.katId} color={farbeFuerKategorie(selected.kat)} />
+                <div className="flex items-center gap-3">
+                  <Badge label={selected.katId} color={farbeFuerKategorie(selected.kat)} />
+                  <span style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
+                    {selected.zielhinweis}
+                  </span>
+                </div>
                 <div className="flex items-center gap-2">
                   <BestaetigenButton mail={selected} onBestaetigt={onReload} />
                   <KategorieKorrektur mail={selected} katalog={katalog} onKorrigiert={onReload} />
@@ -651,6 +656,17 @@ export default function KrautlUI() {
         konfidenz: m.konfidenz,
         aufgaben: m.aufgaben ?? [],
         bestaetigungErforderlich: Boolean(m.bestaetigung_erforderlich),
+        zielhinweis: (() => {
+          const zielpostfach = klass?.zielpostfach;
+          const zielordner = klass?.zielordner;
+          const quelle = m.quellpostfach;
+          const bleibt = !zielpostfach
+            || (zielpostfach === quelle && (!zielordner || zielordner.toUpperCase() === "INBOX"));
+          if (bleibt) {
+            return `bleibt in ${quelle ?? "seinem Postfach"}${zielordner ? ` / ${zielordner}` : ""}`;
+          }
+          return `wird verschoben nach ${zielpostfach}${zielordner ? ` / ${zielordner}` : ""}`;
+        })(),
         felder,
         entwurf: entwurfRoh ? { id: entwurfRoh.id, text: entwurfRoh.text_ki } : null,
       };

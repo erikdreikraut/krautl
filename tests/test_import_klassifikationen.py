@@ -8,13 +8,11 @@ class KlassifikationsImportTest(unittest.TestCase):
         self.assertFalse(_bestaetigung_noetig("Spam", "MAIL_VERSCHIEBEN"))
         self.assertFalse(_bestaetigung_noetig(" spam ", "MAIL_VERSCHIEBEN"))
 
-    def test_andere_verschiebeaktionen_bleiben_bestaetigungspflichtig(self):
+    def test_alle_anderen_kategorien_bleiben_bestaetigungspflichtig(self):
         self.assertTrue(
             _bestaetigung_noetig("Kundenservice", "MAIL_VERSCHIEBEN")
         )
-
-    def test_andere_aktionen_erhalten_keine_zusaetzliche_bestaetigung(self):
-        self.assertFalse(
+        self.assertTrue(
             _bestaetigung_noetig("Rechnung", "RECHNUNG_VERWALTEN")
         )
 

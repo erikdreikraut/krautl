@@ -45,6 +45,9 @@
    Spam-Kategorien benötigen keine Bestätigung. Nach Einführung dieser Regel
    werden bereits vorhandene Spam-Aufgaben einmalig bereinigt:
    `docker compose exec app python -m scripts.entferne_spam_bestaetigungen`
+   Alle übrigen Mails benötigen eine Bestätigung; vorhandene Bestandsmails
+   werden einmalig nachgezogen:
+   `docker compose exec app python -m scripts.synchronisiere_bestaetigungen`
 8. Der `frontend`-Dienst bindet TLS/Domain **nicht** selbst — er lauscht nur
    intern auf Host-Port `8081`. Läuft davor bereits ein eigener Reverse Proxy
    (z. B. bei Elestio), muss dessen Domain-Routing auf Port `8081` dieses

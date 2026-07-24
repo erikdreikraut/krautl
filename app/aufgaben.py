@@ -78,10 +78,18 @@ async def bestaetigung_erfassen(mail_id: int, bestaetigt_von: str | None = None)
         aufgabe.bestaetigt_von = bestaetigt_von
         aufgabe.bestaetigt_am = jetzt
         aufgabe.erledigt_am = jetzt
+        mail = await session.get(Mail, mail_id)
+        if mail:
+            # Die Bestätigung ist zugleich die Erledigung im Krautl-
+            # Posteingang. Folgeaufgaben laufen davon unabhängig weiter.
+            mail.im_krautl_posteingang = False
         session.add(Aktionslog(
             mail_id=mail_id,
             ereignis="bestaetigt",
-            detail=f"Bestätigung erteilt{f' durch {bestaetigt_von}' if bestaetigt_von else ''}",
+            detail=(
+                f"Bestätigung erteilt{f' durch {bestaetigt_von}' if bestaetigt_von else ''}; "
+                "aus Krautl-Posteingang entfernt"
+            ),
         ))
         await _naechste_freischalten(session, mail_id, aufgabe.position)
         await session.commit()
