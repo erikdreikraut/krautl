@@ -67,3 +67,43 @@ kein separater Scheduler-Job nötig.
   einzelne Nutzer; Nutzerverwaltung und Rollenprüfung fehlen noch.
 - Authentifizierung für die API (aktuell komplett offen — nicht für den
   Produktivbetrieb geeignet, bevor das ergänzt ist)
+
+## Geparkt: produktbezogene Wissensbasis und FAQ
+
+Die Wissensbasis wird erst weitergebaut, wenn Mail-Abruf, Aufgaben,
+Verschieben und Rechnungsverarbeitung zuverlässig laufen. Das fachliche
+Regelwerk für spätere FAQ-Entwürfe liegt bereits unter
+`data/faq-stilprofil.md`.
+
+Geplante Struktur:
+
+1. **Allgemeines dreikraut-Wissen** — zum Beispiel Versand, Zahlung,
+   Rückgabe, Bio-Zertifizierung und Unternehmensangaben.
+2. **Produktfamilie** — gemeinsames Rohstoffwissen, etwa zu Hagebutte,
+   Weihrauch oder Kurkuma.
+3. **Konkretes Produkt** — Zusammensetzung, Varianten, Herkunft,
+   Verarbeitung, Anwendung, Pflichtangaben, freigegebene FAQ und typische
+   Kundenfragen. Der erste Testfall wird das Bio-Hagebuttenpulver,
+   Artikelnummer 20810.
+
+Wissen und fertige Formulierungen bleiben getrennt. Jeder Wissenseintrag
+erhält Quelle, Stand und Freigabestatus. Gesundheitsbezogene Aussagen sind
+prüfpflichtig und dürfen weder erfunden noch durch Umformulierung verstärkt
+werden. Neue FAQ werden aus wiederkehrenden Kundenfragen nur vorgeschlagen;
+sie werden erst nach menschlicher Prüfung verbindliches Wissen.
+
+## Nächste Stabilisierungsschritte
+
+1. Dropbox mit dauerhaft erneuerbarer Anmeldung konfigurieren
+   (`DROPBOX_REFRESH_TOKEN`, `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`) und
+   einen echten Upload nach `/Rechnungen/{Jahr}/` prüfen.
+2. Nach Behebung der Dropbox-Anmeldung fehlgeschlagene Rechnungsaufgaben mit
+   `python -m scripts.wiederhole_rechnungen` kontrolliert wiederholen.
+3. Die korrigierte postfachübergreifende Verschiebefunktion mit echten Mails
+   prüfen: genau eine Kopie im Ziel, Entfernung aus dem Ursprungsordner und
+   nachvollziehbarer Eintrag im Aktionslog.
+4. Einen mindestens 24-stündigen Dauerlauf beobachten: minütlicher Abruf,
+   keine dauerhaft hängenden Aufgaben, keine Dubletten und keine lange
+   Ladezeit der Oberfläche.
+5. Erst danach Antwortvorschläge und die produktbezogene Wissensbasis
+   weiterbauen.
