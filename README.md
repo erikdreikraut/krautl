@@ -42,6 +42,9 @@
    Klassifikationskatalog neu importieren:
    `docker compose exec app python -m scripts.migrate_rechnungen`
    `docker compose exec app python -m scripts.import_klassifikationen data/mail-klassifikationen.csv`
+   Spam-Kategorien benötigen keine Bestätigung. Nach Einführung dieser Regel
+   werden bereits vorhandene Spam-Aufgaben einmalig bereinigt:
+   `docker compose exec app python -m scripts.entferne_spam_bestaetigungen`
 8. Der `frontend`-Dienst bindet TLS/Domain **nicht** selbst — er lauscht nur
    intern auf Host-Port `8081`. Läuft davor bereits ein eigener Reverse Proxy
    (z. B. bei Elestio), muss dessen Domain-Routing auf Port `8081` dieses
@@ -107,3 +110,33 @@ sie werden erst nach menschlicher Prüfung verbindliches Wissen.
    Ladezeit der Oberfläche.
 5. Erst danach Antwortvorschläge und die produktbezogene Wissensbasis
    weiterbauen.
+
+### Dropbox einmalig dauerhaft anmelden
+
+Der in der Dropbox-App-Konsole erzeugbare `DROPBOX_ACCESS_TOKEN` ist nur ein
+kurzlebiger Testzugang. Für Krautls unbeaufsichtigten Hintergrundbetrieb werden
+stattdessen App Key, App Secret und ein dauerhaft wiederverwendbarer Refresh
+Token verwendet.
+
+1. In der Dropbox-App-Konsole bei der für Krautl angelegten App unter
+   **Permissions** mindestens `files.content.write` aktivieren und die Änderung
+   speichern.
+2. **App key** und **App secret** aus den App-Einstellungen als
+   `DROPBOX_APP_KEY` und `DROPBOX_APP_SECRET` in Elestio hinterlegen. Diese
+   Werte niemals in Chat oder Git kopieren.
+3. Den App-Container neu bauen/starten und darin den Anmelde-Assistenten
+   ausführen:
+   `docker compose exec app python -m scripts.dropbox_anmelden`
+4. Den angezeigten Link im Browser öffnen, Dropbox-Zugriff erlauben und den
+   einmaligen Code zurück in das Serverfenster kopieren.
+5. Den danach ausgegebenen Wert in Elestio als `DROPBOX_REFRESH_TOKEN`
+   hinterlegen. `DROPBOX_ACCESS_TOKEN` kann anschließend leer bleiben.
+6. App-Container erneut starten. Danach eine fehlgeschlagene Rechnung gezielt
+   wiederholen:
+   `docker compose exec app python -m scripts.wiederhole_rechnungen`
+
+Bei einer Dropbox-App mit Zugriffstyp **App folder** erscheint Krautls
+`/Rechnungen/{Jahr}/` innerhalb des von Dropbox angelegten App-Ordners unter
+`Apps/{Dropbox-App-Name}/Rechnungen/{Jahr}/`. Bei **Full Dropbox** liegt der
+Ordner direkt im Dropbox-Hauptverzeichnis. Für Krautl genügt grundsätzlich
+`App folder`; ein Vollzugriff ist nicht nötig.

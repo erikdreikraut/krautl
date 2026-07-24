@@ -46,7 +46,10 @@ async def migriere() -> None:
                 continue
 
             position = 1
-            if klassifikation.aktion_id == "MAIL_VERSCHIEBEN":
+            if (
+                klassifikation.aktion_id == "MAIL_VERSCHIEBEN"
+                and klassifikation.hauptkategorie.strip().casefold() != "spam"
+            ):
                 session.add(KlassifikationAufgabe(
                     klassifikation_id=klassifikation.klassifikation_id,
                     position=position,
