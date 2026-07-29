@@ -57,10 +57,14 @@ def neue_mails_abrufen(
         else:
             # IMAP interpretiert n:* bei leerem/kleinerem Postfach mitunter als
             # umgekehrten Bereich. Deshalb zusätzlich lokal strikt filtern.
-            uids = [
+            neue_uids = [
                 uid for uid in client.search(["UID", f"{nach_uid + 1}:*"])
                 if uid > nach_uid
             ]
+            # Einmalig als ungelesen markierte ältere Nachrichten dienen als
+            # kontrollierter Nachholweg für Mails, die vor dieser Korrektur
+            # übersehen wurden. Datenbank/Message-ID verhindern Dubletten.
+            uids = sorted(set(neue_uids) | set(client.search(["UNSEEN"])))
 
         ergebnisse = []
         for uid in uids:

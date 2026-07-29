@@ -58,15 +58,28 @@ class ImapVerschiebenTest(unittest.TestCase):
 
     def test_neue_uid_wird_auch_gelesen_abgerufen(self):
         client = MagicMock()
-        client.search.return_value = [41, 42, 43]
+        client.search.side_effect = [[41, 42, 43], []]
         client.fetch.side_effect = lambda uids, _felder: {
             uids[0]: {b"RFC822": self.eml, b"FLAGS": (b"\\Seen",)}
         }
         with patch("app.imap_client.IMAPClient", new=_ClientKontext([client])):
             mails = neue_mails_abrufen(self.quelle, nach_uid=42)
 
-        client.search.assert_called_once_with(["UID", "43:*"])
+        self.assertEqual(
+            [(["UID", "43:*"],), (["UNSEEN"],)],
+            [aufruf.args for aufruf in client.search.call_args_list],
+        )
         self.assertEqual([43], [mail["uid"] for mail in mails])
+
+    def test_aeltere_ungelesene_mail_kann_nachgeholt_werden(self):
+        client = MagicMock()
+        client.search.side_effect = [[43], [40]]
+        client.fetch.side_effect = lambda uids, _felder: {
+            uids[0]: {b"RFC822": self.eml, b"FLAGS": ()}
+        }
+        with patch("app.imap_client.IMAPClient", new=_ClientKontext([client])):
+            mails = neue_mails_abrufen(self.quelle, nach_uid=42)
+        self.assertEqual([40, 43], [mail["uid"] for mail in mails])
 
     def test_erster_abruf_bleibt_bei_ungelesenen_mails(self):
         client = MagicMock()
