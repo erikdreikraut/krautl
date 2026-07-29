@@ -147,11 +147,15 @@ def _synchron_pruefen(
         max_tokens=700,
         system=(
             "Du bist die letzte Qualitätskontrolle vor dem Versand einer "
-            "dreikraut-Kundenantwort. Prüfe streng, ob die Antwort die Anfrage "
-            "vollständig und sachlich sicher behandelt, zum Fallwissen und "
-            "Stilprofil passt und keine internen Hinweise, Platzhalter, "
-            "eckigen Klammern, erfundenen Tatsachen oder unerledigten "
-            "Prüfpunkte enthält. Schon ein offener Punkt bedeutet "
+            "dreikraut-Kundenantwort. Blockiere nur bei wesentlichen "
+            "Versandhindernissen: unbeantworteten Kernfragen, sachlich "
+            "ungesicherten Behauptungen oder Handlungen, internen Hinweisen, "
+            "Platzhaltern, eckigen Klammern, rechtlich/gesundheitlich riskanten "
+            "Aussagen oder einem klaren Widerspruch zu Fallwissen und FAQ. "
+            "Kleine stilistische Abweichungen, Geschmackssachen, einzelne "
+            "Standardformulierungen oder mögliche sprachliche Verbesserungen "
+            "sind kein Blockiergrund. Das Stilprofil dient der Orientierung, "
+            "nicht als Perfektionstest. Nur ein wesentliches Hindernis bedeutet "
             "freigabefaehig=false."
         ),
         tools=[PRUEFUNGS_TOOL],

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -315,25 +315,50 @@ async def entwurf_freigeben(
         select(FaqEintrag).where(FaqEintrag.aktiv.is_(True))
     )).scalars().all()
 
-    try:
-        pruefung = await antwort_vor_versand_pruefen(mail, finaler_text, faq)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail=f"KI-Prüfung konnte nicht durchgeführt werden: {exc}",
-        ) from exc
+    bisherige_blockierungen = (await session.execute(
+        select(func.count(Aktionslog.id)).where(
+            Aktionslog.mail_id == mail.id,
+            Aktionslog.ereignis == "antwort_pruefung_noetig",
+            Aktionslog.detail.like(f"Entwurf #{entwurf.id}:%"),
+        )
+    )).scalar_one()
+    pruefung_uebersprungen = bisherige_blockierungen >= 2
 
-    if not pruefung["freigabefaehig"]:
+    if not pruefung_uebersprungen:
+        try:
+            pruefung = await antwort_vor_versand_pruefen(mail, finaler_text, faq)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"KI-Prüfung konnte nicht durchgeführt werden: {exc}",
+            ) from exc
+
+        if not pruefung["freigabefaehig"]:
+            neue_anzahl = bisherige_blockierungen + 1
+            session.add(Aktionslog(
+                mail_id=mail.id,
+                ereignis="antwort_pruefung_noetig",
+                detail=(
+                    f"Entwurf #{entwurf.id}: "
+                    + (
+                        "; ".join(pruefung["probleme"])
+                        or "Antwort noch nicht freigabefähig"
+                    )
+                ),
+            ))
+            await session.commit()
+            return {
+                "status": "pruefung_noetig",
+                "probleme": pruefung["probleme"],
+                "blockierungen": neue_anzahl,
+                "naechster_versuch_ohne_pruefung": neue_anzahl >= 2,
+            }
+    else:
         session.add(Aktionslog(
             mail_id=mail.id,
-            ereignis="antwort_pruefung_noetig",
-            detail="; ".join(pruefung["probleme"]) or "Antwort noch nicht freigabefähig",
+            ereignis="antwort_pruefung_uebersprungen",
+            detail="Nach zwei KI-Blockierungen auf ausdrücklichen dritten Freigabeversuch verzichtet",
         ))
-        await session.commit()
-        return {
-            "status": "pruefung_noetig",
-            "probleme": pruefung["probleme"],
-        }
 
     try:
         await testantwort_senden(mail, finaler_text)
@@ -361,6 +386,7 @@ async def entwurf_freigeben(
     return {
         "status": "versendet",
         "empfaenger": TEST_EMPFAENGER,
+        "pruefung_uebersprungen": pruefung_uebersprungen,
     }
 
 

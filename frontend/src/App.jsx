@@ -100,6 +100,7 @@ const EREIGNIS_LABEL = {
   antwortvorschlag_erstellt: "Antwortvorschlag erstellt",
   antwortvorschlag_fehlgeschlagen: "Antwortvorschlag fehlgeschlagen",
   antwort_pruefung_noetig: "Antwort noch nicht versandbereit",
+  antwort_pruefung_uebersprungen: "KI-Prüfung übersprungen",
   antwort_versendet_test: "Testantwort versendet",
   antwort_versand_fehlgeschlagen: "Antwortversand fehlgeschlagen",
 };
@@ -361,6 +362,7 @@ function EntwurfPanel({ entwurf, onErledigt }) {
   const [prueft, setPrueft] = useState(false);
   const [probleme, setProbleme] = useState([]);
   const [fehler, setFehler] = useState("");
+  const [naechsterOhnePruefung, setNaechsterOhnePruefung] = useState(false);
 
   async function freigeben() {
     setPrueft(true);
@@ -370,6 +372,7 @@ function EntwurfPanel({ entwurf, onErledigt }) {
       const ergebnis = await api.entwurfFreigeben(entwurf.id, text);
       if (ergebnis.status === "pruefung_noetig") {
         setProbleme(ergebnis.probleme ?? ["Die Antwort benötigt noch eine Prüfung."]);
+        setNaechsterOhnePruefung(Boolean(ergebnis.naechster_versuch_ohne_pruefung));
       } else {
         await onErledigt();
       }
@@ -399,12 +402,24 @@ function EntwurfPanel({ entwurf, onErledigt }) {
           </ul>
         </div>
       )}
+      {naechsterOhnePruefung && (
+        <div className="mt-3 px-3 py-2.5" style={{ background: tokens.rustPale, border: `1px solid ${tokens.rust}`, borderRadius: "6px" }}>
+          <div style={{ ...fontUI, fontSize: "12.5px", fontWeight: 600, color: tokens.rust }}>
+            Die Kontroll-KI hat diesen Entwurf zweimal blockiert.
+          </div>
+          <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, marginTop: "3px" }}>
+            Der nächste Klick versendet die Testantwort ohne eine weitere KI-Prüfung.
+          </div>
+        </div>
+      )}
       {fehler && (
         <div className="mt-3" style={{ ...fontUI, fontSize: "12px", color: tokens.rust }}>{fehler}</div>
       )}
       <div className="flex items-center gap-2 mt-3">
         <button onClick={freigeben} disabled={prueft} className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-60" style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}>
-          <Check size={13} /> {prueft ? "Antwort wird geprüft …" : "Antwort freigeben"}
+          <Check size={13} /> {prueft
+            ? (naechsterOhnePruefung ? "Testantwort wird versendet …" : "Antwort wird geprüft …")
+            : (naechsterOhnePruefung ? "Trotzdem testweise senden" : "Antwort freigeben")}
         </button>
         <button onClick={verwerfen} className="flex items-center gap-1.5 px-3 py-2" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
           <X size={13} /> Verwerfen

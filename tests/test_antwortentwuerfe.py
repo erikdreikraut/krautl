@@ -151,6 +151,46 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             entwurf = await session.get(Entwurf, entwurf_id)
             self.assertEqual("wartet", entwurf.status)
 
+    async def test_dritter_versuch_sendet_ohne_weitere_ki_pruefung(self):
+        async with SessionLocal() as session:
+            entwurf = Entwurf(
+                mail_id=self.mail_id,
+                text_ki="Guten Tag,\n\nTestantwort.",
+                status="wartet",
+            )
+            session.add(entwurf)
+            await session.commit()
+            entwurf_id = entwurf.id
+
+        pruefung = AsyncMock(return_value={
+            "freigabefaehig": False,
+            "probleme": ["Kontroll-KI erhebt einen Einwand"],
+        })
+        versand = AsyncMock()
+        ergebnisse = []
+        with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
+             patch("app.main.testantwort_senden", versand):
+            for _ in range(3):
+                async with SessionLocal() as session:
+                    ergebnisse.append(await entwurf_freigeben(
+                        entwurf_id,
+                        EntwurfFreigabe(finaler_text="Guten Tag,\n\nTestantwort."),
+                        session,
+                    ))
+
+        self.assertEqual(
+            ["pruefung_noetig", "pruefung_noetig", "versendet"],
+            [ergebnis["status"] for ergebnis in ergebnisse],
+        )
+        self.assertFalse(ergebnisse[0]["naechster_versuch_ohne_pruefung"])
+        self.assertTrue(ergebnisse[1]["naechster_versuch_ohne_pruefung"])
+        self.assertTrue(ergebnisse[2]["pruefung_uebersprungen"])
+        self.assertEqual(2, pruefung.await_count)
+        versand.assert_awaited_once()
+        async with SessionLocal() as session:
+            entwurf = await session.get(Entwurf, entwurf_id)
+            self.assertEqual("versendet", entwurf.status)
+
     def test_eckige_klammern_blockieren_auch_bei_ki_fehlurteil(self):
         ergebnis = pruefergebnis_absichern(
             {"freigabefaehig": True, "probleme": []},

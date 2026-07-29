@@ -81,6 +81,8 @@ gespeichert wurde.
   erkannt.
 - Der SMTP-Versand befindet sich im sicheren Testbetrieb: Vor jedem Versand
   prüft Claude den finalen Text auf Vollständigkeit und offene Prüfhinweise.
+  Die Prüfung darf denselben Entwurf höchstens zweimal blockieren; der dritte
+  ausdrückliche Freigabeversuch versendet ohne eine weitere KI-Prüfung.
   Unabhängig von der Kundenadresse wird ausschließlich an
   `info@erikschweitzer.de` gesendet. Für den Testversand müssen
   `SMTP_SERVICE_HOST`, `SMTP_SERVICE_PORT`, `SMTP_SERVICE_USER` und
