@@ -23,11 +23,6 @@ def _lese_csv(pfad: str) -> list[dict]:
         return list(csv.DictReader(datei))
 
 
-def _bestaetigung_noetig(hauptkategorie: str, aufgabe_typ: str) -> bool:
-    """Nur Spam läuft ohne menschliche Bestätigung."""
-    return hauptkategorie.strip().casefold() != "spam"
-
-
 async def importiere(pfad: str) -> None:
     zeilen = _lese_csv(pfad)
     async with SessionLocal() as session:
@@ -60,15 +55,6 @@ async def importiere(pfad: str) -> None:
             )
             aufgabe_typ = werte["aktion_id"]
             position = 1
-            if _bestaetigung_noetig(werte["hauptkategorie"], aufgabe_typ):
-                session.add(KlassifikationAufgabe(
-                    klassifikation_id=klassifikation_id,
-                    position=position,
-                    aufgabe_typ="BESTAETIGUNG_EINHOLEN",
-                    bestaetiger_typ="alle",
-                ))
-                position += 1
-
             session.add(KlassifikationAufgabe(
                 klassifikation_id=klassifikation_id,
                 position=position,

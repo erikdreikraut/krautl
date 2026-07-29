@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from fastapi import FastAPI, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,10 +9,26 @@ from .db import get_session, engine
 from .aufgaben import aufgaben_fuer_mail_anlegen, bestaetigung_erfassen, wartende_aufgaben_ausfuehren
 from .models import (
     Aktionslog, Base, Mail, MailAufgabe, Rechnung, FaqEintrag, FaqVorschlag,
-    Entwurf, Korrektur, Klassifikation, SystemStatus,
+    Entwurf, Korrektur, Klassifikation, KlassifikationAufgabe, SystemStatus,
 )
 
 app = FastAPI(title="Krautl API")
+
+ERLAUBTE_AKTIONEN = {
+    "BESTAETIGUNG_EINHOLEN",
+    "MAIL_VERSCHIEBEN",
+    "RECHNUNG_VERWALTEN",
+    "LIEFERANTENMAIL_BEARBEITEN",
+    "MARKETINGMAIL_BEARBEITEN",
+    "AUDIO_TRANSKRIBIEREN",
+    "SYSTEMMELDUNG_BEARBEITEN",
+    "RECHTSSACHE_BEARBEITEN",
+}
+
+
+class KlassifikationAenderung(BaseModel):
+    zielordner: str | None = None
+    aufgaben: list[str]
 
 
 @app.on_event("startup")
@@ -87,6 +104,53 @@ async def liste_klassifikationen(session: AsyncSession = Depends(get_session)):
         }
         for k in result.scalars().all()
     ]
+
+
+@app.put("/klassifikationen/{klassifikation_id}")
+async def klassifikation_aktualisieren(
+    klassifikation_id: str,
+    aenderung: KlassifikationAenderung,
+    session: AsyncSession = Depends(get_session),
+):
+    klassifikation = await session.get(Klassifikation, klassifikation_id)
+    if klassifikation is None:
+        raise HTTPException(status_code=404, detail="Klassifikation nicht gefunden")
+
+    ungueltig = [a for a in aenderung.aufgaben if a not in ERLAUBTE_AKTIONEN]
+    if ungueltig:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unbekannte Aktion: {ungueltig[0]}",
+        )
+
+    zielordner = (aenderung.zielordner or "").strip() or None
+    klassifikation.zielordner = zielordner
+    # Das alte Einzelaktionsfeld bleibt für CSV-Kompatibilität erhalten.
+    klassifikation.aktion_id = (
+        aenderung.aufgaben[0] if aenderung.aufgaben else "KEINE_AKTION"
+    )
+
+    await session.execute(
+        delete(KlassifikationAufgabe).where(
+            KlassifikationAufgabe.klassifikation_id == klassifikation_id
+        )
+    )
+    await session.flush()
+
+    for position, aufgabe_typ in enumerate(aenderung.aufgaben, start=1):
+        session.add(KlassifikationAufgabe(
+            klassifikation_id=klassifikation_id,
+            position=position,
+            aufgabe_typ=aufgabe_typ,
+            parameter={
+                "zielpostfach": klassifikation.zielpostfach,
+                "zielordner": zielordner,
+            },
+            bestaetiger_typ="alle",
+        ))
+
+    await session.commit()
+    return {"status": "gespeichert"}
 
 
 @app.post("/mails/{mail_id}/bestaetigen")

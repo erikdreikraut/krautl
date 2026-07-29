@@ -18,6 +18,12 @@ export const api = {
   health: () => anfrage("/health"),
   mails: () => anfrage("/mails"),
   klassifikationen: () => anfrage("/klassifikationen"),
+  klassifikationSpeichern: (klassifikationId, daten) =>
+    anfrage(`/klassifikationen/${klassifikationId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(daten),
+    }),
   aktionslog: () => anfrage("/aktionslog"),
   mailBestaetigen: (mailId) =>
     anfrage(`/mails/${mailId}/bestaetigen`, { method: "POST" }),

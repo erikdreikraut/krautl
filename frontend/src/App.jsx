@@ -79,6 +79,7 @@ const AKTION_LABEL = {
   RECHTSSACHE_BEARBEITEN: "Rechtssache bearbeiten",
 };
 const AKTIVE_AKTIONEN = new Set(["BESTAETIGUNG_EINHOLEN", "MAIL_VERSCHIEBEN", "RECHNUNG_VERWALTEN"]);
+const EDITIERBARE_AKTIONEN = Object.keys(AKTION_LABEL);
 
 const EREIGNIS_LABEL = {
   klassifiziert: "Klassifiziert",
@@ -491,52 +492,139 @@ function EinstellungenMenu({ active, onWaehlen }) {
   );
 }
 
-function KlassifikationenView({ katalog }) {
+function KlassifikationZeile({ klassifikation: k, onGespeichert }) {
+  const fachlicheAufgaben = (k.aufgaben ?? []).map((a) => a.aufgabe_typ);
+  const [zielordner, setZielordner] = useState(k.zielordner ?? "");
+  const [aufgaben, setAufgaben] = useState(fachlicheAufgaben);
+  const [speichert, setSpeichert] = useState(false);
+  const [meldung, setMeldung] = useState("");
+
+  function aufgabeAendern(index, wert) {
+    setAufgaben((alt) => alt.map((a, i) => i === index ? wert : a));
+    setMeldung("");
+  }
+
+  function aufgabeEntfernen(index) {
+    setAufgaben((alt) => alt.filter((_, i) => i !== index));
+    setMeldung("");
+  }
+
+  function aufgabeHinzufuegen(wert) {
+    if (!wert) return;
+    setAufgaben((alt) => [...alt, wert]);
+    setMeldung("");
+  }
+
+  async function speichern() {
+    setSpeichert(true);
+    setMeldung("");
+    try {
+      await api.klassifikationSpeichern(k.klassifikation_id, {
+        zielordner,
+        aufgaben,
+      });
+      setMeldung("Gespeichert");
+      await onGespeichert();
+    } catch (e) {
+      setMeldung(e.message);
+    } finally {
+      setSpeichert(false);
+    }
+  }
+
+  return (
+    <div className="grid items-start px-4 py-3" style={{ gridTemplateColumns: "1.3fr 1.8fr .65fr 1.25fr 2.2fr", borderBottom: `1px solid ${tokens.line}` }}>
+      <div>
+        <Badge label={k.klassifikation_id} color={farbeFuerKategorie(k.hauptkategorie)} />
+      </div>
+      <div>
+        <div style={{ ...fontSerif, fontSize: "14px", fontWeight: 600 }}>{k.hauptkategorie} · {k.unterkategorie}</div>
+        <div style={{ ...fontSerif, fontSize: "13px", color: tokens.inkMuted, marginTop: "2px" }}>{k.beschreibung}</div>
+      </div>
+      <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{k.standard_prio}</div>
+      <div className="pr-3">
+        <div style={{ ...fontMono, fontSize: "11px", color: tokens.inkMuted, marginBottom: "5px", overflowWrap: "anywhere" }}>
+          {k.zielpostfach ?? "gleiches Postfach"}
+        </div>
+        <input
+          value={zielordner}
+          onChange={(e) => { setZielordner(e.target.value); setMeldung(""); }}
+          placeholder="Zielordner"
+          style={{ ...fontUI, fontSize: "12.5px", width: "100%", padding: "6px 7px", background: tokens.paper, border: `1px solid ${tokens.line}`, borderRadius: "5px" }}
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        {aufgaben.map((aufgabe, index) => (
+          <div key={index} className="flex items-center gap-2">
+            <select
+              value={aufgabe}
+              onChange={(e) => aufgabeAendern(index, e.target.value)}
+              style={{ ...fontUI, fontSize: "12.5px", flex: 1, padding: "6px 7px", background: tokens.paper, border: `1px solid ${tokens.line}`, borderRadius: "5px" }}
+            >
+              {EDITIERBARE_AKTIONEN.map((aktion) => (
+                <option key={aktion} value={aktion}>{AKTION_LABEL[aktion]}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => aufgabeEntfernen(index)}
+              title="Aktion entfernen"
+              className="p-1.5"
+              style={{ color: tokens.rust, border: `1px solid ${tokens.line}`, borderRadius: "5px" }}
+            >
+              <X size={13} />
+            </button>
+          </div>
+        ))}
+        <select
+          value=""
+          onChange={(e) => aufgabeHinzufuegen(e.target.value)}
+          style={{ ...fontUI, fontSize: "12.5px", padding: "6px 7px", color: tokens.inkMuted, background: tokens.paperRaised, border: `1px dashed ${tokens.line}`, borderRadius: "5px" }}
+        >
+          <option value="">Aktion hinzufügen …</option>
+          {EDITIERBARE_AKTIONEN.map((aktion) => (
+            <option key={aktion} value={aktion}>{AKTION_LABEL[aktion]}</option>
+          ))}
+        </select>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={speichern}
+            disabled={speichert}
+            className="flex items-center gap-1.5 px-2.5 py-1.5"
+            style={{ ...fontUI, fontSize: "12.5px", color: "#fff", background: tokens.moss, borderRadius: "5px", opacity: speichert ? .6 : 1 }}
+          >
+            <Check size={13} /> {speichert ? "Speichert …" : "Speichern"}
+          </button>
+          {meldung && (
+            <span style={{ ...fontUI, fontSize: "11.5px", color: meldung === "Gespeichert" ? tokens.mossDeep : tokens.rust }}>
+              {meldung}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KlassifikationenView({ katalog, onReload }) {
   return (
     <div className="flex-1 overflow-y-auto px-8 py-6">
       <h2 style={{ ...fontDisplay, fontSize: "20px", color: tokens.mossDeep, marginBottom: "4px" }}>Mail-Klassifikationen</h2>
       <p className="mb-5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
         Legt fest, wie eingehende Mails eingeordnet werden und was danach automatisch passiert.
-        Nur lesbar — Bearbeiten folgt später. {katalog.length} Einträge.
+        Zielordner und Aufgaben gelten für künftig klassifizierte Mails. {katalog.length} Einträge.
       </p>
 
       <div style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
-        <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1.4fr 2fr 1fr 1fr 1.6fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
-          <div>ID</div><div>BESCHREIBUNG</div><div>PRIO</div><div>ZIEL</div><div>AKTION</div>
+        <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1.3fr 1.8fr .65fr 1.25fr 2.2fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
+          <div>ID</div><div>BESCHREIBUNG</div><div>PRIO</div><div>ZIELORDNER</div><div>AKTIONEN IN REIHENFOLGE</div>
         </div>
-        {katalog.map((k) => {
-          const aufgaben = k.aufgaben?.length ? k.aufgaben : [{ aufgabe_typ: k.aktion_id }];
-          return (
-            <div key={k.klassifikation_id} className="grid items-start px-4 py-3" style={{ gridTemplateColumns: "1.4fr 2fr 1fr 1fr 1.6fr", borderBottom: `1px solid ${tokens.line}` }}>
-              <div>
-                <Badge label={k.klassifikation_id} color={farbeFuerKategorie(k.hauptkategorie)} />
-              </div>
-              <div>
-                <div style={{ ...fontSerif, fontSize: "14px", fontWeight: 600 }}>{k.hauptkategorie} · {k.unterkategorie}</div>
-                <div style={{ ...fontSerif, fontSize: "13px", color: tokens.inkMuted, marginTop: "2px" }}>{k.beschreibung}</div>
-              </div>
-              <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{k.standard_prio}</div>
-              <div style={{ ...fontMono, fontSize: "11.5px", color: tokens.inkMuted }}>
-                {k.zielpostfach ? <>{k.zielpostfach}<br />{k.zielordner}</> : "—"}
-              </div>
-              <div className="flex flex-col gap-1.5">
-                {aufgaben.map((aufgabe, index) => {
-                  const aktiv = AKTIVE_AKTIONEN.has(aufgabe.aufgabe_typ);
-                  return (
-                    <div key={`${aufgabe.aufgabe_typ}-${index}`} className="flex items-center gap-1.5">
-                      <span title={aktiv ? "Implementiert" : "Noch nicht automatisiert"}
-                        className="inline-block rounded-full" style={{ width: "7px", height: "7px", background: aktiv ? tokens.moss : tokens.line, flexShrink: 0 }} />
-                      <span style={{ ...fontUI, fontSize: "12.5px" }}>
-                        {index > 0 && <span style={{ color: tokens.inkMuted }}>danach </span>}
-                        {AKTION_LABEL[aufgabe.aufgabe_typ] ?? aufgabe.aufgabe_typ}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
+        {katalog.map((k) => (
+          <KlassifikationZeile
+            key={k.klassifikation_id}
+            klassifikation={k}
+            onGespeichert={onReload}
+          />
+        ))}
         {katalog.length === 0 && (
           <div className="px-4 py-6 text-center" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
             Noch keine Klassifikationen importiert.
@@ -754,7 +842,7 @@ export default function KrautlUI() {
       {tab === "posteingang" && <PosteingangView mails={abgeleitet.mails} katalog={daten.katalog} onReload={neuLaden} />}
       {tab === "rechnungen" && <RechnungenView rechnungen={daten.rechnungen} onReload={neuLaden} />}
       {tab === "wissen" && <WissensdatenbankView faqEintraege={daten.faq} faqVorschlaege={abgeleitet.faqVorschlaege} onReload={neuLaden} />}
-      {tab === "klassifikationen" && <KlassifikationenView katalog={daten.katalog} />}
+      {tab === "klassifikationen" && <KlassifikationenView katalog={daten.katalog} onReload={neuLaden} />}
       {tab === "aktionslog" && <AktionslogView eintraege={abgeleitet.aktionslog} />}
     </div>
   );

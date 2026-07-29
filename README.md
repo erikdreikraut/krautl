@@ -77,8 +77,11 @@ gespeichert wurde.
 - FAQ-Vorschläge (`FaqVorschlag`) werden ebenfalls noch nicht automatisch
   erkannt.
 - SMTP-Versandmodul (separat vom Freigabe-Endpunkt, siehe Sicherheitsprinzip)
-- Klassifikationstabelle ist nur per Skript/DB editierbar, noch nicht über
-  die Oberfläche
+- Bestehende Klassifikationen lassen sich unter **Einstellungen →
+  Mail-Klassifikationen** bearbeiten: Zielordner sowie eine geordnete Liste
+  von Aufgaben. **Bestätigung einholen** ist dabei eine frei wählbare Aufgabe,
+  keine fest eingebaute Pflicht. Neue Klassifikationen anlegen oder vorhandene
+  löschen ist noch nicht über die Oberfläche möglich.
 - Bestätigungen gelten aktuell für alle Nutzer mit Zugriff auf Krautl. Das
   Datenmodell enthält bereits Zieltyp/-referenz für spätere Rollen oder
   einzelne Nutzer; Nutzerverwaltung und Rollenprüfung fehlen noch.
