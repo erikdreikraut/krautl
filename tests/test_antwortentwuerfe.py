@@ -1,6 +1,7 @@
 import os
 import unittest
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_antwortentwuerfe.db")
@@ -15,6 +16,18 @@ from app.main import (
 )
 from app.aufgaben import wartende_aufgaben_ausfuehren
 from app.models import Aktionslog, Base, Entwurf, Mail, MailAufgabe, Postfach
+
+
+TEST_BENUTZER = {
+    "benutzername": "erik",
+    "name": "Erik Schweitzer",
+    "titel": None,
+    "rolle": "vollzugriff",
+}
+
+
+def test_request():
+    return SimpleNamespace(state=SimpleNamespace(benutzer=TEST_BENUTZER))
 
 
 class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
@@ -107,6 +120,7 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
                 ergebnis = await entwurf_freigeben(
                     entwurf_id,
                     EntwurfFreigabe(finaler_text="Guten Tag,\n\nvielen Dank."),
+                    test_request(),
                     session,
                 )
 
@@ -117,6 +131,7 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             entwurf = await session.get(Entwurf, entwurf_id)
             self.assertEqual("versendet", entwurf.status)
             self.assertIsNotNone(entwurf.versendet_am)
+            self.assertIn("\nErik Schweitzer\n-- \ndreikraut e.K.\n", entwurf.text_final)
 
     async def test_offene_punkte_blockieren_den_versand(self):
         async with SessionLocal() as session:
@@ -142,6 +157,7 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
                     EntwurfFreigabe(
                         finaler_text="[Vor Versand prüfen/ergänzen: Bestellnummer]"
                     ),
+                    test_request(),
                     session,
                 )
 
@@ -175,6 +191,7 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
                     ergebnisse.append(await entwurf_freigeben(
                         entwurf_id,
                         EntwurfFreigabe(finaler_text="Guten Tag,\n\nTestantwort."),
+                        test_request(),
                         session,
                     ))
 

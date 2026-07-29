@@ -9,6 +9,14 @@ from .models import Mail
 
 
 TEST_EMPFAENGER = "info@erikschweitzer.de"
+GEMEINSAME_SIGNATUR = "-- \n" + """\
+dreikraut e.K.
+Gräfrather Str. 74a
+42329 Wuppertal
+
+www.dreikraut.de
+Fon +49 202 2727 7835
+Fax +49 202 2531 2301"""
 
 
 def _smtp_einstellungen() -> dict:
@@ -30,7 +38,32 @@ def _smtp_einstellungen() -> dict:
     return werte
 
 
-def _synchron_senden(mail: Mail, antworttext: str) -> None:
+def antwort_mit_signatur(antworttext: str, benutzer: dict) -> str:
+    kopf = [benutzer["name"]]
+    if benutzer.get("titel"):
+        kopf.append(benutzer["titel"])
+    signatur = "\n".join([*kopf, GEMEINSAME_SIGNATUR])
+    text = antworttext.rstrip()
+    # Bereits von Hand eingefügte dreikraut-Signaturen werden ersetzt, damit
+    # nie zwei unterschiedliche Absender unter derselben Antwort stehen.
+    marker = "\n-- \ndreikraut e.K."
+    if marker in text:
+        text = text.split(marker, 1)[0].rstrip()
+        zeilen = text.splitlines()
+        if zeilen and zeilen[-1].strip() in {
+            "Erik Schweitzer", "Gursewak Singh", "Ludwig Schnorrenberg",
+            "Auszubildender",
+        }:
+            zeilen.pop()
+            if zeilen and zeilen[-1].strip() in {
+                "Erik Schweitzer", "Gursewak Singh", "Ludwig Schnorrenberg",
+            }:
+                zeilen.pop()
+            text = "\n".join(zeilen).rstrip()
+    return f"{text}\n\n{signatur}\n"
+
+
+def _synchron_senden(mail: Mail, antworttext: str, benutzer: dict) -> None:
     smtp = _smtp_einstellungen()
     nachricht = EmailMessage()
     nachricht["From"] = smtp["user"]
@@ -40,7 +73,7 @@ def _synchron_senden(mail: Mail, antworttext: str) -> None:
     if mail.message_id:
         nachricht["In-Reply-To"] = mail.message_id
         nachricht["References"] = mail.message_id
-    nachricht.set_content(antworttext)
+    nachricht.set_content(antwort_mit_signatur(antworttext, benutzer))
 
     kontext = ssl.create_default_context()
     if smtp["port"] == 465:
@@ -58,5 +91,5 @@ def _synchron_senden(mail: Mail, antworttext: str) -> None:
             client.send_message(nachricht)
 
 
-async def testantwort_senden(mail: Mail, antworttext: str) -> None:
-    await asyncio.to_thread(_synchron_senden, mail, antworttext)
+async def testantwort_senden(mail: Mail, antworttext: str, benutzer: dict) -> None:
+    await asyncio.to_thread(_synchron_senden, mail, antworttext, benutzer)

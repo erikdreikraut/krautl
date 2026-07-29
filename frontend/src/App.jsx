@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   Search, ChevronRight, ChevronDown, CheckCircle2, PenLine, Paperclip, X,
   Inbox as InboxIcon, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
+  LogOut, UserRound,
 } from "lucide-react";
 import { api } from "./api.js";
 import logo from "./assets/krautl-logo.png";
@@ -772,7 +773,7 @@ function AktionslogView({ eintraege }) {
   );
 }
 
-function verwendeKrautlDaten() {
+function verwendeKrautlDaten(onNichtAngemeldet) {
   const [daten, setDaten] = useState(null);
   const [fehler, setFehler] = useState(null);
   const laedt = useRef(false);
@@ -787,13 +788,17 @@ function verwendeKrautlDaten() {
       setDaten({ health, mails, katalog, rechnungen, faq, faqVorschlaege, entwuerfe, aktionslog });
       setFehler(null);
     } catch (e) {
+      if (e.status === 401) {
+        onNichtAngemeldet();
+        return;
+      }
       // Ein vorübergehender Hintergrundfehler soll die bereits sichtbare
       // Oberfläche nicht durch eine Fehlerseite ersetzen.
       if (!imHintergrund) setFehler(e.message);
     } finally {
       laedt.current = false;
     }
-  }, []);
+  }, [onNichtAngemeldet]);
 
   useEffect(() => {
     laden();
@@ -818,9 +823,110 @@ function verwendeKrautlDaten() {
   return { daten, fehler, neuLaden: laden };
 }
 
+function LoginView({ onAngemeldet }) {
+  const [benutzername, setBenutzername] = useState("");
+  const [passwort, setPasswort] = useState("");
+  const [laeuft, setLaeuft] = useState(false);
+  const [fehler, setFehler] = useState("");
+
+  async function absenden(e) {
+    e.preventDefault();
+    setLaeuft(true);
+    setFehler("");
+    try {
+      const benutzer = await api.login(benutzername, passwort);
+      onAngemeldet(benutzer);
+    } catch (error) {
+      setFehler(
+        error.status === 401
+          ? "Benutzername oder Passwort ist nicht richtig."
+          : error.message
+      );
+    } finally {
+      setLaeuft(false);
+    }
+  }
+
+  return (
+    <div className="w-full h-full min-h-screen flex items-center justify-center p-6" style={{ background: tokens.paper }}>
+      <form onSubmit={absenden} className="w-full p-7" style={{ maxWidth: "390px", background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "10px" }}>
+        <img src={logo} alt="Krautl" style={{ height: "48px", width: "auto", margin: "0 auto 24px" }} />
+        <h1 style={{ ...fontDisplay, fontSize: "22px", color: tokens.mossDeep }}>Bei Krautl anmelden</h1>
+        <p style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, marginTop: "5px", marginBottom: "20px" }}>
+          Bitte mit Deinem persönlichen Konto anmelden.
+        </p>
+        <label style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
+          Benutzername
+          <input
+            autoFocus
+            autoComplete="username"
+            value={benutzername}
+            onChange={(e) => setBenutzername(e.target.value)}
+            className="block w-full mt-1.5 px-3 py-2.5"
+            style={{ ...fontUI, fontSize: "14px", background: tokens.paper, border: `1px solid ${tokens.line}`, borderRadius: "6px", color: tokens.ink }}
+          />
+        </label>
+        <label className="block mt-4" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
+          Passwort
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={passwort}
+            onChange={(e) => setPasswort(e.target.value)}
+            className="block w-full mt-1.5 px-3 py-2.5"
+            style={{ ...fontUI, fontSize: "14px", background: tokens.paper, border: `1px solid ${tokens.line}`, borderRadius: "6px", color: tokens.ink }}
+          />
+        </label>
+        {fehler && <div className="mt-3" style={{ ...fontUI, fontSize: "12.5px", color: tokens.rust }}>{fehler}</div>}
+        <button
+          type="submit"
+          disabled={laeuft || !benutzername || !passwort}
+          className="w-full mt-5 px-3 py-2.5 disabled:opacity-50"
+          style={{ ...fontUI, fontSize: "13.5px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}
+        >
+          {laeuft ? "Anmeldung läuft …" : "Anmelden"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default function KrautlUI() {
+  const [benutzer, setBenutzer] = useState(undefined);
+
+  useEffect(() => {
+    api.angemeldeterBenutzer()
+      .then(setBenutzer)
+      .catch(() => setBenutzer(null));
+  }, []);
+
+  if (benutzer === undefined) {
+    return (
+      <div className="w-full h-full min-h-screen flex items-center justify-center" style={{ ...fontUI, background: tokens.paper, color: tokens.inkMuted }}>
+        Anmeldung wird geprüft …
+      </div>
+    );
+  }
+  if (!benutzer) {
+    return <LoginView onAngemeldet={setBenutzer} />;
+  }
+  return (
+    <KrautlAnwendung
+      benutzer={benutzer}
+      onAbmelden={async () => {
+        try {
+          await api.logout();
+        } finally {
+          setBenutzer(null);
+        }
+      }}
+    />
+  );
+}
+
+function KrautlAnwendung({ benutzer, onAbmelden }) {
   const [tab, setTab] = useState("posteingang");
-  const { daten, fehler, neuLaden } = verwendeKrautlDaten();
+  const { daten, fehler, neuLaden } = verwendeKrautlDaten(onAbmelden);
 
   const abgeleitet = useMemo(() => {
     if (!daten) return null;
@@ -940,6 +1046,18 @@ export default function KrautlUI() {
           </span>
           <PenLine size={13} style={{ color: tokens.amber }} />
           <span style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{entwuerfeOffen} Entwürfe warten auf Freigabe</span>
+          <div className="flex items-center gap-1.5 pl-3 ml-1" style={{ borderLeft: `1px solid ${tokens.line}` }}>
+            <UserRound size={13} style={{ color: tokens.mossDeep }} />
+            <span style={{ ...fontUI, fontSize: "12.5px", color: tokens.ink }}>{benutzer.name}</span>
+            <button
+              onClick={onAbmelden}
+              title="Abmelden"
+              className="p-1.5 ml-1"
+              style={{ color: tokens.inkMuted, borderRadius: "5px" }}
+            >
+              <LogOut size={13} />
+            </button>
+          </div>
         </div>
       </header>
 

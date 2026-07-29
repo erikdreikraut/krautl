@@ -1,0 +1,34 @@
+import os
+import unittest
+from unittest.mock import patch
+
+from app.auth import anmelden, sitzung_erstellen, sitzung_lesen
+
+
+class AuthTest(unittest.TestCase):
+    umgebung = {
+        "KRAUTL_SESSION_SECRET": "test-secret-mit-mehr-als-32-zeichen-123456",
+        "KRAUTL_PASSWORD_ERIK": "erik-passwort",
+        "KRAUTL_PASSWORD_GURSEWAK": "gursewak-passwort",
+        "KRAUTL_PASSWORD_LUDWIG": "ludwig-passwort",
+    }
+
+    def test_drei_feste_nutzer_koennen_sich_anmelden(self):
+        with patch.dict(os.environ, self.umgebung, clear=False):
+            self.assertEqual("Erik Schweitzer", anmelden("erik", "erik-passwort")["name"])
+            self.assertEqual("Gursewak Singh", anmelden("gursewak", "gursewak-passwort")["name"])
+            self.assertEqual("Ludwig Schnorrenberg", anmelden("ludwig", "ludwig-passwort")["name"])
+            self.assertIsNone(anmelden("erik", "falsch"))
+
+    def test_signierte_sitzung_erkennt_manipulation(self):
+        with patch.dict(os.environ, self.umgebung, clear=False):
+            token = sitzung_erstellen("gursewak")
+            benutzer = sitzung_lesen(token)
+            self.assertEqual("Gursewak Singh", benutzer["name"])
+            self.assertEqual("Auszubildender", benutzer["titel"])
+            self.assertEqual("vollzugriff", benutzer["rolle"])
+            self.assertIsNone(sitzung_lesen(token + "manipuliert"))
+
+
+if __name__ == "__main__":
+    unittest.main()

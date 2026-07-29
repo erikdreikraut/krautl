@@ -3,7 +3,7 @@ import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-from app.mail_versand import _synchron_senden
+from app.mail_versand import _synchron_senden, antwort_mit_signatur
 from app.models import Mail
 
 
@@ -33,6 +33,9 @@ class _SmtpAttrappe:
 
 
 class MailVersandTest(unittest.TestCase):
+    erik = {"name": "Erik Schweitzer", "titel": None}
+    gursewak = {"name": "Gursewak Singh", "titel": "Auszubildender"}
+
     def test_empfaenger_ist_fest_auf_testadresse_begrenzt(self):
         mail = Mail(
             message_id="<kunde@example.test>",
@@ -51,7 +54,7 @@ class MailVersandTest(unittest.TestCase):
         }
         with patch.dict(os.environ, umgebung, clear=False), \
              patch("app.mail_versand.smtplib.SMTP", _SmtpAttrappe):
-            _synchron_senden(mail, "Testantwort")
+            _synchron_senden(mail, "Testantwort", self.erik)
 
         self.assertEqual(
             "info@erikschweitzer.de",
@@ -60,6 +63,25 @@ class MailVersandTest(unittest.TestCase):
         self.assertNotEqual(
             mail.absender_adresse,
             _SmtpAttrappe.nachricht["To"],
+        )
+        self.assertIn("\nErik Schweitzer\n-- \ndreikraut e.K.\n", _SmtpAttrappe.nachricht.get_content())
+
+    def test_signatur_fuer_auszubildende(self):
+        text = antwort_mit_signatur("Mit bestem Gruß", self.gursewak)
+        self.assertEqual(
+            """Mit bestem Gruß
+
+Gursewak Singh
+Auszubildender
+""" + "-- \n" + """dreikraut e.K.
+Gräfrather Str. 74a
+42329 Wuppertal
+
+www.dreikraut.de
+Fon +49 202 2727 7835
+Fax +49 202 2531 2301
+""",
+            text,
         )
 
 

@@ -19,6 +19,9 @@
   startet sofort mit Docker, ruft `app/worker.py` minütlich auf und speichert
   sein letztes Lebenszeichen in der Datenbank
 - `app/main.py` — FastAPI mit den Endpunkten, die die Oberfläche braucht
+- `app/auth.py` — persönliche Anmeldung mit signierten Sitzungen für Erik,
+  Gursewak und Ludwig; das Rollenfeld ist für spätere Rechteunterschiede
+  bereits vorhanden
 - `scripts/import_klassifikationen.py` — importiert/aktualisiert die
   `klassifikation`-Tabelle aus `data/mail-klassifikationen.csv` (idempotent)
 - `frontend/` — Vite+React-Oberfläche, spricht die Backend-Endpunkte über
@@ -87,6 +90,16 @@ gespeichert wurde.
   `info@erikschweitzer.de` gesendet. Für den Testversand müssen
   `SMTP_SERVICE_HOST`, `SMTP_SERVICE_PORT`, `SMTP_SERVICE_USER` und
   `SMTP_SERVICE_PASSWORD` gesetzt sein.
+- Alle fachlichen API-Funktionen erfordern eine persönliche Krautl-Anmeldung.
+  Aktuell haben `erik`, `gursewak` und `ludwig` identischen Vollzugriff.
+  Passwörter stehen ausschließlich in den Elestio-Umgebungsvariablen
+  `KRAUTL_PASSWORD_ERIK`, `KRAUTL_PASSWORD_GURSEWAK` und
+  `KRAUTL_PASSWORD_LUDWIG`. `KRAUTL_SESSION_SECRET` signiert die
+  Anmeldesitzungen und muss ein langes zufälliges Geheimnis sein.
+- Beim Testversand ergänzt Krautl abhängig vom angemeldeten Nutzer automatisch
+  Name, gegebenenfalls `Auszubildender` und die gemeinsame
+  dreikraut-Geschäftssignatur. Der freigebende Nutzer wird im Aktionslog
+  protokolliert.
 - Bestehende Klassifikationen lassen sich unter **Einstellungen →
   Mail-Klassifikationen** bearbeiten: Zielordner sowie eine geordnete Liste
   von Aufgaben. **Bestätigung einholen** ist dabei eine frei wählbare Aufgabe,
@@ -95,8 +108,8 @@ gespeichert wurde.
 - Bestätigungen gelten aktuell für alle Nutzer mit Zugriff auf Krautl. Das
   Datenmodell enthält bereits Zieltyp/-referenz für spätere Rollen oder
   einzelne Nutzer; Nutzerverwaltung und Rollenprüfung fehlen noch.
-- Authentifizierung für die API (aktuell komplett offen — nicht für den
-  Produktivbetrieb geeignet, bevor das ergänzt ist)
+- Rollenbasierte Rechteprüfung fehlt noch; derzeit haben alle drei eingerichteten
+  Nutzer Vollzugriff.
 
 ## Geparkt: produktbezogene Wissensbasis und FAQ
 

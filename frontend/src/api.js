@@ -10,7 +10,9 @@ async function anfrage(pfad, optionen) {
     } catch {
       // Manche Proxy-Fehler liefern kein JSON.
     }
-    throw new Error(`${optionen?.method || "GET"} ${pfad} fehlgeschlagen: ${antwort.status}${detail}`);
+    const meldung = new Error(`${optionen?.method || "GET"} ${pfad} fehlgeschlagen: ${antwort.status}${detail}`);
+    meldung.status = antwort.status;
+    throw meldung;
   }
   if (antwort.status === 204) return null;
   return antwort.json();
@@ -22,6 +24,14 @@ function postForm(pfad, params) {
 }
 
 export const api = {
+  angemeldeterBenutzer: () => anfrage("/auth/me"),
+  login: (benutzername, passwort) =>
+    anfrage("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ benutzername, passwort }),
+    }),
+  logout: () => anfrage("/auth/logout", { method: "POST" }),
   health: () => anfrage("/health"),
   mails: () => anfrage("/mails"),
   klassifikationen: () => anfrage("/klassifikationen"),

@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import selectinload
@@ -8,7 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .db import get_session, engine
 from .aufgaben import aufgaben_fuer_mail_anlegen, bestaetigung_erfassen, wartende_aufgaben_ausfuehren
 from .antworten import antwort_vor_versand_pruefen, antwortentwurf_speichern
-from .mail_versand import TEST_EMPFAENGER, testantwort_senden
+from .mail_versand import (
+    TEST_EMPFAENGER, antwort_mit_signatur, testantwort_senden,
+)
+from .auth import (
+    COOKIE_NAME, SESSION_DAUER_SEKUNDEN, anmelden, oeffentliche_daten,
+    sitzung_erstellen, sitzung_lesen,
+)
 from .models import (
     Aktionslog, Base, Mail, MailAufgabe, Rechnung, FaqEintrag, FaqVorschlag,
     Entwurf, Korrektur, Klassifikation, KlassifikationAufgabe, SystemStatus,
@@ -37,6 +44,57 @@ class KlassifikationAenderung(BaseModel):
 
 class EntwurfFreigabe(BaseModel):
     finaler_text: str
+
+
+class Anmeldung(BaseModel):
+    benutzername: str
+    passwort: str
+
+
+@app.middleware("http")
+async def anmeldung_erfordern(request: Request, call_next):
+    if request.url.path in {"/health", "/auth/login"}:
+        return await call_next(request)
+    try:
+        benutzer = sitzung_lesen(request.cookies.get(COOKIE_NAME))
+    except RuntimeError as exc:
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
+    if benutzer is None:
+        return JSONResponse(status_code=401, content={"detail": "Anmeldung erforderlich"})
+    request.state.benutzer = benutzer
+    return await call_next(request)
+
+
+@app.post("/auth/login")
+async def login(anmeldung: Anmeldung, response: Response):
+    try:
+        benutzer = anmelden(anmeldung.benutzername, anmeldung.passwort)
+        token = sitzung_erstellen(benutzer["benutzername"]) if benutzer else None
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if benutzer is None:
+        raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
+    response.set_cookie(
+        COOKIE_NAME,
+        token,
+        max_age=SESSION_DAUER_SEKUNDEN,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+    )
+    return oeffentliche_daten(benutzer)
+
+
+@app.get("/auth/me")
+async def aktueller_benutzer(request: Request):
+    return oeffentliche_daten(request.state.benutzer)
+
+
+@app.post("/auth/logout")
+async def logout(response: Response):
+    response.delete_cookie(COOKIE_NAME, path="/")
+    return {"status": "abgemeldet"}
 
 
 @app.on_event("startup")
@@ -290,6 +348,7 @@ async def mail_antwortentwurf_erzeugen(
 async def entwurf_freigeben(
     entwurf_id: int,
     freigabe: EntwurfFreigabe,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     entwurf = (await session.execute(
@@ -339,7 +398,8 @@ async def entwurf_freigeben(
                 mail_id=mail.id,
                 ereignis="antwort_pruefung_noetig",
                 detail=(
-                    f"Entwurf #{entwurf.id}: "
+                    f"Entwurf #{entwurf.id}: geprüft durch "
+                    f"{request.state.benutzer['name']}; "
                     + (
                         "; ".join(pruefung["probleme"])
                         or "Antwort noch nicht freigabefähig"
@@ -357,16 +417,22 @@ async def entwurf_freigeben(
         session.add(Aktionslog(
             mail_id=mail.id,
             ereignis="antwort_pruefung_uebersprungen",
-            detail="Nach zwei KI-Blockierungen auf ausdrücklichen dritten Freigabeversuch verzichtet",
+            detail=(
+                "Nach zwei KI-Blockierungen auf ausdrücklichen dritten "
+                f"Freigabeversuch durch {request.state.benutzer['name']} verzichtet"
+            ),
         ))
 
     try:
-        await testantwort_senden(mail, finaler_text)
+        await testantwort_senden(mail, finaler_text, request.state.benutzer)
     except Exception as exc:
         session.add(Aktionslog(
             mail_id=mail.id,
             ereignis="antwort_versand_fehlgeschlagen",
-            detail=f"Testversand an {TEST_EMPFAENGER}: {exc}",
+            detail=(
+                f"Freigabe durch {request.state.benutzer['name']}; "
+                f"Testversand an {TEST_EMPFAENGER}: {exc}"
+            ),
         ))
         await session.commit()
         raise HTTPException(
@@ -374,13 +440,19 @@ async def entwurf_freigeben(
             detail=f"Testversand fehlgeschlagen: {exc}",
         ) from exc
 
-    entwurf.text_final = finaler_text
+    entwurf.text_final = antwort_mit_signatur(
+        finaler_text, request.state.benutzer
+    )
     entwurf.status = "versendet"
     entwurf.versendet_am = datetime.now(timezone.utc)
     session.add(Aktionslog(
         mail_id=mail.id,
         ereignis="antwort_versendet_test",
-        detail=f"Nach KI-Prüfung ausschließlich an {TEST_EMPFAENGER} versendet",
+        detail=(
+            f"Durch {request.state.benutzer['name']} "
+            f"{'ohne weitere KI-Prüfung ' if pruefung_uebersprungen else 'nach KI-Prüfung '}"
+            f"ausschließlich an {TEST_EMPFAENGER} versendet"
+        ),
     ))
     await session.commit()
     return {
