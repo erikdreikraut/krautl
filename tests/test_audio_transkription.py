@@ -11,7 +11,9 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 
 from sqlalchemy import select
 
-from app.audio_transkription import _ausgabemail, audioanhaenge
+from app.audio_transkription import (
+    _ausgabemail, _fallback_abschnitte, _vergleichstext, audioanhaenge,
+)
 from app.aufgaben import wartende_aufgaben_ausfuehren
 from app.db import SessionLocal, engine
 from app.models import Aktionslog, Base, Mail, MailAufgabe, Postfach
@@ -39,15 +41,29 @@ class AudioTranskriptionTest(unittest.IsolatedAsyncioTestCase):
         raw, message_id = _ausgabemail(
             mail, anhaenge,
             ["Frau **Müller** ruft wegen der **Bestellung 123** an.\n\nRückruf morgen."],
+            "Frau Müller",
         )
         ausgang = BytesParser(policy=policy.default).parsebytes(raw)
         self.assertEqual("<krautl-audio-17@dreikraut.de>", message_id)
         self.assertEqual("service@dreikraut.de", ausgang["To"])
+        self.assertEqual("Anruf transkribiert: Frau Müller", ausgang["Subject"])
+        self.assertIn(
+            "Anruf erhalten von Frau Müller, automatisch transkribiert:",
+            ausgang.get_body(preferencelist=("html",)).get_content(),
+        )
         self.assertIn("<strong>Müller</strong>", ausgang.get_body(preferencelist=("html",)).get_content())
         self.assertEqual(
             ["anruf.mp3"],
             [teil.get_filename() for teil in ausgang.iter_attachments()],
         )
+
+    def test_fallback_gliedert_ohne_den_wortlaut_zu_veraendern(self):
+        original = (
+            "Hallo, hier ist Franz Müller. Ich rufe wegen der Bestellung an. "
+            "Die Nummer ist 242989. Bitte drei Packungen senden."
+        )
+        gegliedert = "\n\n".join(_fallback_abschnitte(original))
+        self.assertEqual(_vergleichstext(original), _vergleichstext(gegliedert))
 
     async def test_aufgabe_wird_ausgefuehrt_und_protokolliert(self):
         async with SessionLocal() as session:
