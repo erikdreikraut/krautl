@@ -224,3 +224,15 @@ class Aktionslog(Base):
     ereignis: Mapped[str] = mapped_column(String(50))
     detail: Mapped[str] = mapped_column(Text)
     erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SystemStatus(Base):
+    """Lebenszeichen dauerhaft laufender Hintergrunddienste."""
+    __tablename__ = "system_status"
+
+    dienst: Mapped[str] = mapped_column(String(50), primary_key=True)
+    status: Mapped[str] = mapped_column(String(30), default="startet")
+    letzter_lauf: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    letzter_erfolg: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    letzter_fehler: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)

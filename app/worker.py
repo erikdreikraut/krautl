@@ -162,11 +162,19 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
     return gespeichert
 
 
-async def alle_postfaecher_abrufen() -> None:
-    for config in lade_postfaecher():
+async def alle_postfaecher_abrufen() -> dict:
+    gesamt = 0
+    fehler = []
+    configs = lade_postfaecher()
+    if not configs:
+        return {"mails": 0, "fehler": ["Keine vollständigen IMAP-Postfächer konfiguriert"]}
+    for config in configs:
         try:
             anzahl = await postfach_abrufen_und_klassifizieren(config)
+            gesamt += anzahl
             if anzahl:
                 logger.info("%s: %d neue Mail(s) klassifiziert", config.funktion, anzahl)
-        except Exception:
+        except Exception as exc:
+            fehler.append(f"{config.funktion}: {exc}")
             logger.exception("Abruf für Postfach %s fehlgeschlagen", config.funktion)
+    return {"mails": gesamt, "fehler": fehler}

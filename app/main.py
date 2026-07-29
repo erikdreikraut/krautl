@@ -1,5 +1,4 @@
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
+from datetime import datetime, timezone
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
@@ -9,12 +8,10 @@ from .db import get_session, engine
 from .aufgaben import aufgaben_fuer_mail_anlegen, bestaetigung_erfassen, wartende_aufgaben_ausfuehren
 from .models import (
     Aktionslog, Base, Mail, MailAufgabe, Rechnung, FaqEintrag, FaqVorschlag,
-    Entwurf, Korrektur, Klassifikation,
+    Entwurf, Korrektur, Klassifikation, SystemStatus,
 )
-from .worker import alle_postfaecher_abrufen
 
 app = FastAPI(title="Krautl API")
-scheduler = AsyncIOScheduler()
 
 
 @app.on_event("startup")
@@ -24,25 +21,26 @@ async def on_startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Minütlicher Mail-Abruf über alle konfigurierten Postfächer hinweg.
-    scheduler.add_job(
-        alle_postfaecher_abrufen,
-        trigger=IntervalTrigger(minutes=1),
-        id="mail_poll",
-        max_instances=1,
-        coalesce=True,
-    )
-    scheduler.start()
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    scheduler.shutdown(wait=False)
-
-
 @app.get("/health")
-async def health():
-    return {"status": "ok"}
+async def health(session: AsyncSession = Depends(get_session)):
+    worker = await session.get(SystemStatus, "mail_worker")
+    jetzt = datetime.now(timezone.utc)
+    letzter_lauf = worker.letzter_lauf if worker else None
+    if letzter_lauf and letzter_lauf.tzinfo is None:
+        letzter_lauf = letzter_lauf.replace(tzinfo=timezone.utc)
+    alter = (jetzt - letzter_lauf).total_seconds() if letzter_lauf else None
+    return {
+        "status": "ok",
+        "datenbank": "ok",
+        "mail_worker": {
+            "aktiv": alter is not None and alter < 300,
+            "status": worker.status if worker else "noch_nicht_gestartet",
+            "letzter_lauf": letzter_lauf,
+            "letzter_erfolg": worker.letzter_erfolg if worker else None,
+            "letzter_fehler": worker.letzter_fehler if worker else None,
+            "detail": worker.detail if worker else None,
+        },
+    }
 
 
 @app.get("/mails")

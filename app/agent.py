@@ -10,7 +10,7 @@ import os
 import json
 from anthropic import Anthropic
 
-client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=120.0)
 
 KLASSIFIZIERUNGS_SYSTEMPROMPT = """\
 Du klassifizierst eingehende geschäftliche E-Mails für dreikraut e.K.

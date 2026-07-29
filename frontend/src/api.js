@@ -15,6 +15,7 @@ function postForm(pfad, params) {
 }
 
 export const api = {
+  health: () => anfrage("/health"),
   mails: () => anfrage("/mails"),
   klassifikationen: () => anfrage("/klassifikationen"),
   aktionslog: () => anfrage("/aktionslog"),

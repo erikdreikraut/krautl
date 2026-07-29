@@ -11,10 +11,13 @@
   (kein Versand-Tool — Sicherheitsprinzip aus CLAUDE.md)
 - `app/rechnungen.py` — wertet PDF-, XML- und Bildrechnungen aus, erkennt
   Dubletten und legt Originale nach Jahr sortiert in Dropbox ab
-- `app/worker.py` — läuft minütlich (siehe `app/main.py`, `apscheduler`):
+- `app/worker.py` — führt einen vollständigen Abruf aller Postfächer aus:
   ruft neue Mails aus allen konfigurierten Postfächern ab, klassifiziert sie
   und führt die `MAIL_VERSCHIEBEN`-Aktion der Klassifikation aus, sofern das
   Zielpostfach konfiguriert ist
+- `app/worker_service.py` — eigenständiger dauerhaft laufender Hintergrunddienst:
+  startet sofort mit Docker, ruft `app/worker.py` minütlich auf und speichert
+  sein letztes Lebenszeichen in der Datenbank
 - `app/main.py` — FastAPI mit den Endpunkten, die die Oberfläche braucht
 - `scripts/import_klassifikationen.py` — importiert/aktualisiert die
   `klassifikation`-Tabelle aus `data/mail-klassifikationen.csv` (idempotent)
@@ -54,8 +57,16 @@
    Servers zeigen. Ohne eigenen vorgeschalteten Proxy reicht ein simpler
    Reverse Proxy (Caddy/nginx) mit eigener Domain + TLS vor Port `8081`.
 
-Der minütliche Mail-Abruf läuft danach automatisch im `app`-Container mit —
-kein separater Scheduler-Job nötig.
+Der minütliche Mail-Abruf läuft danach automatisch im separaten
+`worker`-Container. Er ist weder von einem geöffneten Browser noch von
+Webseitenaufrufen abhängig. Alle Container verwenden `restart: unless-stopped`
+und starten daher nach einem Server-/Docker-Neustart oder Prozessabsturz
+automatisch wieder.
+
+Der aktuelle Zustand ist über `/api/health` beziehungsweise intern über
+`http://127.0.0.1:8000/health` sichtbar. `mail_worker.aktiv` ist nur dann
+`true`, wenn innerhalb der letzten fünf Minuten ein Abruf-Lebenszeichen
+gespeichert wurde.
 
 ## Bekannt fehlend / bewusst noch nicht eingebunden
 

@@ -39,7 +39,7 @@ def lade_postfaecher() -> list[PostfachConfig]:
 
 def neue_mails_abrufen(config: PostfachConfig, ordner: str = "INBOX") -> list[dict]:
     """Holt neue (ungelesene) Mails aus einem Postfach als rohe EML + Metadaten."""
-    with IMAPClient(config.host, ssl=True) as client:
+    with IMAPClient(config.host, ssl=True, timeout=60) as client:
         client.login(config.user, config.password)
         client.select_folder(ordner)
         uids = client.search(["UNSEEN"])
@@ -57,7 +57,7 @@ def neue_mails_abrufen(config: PostfachConfig, ordner: str = "INBOX") -> list[di
 
 def mail_rohdaten_laden(config: PostfachConfig, uid: int, ordner: str = "INBOX") -> bytes:
     """Lädt eine bereits bekannte Mail erneut, etwa zur Anhangsverarbeitung."""
-    with IMAPClient(config.host, ssl=True) as client:
+    with IMAPClient(config.host, ssl=True, timeout=60) as client:
         client.login(config.user, config.password)
         client.select_folder(ordner)
         daten = client.fetch([uid], ["RFC822"])
@@ -86,7 +86,7 @@ def mail_verschieben(
         # und Ziel identisch sind — verhindert unnötiges Download/Delete.
         return
 
-    with IMAPClient(quelle.host, ssl=True) as q:
+    with IMAPClient(quelle.host, ssl=True, timeout=60) as q:
         q.login(quelle.user, quelle.password)
         q.select_folder(quell_ordner)
         eml = q.fetch([quell_uid], ["RFC822"])[quell_uid][b"RFC822"]
@@ -97,7 +97,7 @@ def mail_verschieben(
     # ("UID command error: BAD ... Invalid uidset").
     message_id = message_from_bytes(eml, policy=policy.default).get("Message-ID")
 
-    with IMAPClient(ziel.host, ssl=True) as z:
+    with IMAPClient(ziel.host, ssl=True, timeout=60) as z:
         z.login(ziel.user, ziel.password)
         z.select_folder(ziel_ordner)
         treffer = z.search(["HEADER", "Message-ID", message_id]) if message_id else []
@@ -124,7 +124,7 @@ def mail_verschieben(
         else:
             raise RuntimeError("Mail konnte im Zielordner nicht wiedergefunden werden")
 
-    with IMAPClient(quelle.host, ssl=True) as q:
+    with IMAPClient(quelle.host, ssl=True, timeout=60) as q:
         q.login(quelle.user, quelle.password)
         q.select_folder(quell_ordner)
         q.delete_messages([quell_uid])

@@ -589,10 +589,10 @@ function verwendeKrautlDaten() {
     if (laedt.current) return;
     laedt.current = true;
     try {
-      const [mails, katalog, rechnungen, faq, faqVorschlaege, entwuerfe, aktionslog] = await Promise.all([
-        api.mails(), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.entwuerfe(), api.aktionslog(),
+      const [health, mails, katalog, rechnungen, faq, faqVorschlaege, entwuerfe, aktionslog] = await Promise.all([
+        api.health(), api.mails(), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.entwuerfe(), api.aktionslog(),
       ]);
-      setDaten({ mails, katalog, rechnungen, faq, faqVorschlaege, entwuerfe, aktionslog });
+      setDaten({ health, mails, katalog, rechnungen, faq, faqVorschlaege, entwuerfe, aktionslog });
       setFehler(null);
     } catch (e) {
       // Ein vorübergehender Hintergrundfehler soll die bereits sichtbare
@@ -728,6 +728,24 @@ export default function KrautlUI() {
           <EinstellungenMenu active={tab === "klassifikationen" || tab === "aktionslog"} onWaehlen={setTab} />
         </nav>
         <div className="ml-auto flex items-center gap-2">
+          <span
+            className="flex items-center gap-1.5 pr-3 mr-1"
+            title={daten.health.mail_worker.detail || ""}
+            style={{
+              ...fontUI,
+              fontSize: "12px",
+              color: daten.health.mail_worker.aktiv ? tokens.mossDeep : tokens.rust,
+              borderRight: `1px solid ${tokens.line}`,
+            }}
+          >
+            <span
+              className="inline-block w-2 h-2 rounded-full"
+              style={{ background: daten.health.mail_worker.aktiv ? tokens.moss : tokens.rust }}
+            />
+            {daten.health.mail_worker.aktiv
+              ? `Mailabruf aktiv · ${formatZeit(daten.health.mail_worker.letzter_lauf)} Uhr`
+              : "Mailabruf nicht aktiv"}
+          </span>
           <PenLine size={13} style={{ color: tokens.amber }} />
           <span style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{entwuerfeOffen} Entwürfe warten auf Freigabe</span>
         </div>
