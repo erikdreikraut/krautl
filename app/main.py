@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import get_session, engine
 from .aufgaben import aufgaben_fuer_mail_anlegen, bestaetigung_erfassen, wartende_aufgaben_ausfuehren
-from .antworten import antwortentwurf_speichern
+from .antworten import antwort_vor_versand_pruefen, antwortentwurf_speichern
+from .mail_versand import TEST_EMPFAENGER, testantwort_senden
 from .models import (
     Aktionslog, Base, Mail, MailAufgabe, Rechnung, FaqEintrag, FaqVorschlag,
     Entwurf, Korrektur, Klassifikation, KlassifikationAufgabe, SystemStatus,
@@ -291,17 +292,76 @@ async def entwurf_freigeben(
     freigabe: EntwurfFreigabe,
     session: AsyncSession = Depends(get_session),
 ):
-    """
-    Setzt den Entwurf auf 'freigegeben'. Der tatsächliche Versand (SMTP)
-    erfolgt danach als separater, expliziter Schritt — absichtlich nicht
-    in derselben Funktion, damit hier niemals versehentlich automatisch
-    gesendet werden kann.
-    """
-    entwurf = await session.get(Entwurf, entwurf_id)
-    entwurf.text_final = freigabe.finaler_text
-    entwurf.status = "freigegeben"
+    entwurf = (await session.execute(
+        select(Entwurf)
+        .where(Entwurf.id == entwurf_id)
+        .with_for_update()
+    )).scalar_one_or_none()
+    if entwurf is None:
+        raise HTTPException(status_code=404, detail="Entwurf nicht gefunden")
+    if entwurf.status == "versendet":
+        return {
+            "status": "bereits_versendet",
+            "empfaenger": TEST_EMPFAENGER,
+        }
+
+    finaler_text = freigabe.finaler_text.strip()
+    if not finaler_text:
+        raise HTTPException(status_code=422, detail="Die Antwort ist leer")
+    mail = await session.get(Mail, entwurf.mail_id)
+    if mail is None:
+        raise HTTPException(status_code=404, detail="Zugehörige Mail nicht gefunden")
+    faq = (await session.execute(
+        select(FaqEintrag).where(FaqEintrag.aktiv.is_(True))
+    )).scalars().all()
+
+    try:
+        pruefung = await antwort_vor_versand_pruefen(mail, finaler_text, faq)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"KI-Prüfung konnte nicht durchgeführt werden: {exc}",
+        ) from exc
+
+    if not pruefung["freigabefaehig"]:
+        session.add(Aktionslog(
+            mail_id=mail.id,
+            ereignis="antwort_pruefung_noetig",
+            detail="; ".join(pruefung["probleme"]) or "Antwort noch nicht freigabefähig",
+        ))
+        await session.commit()
+        return {
+            "status": "pruefung_noetig",
+            "probleme": pruefung["probleme"],
+        }
+
+    try:
+        await testantwort_senden(mail, finaler_text)
+    except Exception as exc:
+        session.add(Aktionslog(
+            mail_id=mail.id,
+            ereignis="antwort_versand_fehlgeschlagen",
+            detail=f"Testversand an {TEST_EMPFAENGER}: {exc}",
+        ))
+        await session.commit()
+        raise HTTPException(
+            status_code=502,
+            detail=f"Testversand fehlgeschlagen: {exc}",
+        ) from exc
+
+    entwurf.text_final = finaler_text
+    entwurf.status = "versendet"
+    entwurf.versendet_am = datetime.now(timezone.utc)
+    session.add(Aktionslog(
+        mail_id=mail.id,
+        ereignis="antwort_versendet_test",
+        detail=f"Nach KI-Prüfung ausschließlich an {TEST_EMPFAENGER} versendet",
+    ))
     await session.commit()
-    return {"status": "freigegeben", "hinweis": "Versand erfolgt separat per SMTP-Job."}
+    return {
+        "status": "versendet",
+        "empfaenger": TEST_EMPFAENGER,
+    }
 
 
 @app.post("/entwuerfe/{entwurf_id}/verwerfen")

@@ -9,7 +9,10 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 from sqlalchemy import select
 
 from app.db import SessionLocal, engine
-from app.main import mail_antwortentwurf_erzeugen
+from app.antworten import pruefergebnis_absichern
+from app.main import (
+    EntwurfFreigabe, entwurf_freigeben, mail_antwortentwurf_erzeugen,
+)
 from app.aufgaben import wartende_aufgaben_ausfuehren
 from app.models import Aktionslog, Base, Entwurf, Mail, MailAufgabe, Postfach
 
@@ -84,6 +87,77 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("erledigt", aufgabe.status)
             self.assertEqual("wartet", entwurf.status)
             self.assertIn("Entwurf", log.detail)
+
+    async def test_freigabe_prueft_und_sendet_nur_testantwort(self):
+        async with SessionLocal() as session:
+            entwurf = Entwurf(
+                mail_id=self.mail_id,
+                text_ki="Guten Tag,\n\nvielen Dank.",
+                status="wartet",
+            )
+            session.add(entwurf)
+            await session.commit()
+            entwurf_id = entwurf.id
+
+        pruefung = AsyncMock(return_value={"freigabefaehig": True, "probleme": []})
+        versand = AsyncMock()
+        with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
+             patch("app.main.testantwort_senden", versand):
+            async with SessionLocal() as session:
+                ergebnis = await entwurf_freigeben(
+                    entwurf_id,
+                    EntwurfFreigabe(finaler_text="Guten Tag,\n\nvielen Dank."),
+                    session,
+                )
+
+        self.assertEqual("versendet", ergebnis["status"])
+        self.assertEqual("info@erikschweitzer.de", ergebnis["empfaenger"])
+        versand.assert_awaited_once()
+        async with SessionLocal() as session:
+            entwurf = await session.get(Entwurf, entwurf_id)
+            self.assertEqual("versendet", entwurf.status)
+            self.assertIsNotNone(entwurf.versendet_am)
+
+    async def test_offene_punkte_blockieren_den_versand(self):
+        async with SessionLocal() as session:
+            entwurf = Entwurf(
+                mail_id=self.mail_id,
+                text_ki="[Vor Versand prüfen/ergänzen: Bestellnummer]",
+                status="wartet",
+            )
+            session.add(entwurf)
+            await session.commit()
+            entwurf_id = entwurf.id
+
+        pruefung = AsyncMock(return_value={
+            "freigabefaehig": False,
+            "probleme": ["Bestellnummer fehlt"],
+        })
+        versand = AsyncMock()
+        with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
+             patch("app.main.testantwort_senden", versand):
+            async with SessionLocal() as session:
+                ergebnis = await entwurf_freigeben(
+                    entwurf_id,
+                    EntwurfFreigabe(
+                        finaler_text="[Vor Versand prüfen/ergänzen: Bestellnummer]"
+                    ),
+                    session,
+                )
+
+        self.assertEqual("pruefung_noetig", ergebnis["status"])
+        versand.assert_not_awaited()
+        async with SessionLocal() as session:
+            entwurf = await session.get(Entwurf, entwurf_id)
+            self.assertEqual("wartet", entwurf.status)
+
+    def test_eckige_klammern_blockieren_auch_bei_ki_fehlurteil(self):
+        ergebnis = pruefergebnis_absichern(
+            {"freigabefaehig": True, "probleme": []},
+            "Hallo [Vor Versand prüfen/ergänzen: Versand anstoßen]",
+        )
+        self.assertFalse(ergebnis["freigabefaehig"])
+        self.assertTrue(ergebnis["probleme"])
 
 
 if __name__ == "__main__":

@@ -159,7 +159,7 @@ class Entwurf(Base):
     mail_id: Mapped[int] = mapped_column(ForeignKey("mail.id"))
     text_ki: Mapped[str] = mapped_column(Text)
     text_final: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # "wartet" | "freigegeben" | "verworfen"
+    # "wartet" | "versendet" | "verworfen"
     status: Mapped[str] = mapped_column(String(20), default="wartet")
     erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     versendet_am: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

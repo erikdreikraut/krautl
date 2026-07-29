@@ -99,10 +99,13 @@ const EREIGNIS_LABEL = {
   rechnung_fehlgeschlagen: "Rechnung fehlgeschlagen",
   antwortvorschlag_erstellt: "Antwortvorschlag erstellt",
   antwortvorschlag_fehlgeschlagen: "Antwortvorschlag fehlgeschlagen",
+  antwort_pruefung_noetig: "Antwort noch nicht versandbereit",
+  antwort_versendet_test: "Testantwort versendet",
+  antwort_versand_fehlgeschlagen: "Antwortversand fehlgeschlagen",
 };
 function farbeFuerEreignis(ereignis) {
   if (ereignis.endsWith("fehlgeschlagen")) return tokens.rust;
-  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt"].includes(ereignis)) return tokens.moss;
+  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt", "antwort_versendet_test"].includes(ereignis)) return tokens.moss;
   return tokens.inkMuted;
 }
 
@@ -355,10 +358,26 @@ function PosteingangView({ mails, katalog, onReload }) {
 
 function EntwurfPanel({ entwurf, onErledigt }) {
   const [text, setText] = useState(entwurf.text);
+  const [prueft, setPrueft] = useState(false);
+  const [probleme, setProbleme] = useState([]);
+  const [fehler, setFehler] = useState("");
 
   async function freigeben() {
-    await api.entwurfFreigeben(entwurf.id, text);
-    await onErledigt();
+    setPrueft(true);
+    setProbleme([]);
+    setFehler("");
+    try {
+      const ergebnis = await api.entwurfFreigeben(entwurf.id, text);
+      if (ergebnis.status === "pruefung_noetig") {
+        setProbleme(ergebnis.probleme ?? ["Die Antwort benötigt noch eine Prüfung."]);
+      } else {
+        await onErledigt();
+      }
+    } catch (e) {
+      setFehler(e.message);
+    } finally {
+      setPrueft(false);
+    }
   }
   async function verwerfen() {
     await api.entwurfVerwerfen(entwurf.id);
@@ -370,16 +389,29 @@ function EntwurfPanel({ entwurf, onErledigt }) {
       <div style={{ ...fontMono, fontSize: "10.5px", color: tokens.amber, letterSpacing: "0.05em" }}>ANTWORTENTWURF · WARTET AUF FREIGABE</div>
       <textarea value={text} onChange={(e) => setText(e.target.value)} className="mt-2 flex-1 p-3 resize-none"
         style={{ ...fontSerif, fontSize: "14.5px", background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px", minHeight: "100px" }} />
+      {probleme.length > 0 && (
+        <div className="mt-3 px-3 py-2.5" style={{ background: tokens.amberPale, border: `1px solid ${tokens.amber}`, borderRadius: "6px" }}>
+          <div style={{ ...fontUI, fontSize: "12.5px", fontWeight: 600, color: tokens.ink }}>
+            Vor dem Versand bitte noch bearbeiten:
+          </div>
+          <ul className="mt-1 pl-5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, listStyle: "disc" }}>
+            {probleme.map((problem, index) => <li key={index}>{problem}</li>)}
+          </ul>
+        </div>
+      )}
+      {fehler && (
+        <div className="mt-3" style={{ ...fontUI, fontSize: "12px", color: tokens.rust }}>{fehler}</div>
+      )}
       <div className="flex items-center gap-2 mt-3">
-        <button onClick={freigeben} className="flex items-center gap-1.5 px-3 py-2" style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}>
-          <Check size={13} /> Entwurf freigeben
+        <button onClick={freigeben} disabled={prueft} className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-60" style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}>
+          <Check size={13} /> {prueft ? "Antwort wird geprüft …" : "Antwort freigeben"}
         </button>
         <button onClick={verwerfen} className="flex items-center gap-1.5 px-3 py-2" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
           <X size={13} /> Verwerfen
         </button>
       </div>
       <div style={{ ...fontUI, fontSize: "11.5px", color: tokens.inkMuted, marginTop: "8px" }}>
-        Die Freigabe versendet noch keine Mail; ein Versandmodul ist noch nicht angeschlossen.
+        Vor dem Versand prüft die KI die Antwort auf offene Punkte. Während der Testphase wird ausschließlich an info@erikschweitzer.de gesendet.
       </div>
     </div>
   );

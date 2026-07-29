@@ -79,7 +79,12 @@ gespeichert wurde.
   Bearbeitung markiert.
 - FAQ-Vorschläge (`FaqVorschlag`) werden ebenfalls noch nicht automatisch
   erkannt.
-- SMTP-Versandmodul (separat vom Freigabe-Endpunkt, siehe Sicherheitsprinzip)
+- Der SMTP-Versand befindet sich im sicheren Testbetrieb: Vor jedem Versand
+  prüft Claude den finalen Text auf Vollständigkeit und offene Prüfhinweise.
+  Unabhängig von der Kundenadresse wird ausschließlich an
+  `info@erikschweitzer.de` gesendet. Für den Testversand müssen
+  `SMTP_SERVICE_HOST`, `SMTP_SERVICE_PORT`, `SMTP_SERVICE_USER` und
+  `SMTP_SERVICE_PASSWORD` gesetzt sein.
 - Bestehende Klassifikationen lassen sich unter **Einstellungen →
   Mail-Klassifikationen** bearbeiten: Zielordner sowie eine geordnete Liste
   von Aufgaben. **Bestätigung einholen** ist dabei eine frei wählbare Aufgabe,
@@ -97,6 +102,10 @@ Die Wissensbasis wird erst weitergebaut, wenn Mail-Abruf, Aufgaben,
 Verschieben und Rechnungsverarbeitung zuverlässig laufen. Das fachliche
 Regelwerk für spätere FAQ-Entwürfe liegt bereits unter
 `data/faq-stilprofil.md`.
+
+Wiederkehrende betriebliche Fälle, die kein Schreibstil und keine klassische
+Produkt-FAQ sind, stehen getrennt unter `data/fallwissen.md`. Dieses Fallwissen
+wird bei Antwortvorschlägen und bei der Prüfung vor dem Versand berücksichtigt.
 
 Geplante Struktur:
 
