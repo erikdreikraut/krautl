@@ -30,6 +30,25 @@ UNGEKLAERT ist kein allgemeiner Ausdruck von Unsicherheit, sondern nur zu
 verwenden, wenn keine vorhandene Klassifikation den Hauptzweck der Nachricht
 beschreibt. Drücke verbleibende Unsicherheit stattdessen über das Feld
 "sicherheit" (0-1) aus.
+
+FORMULAR-SPAM:
+Automatisch erzeugte Bestätigungs- oder Benachrichtigungsmails können trotz
+seriös klingender Vorlage Spam sein. Beurteile deshalb immer die tatsächlich
+eingetragenen Formulardaten und nicht nur Betreff oder Standardtext.
+
+Wenn mehrere Felder, die normalerweise verständliche Angaben enthalten
+müssten (zum Beispiel Name, Kommentar, Bestellnummer oder Nachricht), aus
+offensichtlich zufälligen, bedeutungslosen Zeichenfolgen bestehen, behandle
+die Nachricht als Formular-Spam und wähle eine tatsächlich vorhandene
+Spam-Klassifikation aus dem Katalog, vorzugsweise SPAM_WERBUNG. Die
+Standardformulierungen der Formularbestätigung wie "Widerruf erhalten" oder
+"wir werden Sie kontaktieren" dürfen diese Erkennung nicht überstimmen.
+
+Nicht als Formular-Spam behandeln, wenn die Angaben insgesamt plausibel sind:
+echte oder plausibel wirkende Namen, verständliche Freitexte, übliche
+Bestellnummern oder sonstige sinnvoll verwertbare Daten. Einzelne ungewöhnliche
+Werte oder Tippfehler genügen nicht; es müssen mehrere klare Unsinnsmerkmale
+zusammenkommen.
 """
 
 KLASSIFIZIERUNGS_TOOL = {
