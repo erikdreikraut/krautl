@@ -113,7 +113,10 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             entwurf_id = entwurf.id
 
         pruefung = AsyncMock(return_value={"freigabefaehig": True, "probleme": []})
-        versand = AsyncMock()
+        versand = AsyncMock(return_value={
+            "message_id": "<test-1@dreikraut.de>",
+            "empfaenger": "info@erikschweitzer.de",
+        })
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
              patch("app.main.testantwort_senden", versand):
             async with SessionLocal() as session:
@@ -148,7 +151,10 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             "freigabefaehig": False,
             "probleme": ["Bestellnummer fehlt"],
         })
-        versand = AsyncMock()
+        versand = AsyncMock(return_value={
+            "message_id": "<test-2@dreikraut.de>",
+            "empfaenger": "info@erikschweitzer.de",
+        })
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
              patch("app.main.testantwort_senden", versand):
             async with SessionLocal() as session:
@@ -182,7 +188,10 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             "freigabefaehig": False,
             "probleme": ["Kontroll-KI erhebt einen Einwand"],
         })
-        versand = AsyncMock()
+        versand = AsyncMock(return_value={
+            "message_id": "<test-3@dreikraut.de>",
+            "empfaenger": "info@erikschweitzer.de",
+        })
         ergebnisse = []
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
              patch("app.main.testantwort_senden", versand):

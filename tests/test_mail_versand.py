@@ -54,7 +54,7 @@ class MailVersandTest(unittest.TestCase):
         }
         with patch.dict(os.environ, umgebung, clear=False), \
              patch("app.mail_versand.smtplib.SMTP", _SmtpAttrappe):
-            _synchron_senden(mail, "Testantwort", self.erik)
+            ergebnis = _synchron_senden(mail, "Testantwort", self.erik)
 
         self.assertEqual(
             "info@erikschweitzer.de",
@@ -65,6 +65,8 @@ class MailVersandTest(unittest.TestCase):
             _SmtpAttrappe.nachricht["To"],
         )
         self.assertIn("\nErik Schweitzer\n-- \ndreikraut e.K.\n", _SmtpAttrappe.nachricht.get_content())
+        self.assertEqual("info@erikschweitzer.de", ergebnis["empfaenger"])
+        self.assertTrue(ergebnis["message_id"].startswith("<"))
 
     def test_signatur_fuer_auszubildende(self):
         text = antwort_mit_signatur("Mit bestem Gruß", self.gursewak)

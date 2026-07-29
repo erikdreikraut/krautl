@@ -4,6 +4,7 @@ import os
 import smtplib
 import ssl
 from email.message import EmailMessage
+from email.utils import make_msgid
 
 from .models import Mail
 
@@ -63,12 +64,14 @@ def antwort_mit_signatur(antworttext: str, benutzer: dict) -> str:
     return f"{text}\n\n{signatur}\n"
 
 
-def _synchron_senden(mail: Mail, antworttext: str, benutzer: dict) -> None:
+def _synchron_senden(mail: Mail, antworttext: str, benutzer: dict) -> dict:
     smtp = _smtp_einstellungen()
     nachricht = EmailMessage()
     nachricht["From"] = smtp["user"]
     nachricht["To"] = TEST_EMPFAENGER
     nachricht["Subject"] = f"TEST – Re: {mail.betreff}"
+    absender_domain = smtp["user"].partition("@")[2] or None
+    nachricht["Message-ID"] = make_msgid(domain=absender_domain)
     nachricht["X-Krautl-Original-Recipient"] = mail.absender_adresse
     if mail.message_id:
         nachricht["In-Reply-To"] = mail.message_id
@@ -81,15 +84,21 @@ def _synchron_senden(mail: Mail, antworttext: str, benutzer: dict) -> None:
             smtp["host"], smtp["port"], context=kontext, timeout=30
         ) as client:
             client.login(smtp["user"], smtp["password"])
-            client.send_message(nachricht)
+            abgelehnt = client.send_message(nachricht)
     else:
         with smtplib.SMTP(smtp["host"], smtp["port"], timeout=30) as client:
             client.ehlo()
             client.starttls(context=kontext)
             client.ehlo()
             client.login(smtp["user"], smtp["password"])
-            client.send_message(nachricht)
+            abgelehnt = client.send_message(nachricht)
+    if abgelehnt:
+        raise RuntimeError(f"SMTP hat Empfänger abgelehnt: {abgelehnt}")
+    return {
+        "message_id": nachricht["Message-ID"],
+        "empfaenger": TEST_EMPFAENGER,
+    }
 
 
-async def testantwort_senden(mail: Mail, antworttext: str, benutzer: dict) -> None:
-    await asyncio.to_thread(_synchron_senden, mail, antworttext, benutzer)
+async def testantwort_senden(mail: Mail, antworttext: str, benutzer: dict) -> dict:
+    return await asyncio.to_thread(_synchron_senden, mail, antworttext, benutzer)

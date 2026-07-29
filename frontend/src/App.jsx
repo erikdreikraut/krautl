@@ -102,7 +102,7 @@ const EREIGNIS_LABEL = {
   antwortvorschlag_fehlgeschlagen: "Antwortvorschlag fehlgeschlagen",
   antwort_pruefung_noetig: "Antwort noch nicht versandbereit",
   antwort_pruefung_uebersprungen: "KI-Prüfung übersprungen",
-  antwort_versendet_test: "Testantwort versendet",
+  antwort_versendet_test: "Testantwort an Mailserver übergeben",
   antwort_versand_fehlgeschlagen: "Antwortversand fehlgeschlagen",
 };
 function farbeFuerEreignis(ereignis) {
@@ -263,6 +263,7 @@ function AntwortvorschlagButton({ mail, onErzeugt }) {
 function PosteingangView({ mails, katalog, onReload }) {
   const [filter, setFilter] = useState(null);
   const [selectedId, setSelectedId] = useState(mails[0]?.id ?? null);
+  const [versandbestaetigungen, setVersandbestaetigungen] = useState({});
 
   const kategorien = [...new Set(mails.map((m) => m.kat))];
   const sichtbar = filter ? mails.filter((m) => m.kat === filter) : mails;
@@ -345,7 +346,27 @@ function PosteingangView({ mails, katalog, onReload }) {
               </div>
             )}
             {selected.entwurf ? (
-              <EntwurfPanel key={selected.entwurf.id} entwurf={selected.entwurf} onErledigt={onReload} />
+              <EntwurfPanel
+                key={selected.entwurf.id}
+                entwurf={selected.entwurf}
+                onErledigt={onReload}
+                onVersendet={(ergebnis) => setVersandbestaetigungen((alt) => ({
+                  ...alt,
+                  [selected.id]: ergebnis,
+                }))}
+              />
+            ) : versandbestaetigungen[selected.id] ? (
+              <div className="px-6 py-6 flex-1">
+                <div className="px-3 py-2.5" style={{ background: tokens.mossPale, border: `1px solid ${tokens.moss}`, borderRadius: "6px" }}>
+                  <div style={{ ...fontUI, fontSize: "12.5px", fontWeight: 600, color: tokens.mossDeep }}>
+                    Testantwort an den Mailserver übergeben
+                  </div>
+                  <div style={{ ...fontUI, fontSize: "12px", color: tokens.inkMuted, marginTop: "3px" }}>
+                    Empfänger: {versandbestaetigungen[selected.id].empfaenger}<br />
+                    SMTP-Nachrichten-ID: {versandbestaetigungen[selected.id].messageId}
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="px-6 py-8 flex-1 flex items-center justify-center" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
                 Noch kein Antwortvorschlag vorhanden.
@@ -358,24 +379,33 @@ function PosteingangView({ mails, katalog, onReload }) {
   );
 }
 
-function EntwurfPanel({ entwurf, onErledigt }) {
+function EntwurfPanel({ entwurf, onErledigt, onVersendet }) {
   const [text, setText] = useState(entwurf.text);
   const [prueft, setPrueft] = useState(false);
   const [probleme, setProbleme] = useState([]);
   const [fehler, setFehler] = useState("");
   const [naechsterOhnePruefung, setNaechsterOhnePruefung] = useState(false);
+  const [versanderfolg, setVersanderfolg] = useState(null);
 
   async function freigeben() {
     setPrueft(true);
     setProbleme([]);
     setFehler("");
+    setVersanderfolg(null);
     try {
       const ergebnis = await api.entwurfFreigeben(entwurf.id, text);
       if (ergebnis.status === "pruefung_noetig") {
         setProbleme(ergebnis.probleme ?? ["Die Antwort benötigt noch eine Prüfung."]);
         setNaechsterOhnePruefung(Boolean(ergebnis.naechster_versuch_ohne_pruefung));
       } else {
-        await onErledigt();
+        setVersanderfolg({
+          empfaenger: ergebnis.empfaenger,
+          messageId: ergebnis.message_id,
+        });
+        onVersendet({
+          empfaenger: ergebnis.empfaenger,
+          messageId: ergebnis.message_id,
+        });
       }
     } catch (e) {
       setFehler(e.message);
@@ -416,11 +446,24 @@ function EntwurfPanel({ entwurf, onErledigt }) {
       {fehler && (
         <div className="mt-3" style={{ ...fontUI, fontSize: "12px", color: tokens.rust }}>{fehler}</div>
       )}
+      {versanderfolg && (
+        <div className="mt-3 px-3 py-2.5" style={{ background: tokens.mossPale, border: `1px solid ${tokens.moss}`, borderRadius: "6px" }}>
+          <div style={{ ...fontUI, fontSize: "12.5px", fontWeight: 600, color: tokens.mossDeep }}>
+            Testantwort an den Mailserver übergeben
+          </div>
+          <div style={{ ...fontUI, fontSize: "12px", color: tokens.inkMuted, marginTop: "3px" }}>
+            Empfänger: {versanderfolg.empfaenger}<br />
+            SMTP-Nachrichten-ID: {versanderfolg.messageId}
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-2 mt-3">
-        <button onClick={freigeben} disabled={prueft} className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-60" style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}>
+        <button onClick={freigeben} disabled={prueft || Boolean(versanderfolg)} className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-60" style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}>
           <Check size={13} /> {prueft
             ? (naechsterOhnePruefung ? "Testantwort wird versendet …" : "Antwort wird geprüft …")
-            : (naechsterOhnePruefung ? "Trotzdem testweise senden" : "Antwort freigeben")}
+            : (versanderfolg
+              ? "An Mailserver übergeben"
+              : (naechsterOhnePruefung ? "Trotzdem testweise senden" : "Antwort freigeben"))}
         </button>
         <button onClick={verwerfen} className="flex items-center gap-1.5 px-3 py-2" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
           <X size={13} /> Verwerfen

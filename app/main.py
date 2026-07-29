@@ -424,7 +424,9 @@ async def entwurf_freigeben(
         ))
 
     try:
-        await testantwort_senden(mail, finaler_text, request.state.benutzer)
+        versandergebnis = await testantwort_senden(
+            mail, finaler_text, request.state.benutzer
+        )
     except Exception as exc:
         session.add(Aktionslog(
             mail_id=mail.id,
@@ -451,13 +453,15 @@ async def entwurf_freigeben(
         detail=(
             f"Durch {request.state.benutzer['name']} "
             f"{'ohne weitere KI-Prüfung ' if pruefung_uebersprungen else 'nach KI-Prüfung '}"
-            f"ausschließlich an {TEST_EMPFAENGER} versendet"
+            f"ausschließlich an den Mailserver für {TEST_EMPFAENGER} übergeben; "
+            f"Message-ID {versandergebnis['message_id']}"
         ),
     ))
     await session.commit()
     return {
         "status": "versendet",
         "empfaenger": TEST_EMPFAENGER,
+        "message_id": versandergebnis["message_id"],
         "pruefung_uebersprungen": pruefung_uebersprungen,
     }
 
