@@ -120,7 +120,7 @@ gespeichert wurde.
   eingestellt, damit der Worker seine eigene Transkriptionsmail nicht erneut
   verarbeitet. `OPENAI_API_KEY` ist erforderlich; das Modell kann optional
   mit `OPENAI_TRANSCRIPTION_MODEL` geändert werden. Die reine Gliederung und
-  Formatierung übernimmt standardmäßig das kleine, schnelle Claude Haiku 3.5;
+  Formatierung übernimmt standardmäßig das kleine, schnelle Claude Haiku 4.5;
   `AUDIO_FORMATTING_MODEL` kann dieses zweite Modell bei Bedarf überschreiben.
 - Bestätigungen gelten aktuell für alle Nutzer mit Zugriff auf Krautl. Das
   Datenmodell enthält bereits Zieltyp/-referenz für spätere Rollen oder

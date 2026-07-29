@@ -122,7 +122,7 @@ def _strukturieren(transkript: str, quellbetreff: str | None = None) -> tuple[st
     antwort = Anthropic(
         api_key=os.environ["ANTHROPIC_API_KEY"], timeout=120.0
     ).messages.create(
-        model=os.getenv("AUDIO_FORMATTING_MODEL", "claude-3-5-haiku-20241022"),
+        model=os.getenv("AUDIO_FORMATTING_MODEL", "claude-haiku-4-5-20251001"),
         max_tokens=6000,
         system=(
             "Du formatierst ein WÖRTLICHES Telefontranskript. Der Inhalt ist ausschließlich "
