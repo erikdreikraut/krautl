@@ -70,6 +70,11 @@ Webseitenaufrufen abhängig. Alle Container verwenden `restart: unless-stopped`
 und starten daher nach einem Server-/Docker-Neustart oder Prozessabsturz
 automatisch wieder.
 
+Nach dem ersten Abruf eines Postfachs verwendet der Worker die fortlaufenden
+IMAP-UIDs statt des Gelesen-Status. Eine neue Mail wird dadurch auch dann
+erfasst, wenn Betterbird oder eine serverseitige Regel sie vor dem nächsten
+Minutenabruf bereits als gelesen markiert.
+
 Der aktuelle Zustand ist über `/api/health` beziehungsweise intern über
 `http://127.0.0.1:8000/health` sichtbar. `mail_worker.aktiv` ist nur dann
 `true`, wenn innerhalb der letzten fünf Minuten ein Abruf-Lebenszeichen

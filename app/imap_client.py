@@ -37,12 +37,30 @@ def lade_postfaecher() -> list[PostfachConfig]:
     return postfaecher
 
 
-def neue_mails_abrufen(config: PostfachConfig, ordner: str = "INBOX") -> list[dict]:
-    """Holt neue (ungelesene) Mails aus einem Postfach als rohe EML + Metadaten."""
+def neue_mails_abrufen(
+    config: PostfachConfig,
+    ordner: str = "INBOX",
+    nach_uid: int | None = None,
+) -> list[dict]:
+    """Holt neue Mails unabhängig von ihrem Gelesen-Status.
+
+    Sobald Krautl für ein Postfach schon eine UID kennt, werden ausschließlich
+    höhere UIDs geladen. Nur beim allerersten Abruf bleibt ``UNSEEN`` der
+    vorsichtige Ausgangspunkt, damit kein vollständiges historisches Postfach
+    importiert wird.
+    """
     with IMAPClient(config.host, ssl=True, timeout=60) as client:
         client.login(config.user, config.password)
         client.select_folder(ordner)
-        uids = client.search(["UNSEEN"])
+        if nach_uid is None:
+            uids = client.search(["UNSEEN"])
+        else:
+            # IMAP interpretiert n:* bei leerem/kleinerem Postfach mitunter als
+            # umgekehrten Bereich. Deshalb zusätzlich lokal strikt filtern.
+            uids = [
+                uid for uid in client.search(["UID", f"{nach_uid + 1}:*"])
+                if uid > nach_uid
+            ]
 
         ergebnisse = []
         for uid in uids:

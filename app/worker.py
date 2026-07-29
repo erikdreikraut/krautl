@@ -8,7 +8,7 @@ separaten Worker-Container in docker-compose.yml.
 import asyncio
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from .agent import klassifiziere
 from .aufgaben import aufgaben_fuer_mail_anlegen, wartende_aufgaben_ausfuehren
@@ -76,7 +76,23 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
     # IMAP und Claude verwenden synchrone Bibliotheken. Sie dürfen deshalb
     # nicht direkt im FastAPI-Ereignisloop laufen, sonst friert während eines
     # größeren Mail-Rückstaus auch die Weboberfläche ein.
-    rohmails = await asyncio.to_thread(neue_mails_abrufen, config)
+    # Nicht der Gelesen-Status entscheidet, sondern die fortlaufende IMAP-UID.
+    # So gehen Mails nicht verloren, wenn ein Mailprogramm oder eine
+    # serverseitige Regel sie vor Krautls nächstem Minutenabruf als gelesen
+    # markiert.
+    async with SessionLocal() as session:
+        vorhandenes_postfach = (await session.execute(
+            select(Postfach).where(Postfach.adresse == config.user)
+        )).scalar_one_or_none()
+        letzte_uid = None
+        if vorhandenes_postfach is not None:
+            letzte_uid = (await session.execute(
+                select(func.max(Mail.imap_uid)).where(
+                    Mail.postfach_id == vorhandenes_postfach.id
+                )
+            )).scalar_one_or_none()
+
+    rohmails = await asyncio.to_thread(neue_mails_abrufen, config, "INBOX", letzte_uid)
     if not rohmails:
         return 0
 

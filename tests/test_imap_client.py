@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from app.imap_client import PostfachConfig, mail_verschieben
+from app.imap_client import PostfachConfig, mail_verschieben, neue_mails_abrufen
 
 
 class _ClientKontext:
@@ -55,6 +55,25 @@ class ImapVerschiebenTest(unittest.TestCase):
         ziel.append.assert_not_called()
         ziel.remove_flags.assert_called_once_with([42], [b"\\Draft"])
         quell_loeschen.delete_messages.assert_called_once_with([7])
+
+    def test_neue_uid_wird_auch_gelesen_abgerufen(self):
+        client = MagicMock()
+        client.search.return_value = [41, 42, 43]
+        client.fetch.side_effect = lambda uids, _felder: {
+            uids[0]: {b"RFC822": self.eml, b"FLAGS": (b"\\Seen",)}
+        }
+        with patch("app.imap_client.IMAPClient", new=_ClientKontext([client])):
+            mails = neue_mails_abrufen(self.quelle, nach_uid=42)
+
+        client.search.assert_called_once_with(["UID", "43:*"])
+        self.assertEqual([43], [mail["uid"] for mail in mails])
+
+    def test_erster_abruf_bleibt_bei_ungelesenen_mails(self):
+        client = MagicMock()
+        client.search.return_value = []
+        with patch("app.imap_client.IMAPClient", new=_ClientKontext([client])):
+            self.assertEqual([], neue_mails_abrufen(self.quelle))
+        client.search.assert_called_once_with(["UNSEEN"])
 
 
 if __name__ == "__main__":
