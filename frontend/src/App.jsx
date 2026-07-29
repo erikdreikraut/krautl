@@ -85,6 +85,7 @@ const AKTIVE_AKTIONEN = new Set([
   "MAIL_VERSCHIEBEN",
   "RECHNUNG_VERWALTEN",
   "ANTWORTVORSCHLAG_ERSTELLEN",
+  "AUDIO_TRANSKRIBIEREN",
 ]);
 const EDITIERBARE_AKTIONEN = Object.keys(AKTION_LABEL).filter((aktion) =>
   AKTIVE_AKTIONEN.has(aktion)
@@ -104,10 +105,12 @@ const EREIGNIS_LABEL = {
   antwort_pruefung_uebersprungen: "KI-Prüfung übersprungen",
   antwort_versendet_test: "Testantwort an Mailserver übergeben",
   antwort_versand_fehlgeschlagen: "Antwortversand fehlgeschlagen",
+  audio_transkribiert: "Audio transkribiert",
+  audio_transkription_fehlgeschlagen: "Audiotranskription fehlgeschlagen",
 };
 function farbeFuerEreignis(ereignis) {
   if (ereignis.endsWith("fehlgeschlagen")) return tokens.rust;
-  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt", "antwort_versendet_test"].includes(ereignis)) return tokens.moss;
+  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt", "antwort_versendet_test", "audio_transkribiert"].includes(ereignis)) return tokens.moss;
   return tokens.inkMuted;
 }
 

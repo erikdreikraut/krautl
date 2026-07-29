@@ -66,6 +66,28 @@ def mail_rohdaten_laden(config: PostfachConfig, uid: int, ordner: str = "INBOX")
         return daten[uid][b"RFC822"]
 
 
+def mail_einstellen(
+    ziel: PostfachConfig,
+    eml: bytes,
+    ordner: str = "INBOX",
+    message_id: str | None = None,
+) -> bool:
+    """Stellt eine interne Mail idempotent und als gelesen in einen Ordner ein.
+
+    Rückgabe ``True`` bedeutet neu eingestellt, ``False`` bereits vorhanden.
+    Das Seen-Flag verhindert, dass der Krautl-Worker seine eigene Mail erneut
+    als eingehende Nachricht verarbeitet.
+    """
+    with IMAPClient(ziel.host, ssl=True, timeout=60) as client:
+        client.login(ziel.user, ziel.password)
+        client.select_folder(ordner)
+        treffer = client.search(["HEADER", "Message-ID", message_id]) if message_id else []
+        if treffer:
+            return False
+        client.append(ordner, eml, flags=[b"\\Seen"])
+        return True
+
+
 def mail_verschieben(
     quelle: PostfachConfig,
     quell_uid: int,

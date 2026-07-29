@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from .db import SessionLocal
 from .antworten import antwortentwurf_speichern
+from .audio_transkription import audio_verarbeiten
 from .imap_client import lade_postfaecher, mail_verschieben
 from .models import Aktionslog, KlassifikationAufgabe, Mail, MailAufgabe, Postfach
 from .rechnungen import rechnung_verarbeiten
@@ -18,6 +19,7 @@ BESTAETIGUNG_EINHOLEN = "BESTAETIGUNG_EINHOLEN"
 MAIL_VERSCHIEBEN = "MAIL_VERSCHIEBEN"
 RECHNUNG_VERWALTEN = "RECHNUNG_VERWALTEN"
 ANTWORTVORSCHLAG_ERSTELLEN = "ANTWORTVORSCHLAG_ERSTELLEN"
+AUDIO_TRANSKRIBIEREN = "AUDIO_TRANSKRIBIEREN"
 
 
 async def aufgaben_fuer_mail_anlegen(session, mail: Mail) -> None:
@@ -160,6 +162,36 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
                 detail=(
                     f"Entwurf #{entwurf.id} erstellt"
                     if erzeugt else f"Vorhandenen Entwurf #{entwurf.id} verwendet"
+                ),
+            ))
+            await _naechste_freischalten(session, mail.id, wartend.position)
+            await session.commit()
+            return await wartende_aufgaben_ausfuehren(mail_id)
+
+        if wartend.aufgabe_typ == AUDIO_TRANSKRIBIEREN:
+            try:
+                ergebnis = await audio_verarbeiten(session, mail)
+            except Exception as exc:
+                logger.exception("Audiotranskription fehlgeschlagen für %s", mail.message_id)
+                wartend.status = "fehlgeschlagen"
+                wartend.fehler = str(exc)
+                session.add(Aktionslog(
+                    mail_id=mail.id,
+                    ereignis="audio_transkription_fehlgeschlagen",
+                    detail=str(exc),
+                ))
+                await session.commit()
+                return {"status": "fehlgeschlagen", "detail": str(exc)}
+            wartend.status = "erledigt"
+            wartend.erledigt_am = datetime.now(timezone.utc)
+            wartend.fehler = None
+            session.add(Aktionslog(
+                mail_id=mail.id,
+                ereignis="audio_transkribiert",
+                detail=(
+                    f"{ergebnis['audio_dateien']} Audiodatei(en) transkribiert; "
+                    f"Mail {'erstellt' if ergebnis['neu_eingestellt'] else 'bereits vorhanden'} "
+                    f"in {ergebnis['ziel']}"
                 ),
             ))
             await _naechste_freischalten(session, mail.id, wartend.position)

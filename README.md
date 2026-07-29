@@ -11,6 +11,9 @@
   (kein Versand-Tool — Sicherheitsprinzip aus CLAUDE.md)
 - `app/rechnungen.py` — wertet PDF-, XML- und Bildrechnungen aus, erkennt
   Dubletten und legt Originale nach Jahr sortiert in Dropbox ab
+- `app/audio_transkription.py` — transkribiert Audioanhänge, strukturiert
+  den vollständigen Text und stellt ihn samt Originalaudio als interne Mail in
+  `service@dreikraut.de/INBOX` bereit
 - `app/worker.py` — führt einen vollständigen Abruf aller Postfächer aus:
   ruft neue Mails aus allen konfigurierten Postfächern ab, klassifiziert sie
   und führt die `MAIL_VERSCHIEBEN`-Aktion der Klassifikation aus, sofern das
@@ -32,7 +35,8 @@
 
 1. Dieses Verzeichnis auf den Server bringen (`git clone`).
 2. `cp .env.example .env` und dort die echten Werte eintragen:
-   IMAP-Zugangsdaten je Postfach, `ANTHROPIC_API_KEY`, `DROPBOX_ACCESS_TOKEN`,
+   IMAP-Zugangsdaten je Postfach, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+   `DROPBOX_ACCESS_TOKEN`,
    `POSTGRES_PASSWORD` — **niemals in den Chat einfügen, niemals committen.**
 3. `docker compose up -d --build` — startet Datenbank, API und Frontend/Caddy.
 4. Einmalig die Klassifikationstabelle importieren (im laufenden `app`-Container):
@@ -105,6 +109,12 @@ gespeichert wurde.
   von Aufgaben. **Bestätigung einholen** ist dabei eine frei wählbare Aufgabe,
   keine fest eingebaute Pflicht. Neue Klassifikationen anlegen oder vorhandene
   löschen ist noch nicht über die Oberfläche möglich.
+- **Audio transkribieren** ist als auswählbare Aufgabe implementiert. Sie muss
+  vor **Mail verschieben** stehen, solange das Audio aus dem ursprünglichen
+  IMAP-Posteingang geladen wird. Das Ergebnis wird als bereits gelesene Mail
+  eingestellt, damit der Worker seine eigene Transkriptionsmail nicht erneut
+  verarbeitet. `OPENAI_API_KEY` ist erforderlich; das Modell kann optional
+  mit `OPENAI_TRANSCRIPTION_MODEL` geändert werden.
 - Bestätigungen gelten aktuell für alle Nutzer mit Zugriff auf Krautl. Das
   Datenmodell enthält bereits Zieltyp/-referenz für spätere Rollen oder
   einzelne Nutzer; Nutzerverwaltung und Rollenprüfung fehlen noch.
