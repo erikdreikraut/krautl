@@ -3,7 +3,14 @@ const BASIS = "/api";
 async function anfrage(pfad, optionen) {
   const antwort = await fetch(`${BASIS}${pfad}`, optionen);
   if (!antwort.ok) {
-    throw new Error(`${optionen?.method || "GET"} ${pfad} fehlgeschlagen: ${antwort.status}`);
+    let detail = "";
+    try {
+      const fehler = await antwort.json();
+      detail = fehler.detail ? ` – ${fehler.detail}` : "";
+    } catch {
+      // Manche Proxy-Fehler liefern kein JSON.
+    }
+    throw new Error(`${optionen?.method || "GET"} ${pfad} fehlgeschlagen: ${antwort.status}${detail}`);
   }
   if (antwort.status === 204) return null;
   return antwort.json();
@@ -45,7 +52,13 @@ export const api = {
     anfrage(`/faq/vorschlaege/${id}/verwerfen`, { method: "POST" }),
 
   entwuerfe: () => anfrage("/entwuerfe"),
+  antwortentwurfErzeugen: (mailId) =>
+    anfrage(`/mails/${mailId}/antwortentwurf`, { method: "POST" }),
   entwurfFreigeben: (id, finalerText) =>
-    postForm(`/entwuerfe/${id}/freigeben`, { finaler_text: finalerText }),
+    anfrage(`/entwuerfe/${id}/freigeben`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ finaler_text: finalerText }),
+    }),
   entwurfVerwerfen: (id) => anfrage(`/entwuerfe/${id}/verwerfen`, { method: "POST" }),
 };

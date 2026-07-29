@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
-  Search, ChevronRight, ChevronDown, CheckCircle2, PenLine, Send, Paperclip, X,
+  Search, ChevronRight, ChevronDown, CheckCircle2, PenLine, Paperclip, X,
   Inbox as InboxIcon, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
 } from "lucide-react";
 import { api } from "./api.js";
@@ -72,14 +72,22 @@ const AKTION_LABEL = {
   BESTAETIGUNG_EINHOLEN: "Bestätigung einholen",
   MAIL_VERSCHIEBEN: "Mail verschieben",
   RECHNUNG_VERWALTEN: "Rechnung verwalten",
+  ANTWORTVORSCHLAG_ERSTELLEN: "Antwortvorschlag erstellen",
   LIEFERANTENMAIL_BEARBEITEN: "Lieferantenmail bearbeiten",
   MARKETINGMAIL_BEARBEITEN: "Marketingmail bearbeiten",
   AUDIO_TRANSKRIBIEREN: "Audio transkribieren",
   SYSTEMMELDUNG_BEARBEITEN: "Systemmeldung bearbeiten",
   RECHTSSACHE_BEARBEITEN: "Rechtssache bearbeiten",
 };
-const AKTIVE_AKTIONEN = new Set(["BESTAETIGUNG_EINHOLEN", "MAIL_VERSCHIEBEN", "RECHNUNG_VERWALTEN"]);
-const EDITIERBARE_AKTIONEN = Object.keys(AKTION_LABEL);
+const AKTIVE_AKTIONEN = new Set([
+  "BESTAETIGUNG_EINHOLEN",
+  "MAIL_VERSCHIEBEN",
+  "RECHNUNG_VERWALTEN",
+  "ANTWORTVORSCHLAG_ERSTELLEN",
+]);
+const EDITIERBARE_AKTIONEN = Object.keys(AKTION_LABEL).filter((aktion) =>
+  AKTIVE_AKTIONEN.has(aktion)
+);
 
 const EREIGNIS_LABEL = {
   klassifiziert: "Klassifiziert",
@@ -89,10 +97,12 @@ const EREIGNIS_LABEL = {
   verschieben_fehlgeschlagen: "Verschieben fehlgeschlagen",
   rechnung_verarbeitet: "Rechnung verarbeitet",
   rechnung_fehlgeschlagen: "Rechnung fehlgeschlagen",
+  antwortvorschlag_erstellt: "Antwortvorschlag erstellt",
+  antwortvorschlag_fehlgeschlagen: "Antwortvorschlag fehlgeschlagen",
 };
 function farbeFuerEreignis(ereignis) {
   if (ereignis.endsWith("fehlgeschlagen")) return tokens.rust;
-  if (["verschoben", "bestaetigt", "rechnung_verarbeitet"].includes(ereignis)) return tokens.moss;
+  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt"].includes(ereignis)) return tokens.moss;
   return tokens.inkMuted;
 }
 
@@ -212,6 +222,39 @@ function BestaetigenButton({ mail, onBestaetigt }) {
   );
 }
 
+function AntwortvorschlagButton({ mail, onErzeugt }) {
+  const [laeuft, setLaeuft] = useState(false);
+  const [fehler, setFehler] = useState("");
+
+  async function erzeugen() {
+    setLaeuft(true);
+    setFehler("");
+    try {
+      await api.antwortentwurfErzeugen(mail.id);
+      await onErzeugt();
+    } catch (e) {
+      setFehler(e.message);
+    } finally {
+      setLaeuft(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {fehler && <span title={fehler} style={{ ...fontUI, fontSize: "11px", color: tokens.rust }}>Vorschlag fehlgeschlagen</span>}
+      <button
+        onClick={erzeugen}
+        disabled={laeuft || Boolean(mail.entwurf)}
+        title={mail.entwurf ? "Für diese Mail ist bereits ein offener Entwurf vorhanden" : "Antwortvorschlag mit dem dreikraut-Stilprofil erstellen"}
+        className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-50"
+        style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: tokens.mossDeep, border: `1px solid ${tokens.moss}`, borderRadius: "6px" }}
+      >
+        <PenLine size={14} /> {laeuft ? "Wird erstellt …" : "Antwortvorschlag"}
+      </button>
+    </div>
+  );
+}
+
 function PosteingangView({ mails, katalog, onReload }) {
   const [filter, setFilter] = useState(null);
   const [selectedId, setSelectedId] = useState(mails[0]?.id ?? null);
@@ -277,6 +320,7 @@ function PosteingangView({ mails, katalog, onReload }) {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
+                  <AntwortvorschlagButton mail={selected} onErzeugt={onReload} />
                   <BestaetigenButton mail={selected} onBestaetigt={onReload} />
                   <KategorieKorrektur mail={selected} katalog={katalog} onKorrigiert={onReload} />
                 </div>
@@ -296,10 +340,10 @@ function PosteingangView({ mails, katalog, onReload }) {
               </div>
             )}
             {selected.entwurf ? (
-              <EntwurfPanel entwurf={selected.entwurf} onErledigt={onReload} />
+              <EntwurfPanel key={selected.entwurf.id} entwurf={selected.entwurf} onErledigt={onReload} />
             ) : (
               <div className="px-6 py-8 flex-1 flex items-center justify-center" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
-                Für diese Mail ist keine Antwort vorgesehen — Aktion läuft autonom.
+                Noch kein Antwortvorschlag vorhanden.
               </div>
             )}
           </>
@@ -328,11 +372,14 @@ function EntwurfPanel({ entwurf, onErledigt }) {
         style={{ ...fontSerif, fontSize: "14.5px", background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px", minHeight: "100px" }} />
       <div className="flex items-center gap-2 mt-3">
         <button onClick={freigeben} className="flex items-center gap-1.5 px-3 py-2" style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}>
-          <Send size={13} /> Freigeben &amp; senden
+          <Check size={13} /> Entwurf freigeben
         </button>
         <button onClick={verwerfen} className="flex items-center gap-1.5 px-3 py-2" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
           <X size={13} /> Verwerfen
         </button>
+      </div>
+      <div style={{ ...fontUI, fontSize: "11.5px", color: tokens.inkMuted, marginTop: "8px" }}>
+        Die Freigabe versendet noch keine Mail; ein Versandmodul ist noch nicht angeschlossen.
       </div>
     </div>
   );
@@ -494,6 +541,7 @@ function EinstellungenMenu({ active, onWaehlen }) {
 
 function KlassifikationZeile({ klassifikation: k, onGespeichert }) {
   const fachlicheAufgaben = (k.aufgaben ?? []).map((a) => a.aufgabe_typ);
+  const [zielpostfach, setZielpostfach] = useState(k.zielpostfach ?? "");
   const [zielordner, setZielordner] = useState(k.zielordner ?? "");
   const [aufgaben, setAufgaben] = useState(fachlicheAufgaben);
   const [speichert, setSpeichert] = useState(false);
@@ -520,6 +568,7 @@ function KlassifikationZeile({ klassifikation: k, onGespeichert }) {
     setMeldung("");
     try {
       await api.klassifikationSpeichern(k.klassifikation_id, {
+        zielpostfach,
         zielordner,
         aufgaben,
       });
@@ -542,10 +591,13 @@ function KlassifikationZeile({ klassifikation: k, onGespeichert }) {
         <div style={{ ...fontSerif, fontSize: "13px", color: tokens.inkMuted, marginTop: "2px" }}>{k.beschreibung}</div>
       </div>
       <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{k.standard_prio}</div>
-      <div className="pr-3">
-        <div style={{ ...fontMono, fontSize: "11px", color: tokens.inkMuted, marginBottom: "5px", overflowWrap: "anywhere" }}>
-          {k.zielpostfach ?? "gleiches Postfach"}
-        </div>
+      <div className="pr-3 flex flex-col gap-1.5">
+        <input
+          value={zielpostfach}
+          onChange={(e) => { setZielpostfach(e.target.value); setMeldung(""); }}
+          placeholder="Zielpostfach"
+          style={{ ...fontUI, fontSize: "12.5px", width: "100%", padding: "6px 7px", background: tokens.paper, border: `1px solid ${tokens.line}`, borderRadius: "5px" }}
+        />
         <input
           value={zielordner}
           onChange={(e) => { setZielordner(e.target.value); setMeldung(""); }}
@@ -561,6 +613,11 @@ function KlassifikationZeile({ klassifikation: k, onGespeichert }) {
               onChange={(e) => aufgabeAendern(index, e.target.value)}
               style={{ ...fontUI, fontSize: "12.5px", flex: 1, padding: "6px 7px", background: tokens.paper, border: `1px solid ${tokens.line}`, borderRadius: "5px" }}
             >
+              {!EDITIERBARE_AKTIONEN.includes(aufgabe) && (
+                <option value={aufgabe} disabled>
+                  {AKTION_LABEL[aufgabe] ?? aufgabe} (noch nicht implementiert)
+                </option>
+              )}
               {EDITIERBARE_AKTIONEN.map((aktion) => (
                 <option key={aktion} value={aktion}>{AKTION_LABEL[aktion]}</option>
               ))}
@@ -616,7 +673,7 @@ function KlassifikationenView({ katalog, onReload }) {
 
       <div style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
         <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1.3fr 1.8fr .65fr 1.25fr 2.2fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
-          <div>ID</div><div>BESCHREIBUNG</div><div>PRIO</div><div>ZIELORDNER</div><div>AKTIONEN IN REIHENFOLGE</div>
+          <div>ID</div><div>BESCHREIBUNG</div><div>PRIO</div><div>POSTFACH / ORDNER</div><div>AKTIONEN IN REIHENFOLGE</div>
         </div>
         {katalog.map((k) => (
           <KlassifikationZeile

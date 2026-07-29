@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from .db import SessionLocal
+from .antworten import antwortentwurf_speichern
 from .imap_client import lade_postfaecher, mail_verschieben
 from .models import Aktionslog, KlassifikationAufgabe, Mail, MailAufgabe, Postfach
 from .rechnungen import rechnung_verarbeiten
@@ -16,6 +17,7 @@ logger = logging.getLogger("krautl.aufgaben")
 BESTAETIGUNG_EINHOLEN = "BESTAETIGUNG_EINHOLEN"
 MAIL_VERSCHIEBEN = "MAIL_VERSCHIEBEN"
 RECHNUNG_VERWALTEN = "RECHNUNG_VERWALTEN"
+ANTWORTVORSCHLAG_ERSTELLEN = "ANTWORTVORSCHLAG_ERSTELLEN"
 
 
 async def aufgaben_fuer_mail_anlegen(session, mail: Mail) -> None:
@@ -130,6 +132,35 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
             session.add(Aktionslog(
                 mail_id=mail.id, ereignis="rechnung_verarbeitet",
                 detail=f"{len(ergebnis['rechnungen'])} Rechnung(en) ausgewertet und in Dropbox abgelegt",
+            ))
+            await _naechste_freischalten(session, mail.id, wartend.position)
+            await session.commit()
+            return await wartende_aufgaben_ausfuehren(mail_id)
+
+        if wartend.aufgabe_typ == ANTWORTVORSCHLAG_ERSTELLEN:
+            try:
+                entwurf, erzeugt = await antwortentwurf_speichern(session, mail)
+            except Exception as exc:
+                logger.exception("Antwortvorschlag fehlgeschlagen für %s", mail.message_id)
+                wartend.status = "fehlgeschlagen"
+                wartend.fehler = str(exc)
+                session.add(Aktionslog(
+                    mail_id=mail.id,
+                    ereignis="antwortvorschlag_fehlgeschlagen",
+                    detail=str(exc),
+                ))
+                await session.commit()
+                return {"status": "fehlgeschlagen", "detail": str(exc)}
+            wartend.status = "erledigt"
+            wartend.erledigt_am = datetime.now(timezone.utc)
+            wartend.fehler = None
+            session.add(Aktionslog(
+                mail_id=mail.id,
+                ereignis="antwortvorschlag_erstellt",
+                detail=(
+                    f"Entwurf #{entwurf.id} erstellt"
+                    if erzeugt else f"Vorhandenen Entwurf #{entwurf.id} verwendet"
+                ),
             ))
             await _naechste_freischalten(session, mail.id, wartend.position)
             await session.commit()

@@ -46,6 +46,7 @@ class KlassifikationenBearbeitenTest(unittest.IsolatedAsyncioTestCase):
             await klassifikation_aktualisieren(
                 "KUNDE_TEST",
                 KlassifikationAenderung(
+                    zielpostfach="erik@dreikraut.de",
                     zielordner="Service/Neu",
                     aufgaben=[
                         "BESTAETIGUNG_EINHOLEN",
@@ -62,6 +63,7 @@ class KlassifikationenBearbeitenTest(unittest.IsolatedAsyncioTestCase):
                 .where(KlassifikationAufgabe.klassifikation_id == "KUNDE_TEST")
                 .order_by(KlassifikationAufgabe.position)
             )).scalars().all()
+            self.assertEqual("erik@dreikraut.de", klassifikation.zielpostfach)
             self.assertEqual("Service/Neu", klassifikation.zielordner)
             self.assertEqual(
                 ["BESTAETIGUNG_EINHOLEN", "MAIL_VERSCHIEBEN", "MAIL_VERSCHIEBEN"],

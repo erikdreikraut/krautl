@@ -72,8 +72,11 @@ gespeichert wurde.
 
 - Für das Verschieben von Rechnungen müssen `IMAP_ERIK_HOST`,
   `IMAP_ERIK_USER` und `IMAP_ERIK_PASSWORD` auf dem Server gesetzt sein.
-- Antwortentwürfe (`Entwurf`-Tabelle) werden noch nirgends automatisch
-  generiert — die Oberfläche kann sie anzeigen/freigeben, sobald es passiert.
+- Antwortentwürfe können manuell aus der Mailansicht oder automatisch über die
+  Klassifikationsaufgabe **Antwortvorschlag erstellen** erzeugt werden. Grundlage
+  sind `data/stilprofil.md`, die freigegebenen FAQ und die jeweilige Mail.
+  Fehlende betriebliche Fakten werden nicht erfunden, sondern zur menschlichen
+  Bearbeitung markiert.
 - FAQ-Vorschläge (`FaqVorschlag`) werden ebenfalls noch nicht automatisch
   erkannt.
 - SMTP-Versandmodul (separat vom Freigabe-Endpunkt, siehe Sicherheitsprinzip)
@@ -125,8 +128,9 @@ sie werden erst nach menschlicher Prüfung verbindliches Wissen.
 4. Einen mindestens 24-stündigen Dauerlauf beobachten: minütlicher Abruf,
    keine dauerhaft hängenden Aufgaben, keine Dubletten und keine lange
    Ladezeit der Oberfläche.
-5. Erst danach Antwortvorschläge und die produktbezogene Wissensbasis
-   weiterbauen.
+5. Die ersten Antwortvorschläge mit unterschiedlichen Mailtypen prüfen und
+   daraus Prompt sowie Stilprofil behutsam verfeinern; anschließend die
+   produktbezogene Wissensbasis weiterbauen.
 
 ### Dropbox einmalig dauerhaft anmelden
 

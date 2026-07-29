@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import get_session, engine
 from .aufgaben import aufgaben_fuer_mail_anlegen, bestaetigung_erfassen, wartende_aufgaben_ausfuehren
+from .antworten import antwortentwurf_speichern
 from .models import (
     Aktionslog, Base, Mail, MailAufgabe, Rechnung, FaqEintrag, FaqVorschlag,
     Entwurf, Korrektur, Klassifikation, KlassifikationAufgabe, SystemStatus,
@@ -18,6 +19,7 @@ ERLAUBTE_AKTIONEN = {
     "BESTAETIGUNG_EINHOLEN",
     "MAIL_VERSCHIEBEN",
     "RECHNUNG_VERWALTEN",
+    "ANTWORTVORSCHLAG_ERSTELLEN",
     "LIEFERANTENMAIL_BEARBEITEN",
     "MARKETINGMAIL_BEARBEITEN",
     "AUDIO_TRANSKRIBIEREN",
@@ -27,8 +29,13 @@ ERLAUBTE_AKTIONEN = {
 
 
 class KlassifikationAenderung(BaseModel):
+    zielpostfach: str | None = None
     zielordner: str | None = None
     aufgaben: list[str]
+
+
+class EntwurfFreigabe(BaseModel):
+    finaler_text: str
 
 
 @app.on_event("startup")
@@ -123,7 +130,9 @@ async def klassifikation_aktualisieren(
             detail=f"Unbekannte Aktion: {ungueltig[0]}",
         )
 
+    zielpostfach = (aenderung.zielpostfach or "").strip() or None
     zielordner = (aenderung.zielordner or "").strip() or None
+    klassifikation.zielpostfach = zielpostfach
     klassifikation.zielordner = zielordner
     # Das alte Einzelaktionsfeld bleibt für CSV-Kompatibilität erhalten.
     klassifikation.aktion_id = (
@@ -143,7 +152,7 @@ async def klassifikation_aktualisieren(
             position=position,
             aufgabe_typ=aufgabe_typ,
             parameter={
-                "zielpostfach": klassifikation.zielpostfach,
+                "zielpostfach": zielpostfach,
                 "zielordner": zielordner,
             },
             bestaetiger_typ="alle",
@@ -252,8 +261,36 @@ async def liste_entwuerfe(session: AsyncSession = Depends(get_session)):
     return result.scalars().all()
 
 
+@app.post("/mails/{mail_id}/antwortentwurf")
+async def mail_antwortentwurf_erzeugen(
+    mail_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    mail = await session.get(Mail, mail_id)
+    if mail is None:
+        raise HTTPException(status_code=404, detail="Mail nicht gefunden")
+
+    try:
+        entwurf, erzeugt = await antwortentwurf_speichern(session, mail)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Antwortvorschlag konnte nicht erzeugt werden: {exc}",
+        ) from exc
+
+    await session.commit()
+    return {
+        "status": "erzeugt" if erzeugt else "vorhanden",
+        "entwurf_id": entwurf.id,
+    }
+
+
 @app.post("/entwuerfe/{entwurf_id}/freigeben")
-async def entwurf_freigeben(entwurf_id: int, finaler_text: str, session: AsyncSession = Depends(get_session)):
+async def entwurf_freigeben(
+    entwurf_id: int,
+    freigabe: EntwurfFreigabe,
+    session: AsyncSession = Depends(get_session),
+):
     """
     Setzt den Entwurf auf 'freigegeben'. Der tatsächliche Versand (SMTP)
     erfolgt danach als separater, expliziter Schritt — absichtlich nicht
@@ -261,7 +298,7 @@ async def entwurf_freigeben(entwurf_id: int, finaler_text: str, session: AsyncSe
     gesendet werden kann.
     """
     entwurf = await session.get(Entwurf, entwurf_id)
-    entwurf.text_final = finaler_text
+    entwurf.text_final = freigabe.finaler_text
     entwurf.status = "freigegeben"
     await session.commit()
     return {"status": "freigegeben", "hinweis": "Versand erfolgt separat per SMTP-Job."}
