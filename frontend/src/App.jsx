@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { api } from "./api.js";
 import logo from "./assets/krautl-logo.png";
+import { WissensdatenbankViewNeu } from "./WissensdatenbankView.jsx";
 
 // Grün/Creme an den Logo-Farben ausgerichtet (#509B32 dunkelgrün,
 // #FFFFD2 creme, #BEDC0F helles Blattgrün) — Amber/Rost bleiben als
@@ -105,12 +106,14 @@ const EREIGNIS_LABEL = {
   antwort_pruefung_uebersprungen: "KI-Prüfung übersprungen",
   antwort_versendet_test: "Testantwort an Mailserver übergeben",
   antwort_versand_fehlgeschlagen: "Antwortversand fehlgeschlagen",
+  wissensvorschlag_erstellt: "Wissensvorschlag erstellt",
+  wissenspruefung_fehlgeschlagen: "Wissensprüfung fehlgeschlagen",
   audio_transkribiert: "Audio transkribiert",
   audio_transkription_fehlgeschlagen: "Audiotranskription fehlgeschlagen",
 };
 function farbeFuerEreignis(ereignis) {
   if (ereignis.endsWith("fehlgeschlagen")) return tokens.rust;
-  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt", "antwort_versendet_test", "audio_transkribiert"].includes(ereignis)) return tokens.moss;
+  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt", "antwort_versendet_test", "audio_transkribiert", "wissensvorschlag_erstellt"].includes(ereignis)) return tokens.moss;
   return tokens.inkMuted;
 }
 
@@ -828,10 +831,10 @@ function verwendeKrautlDaten(onNichtAngemeldet) {
     if (laedt.current) return;
     laedt.current = true;
     try {
-      const [health, mails, katalog, rechnungen, faq, faqVorschlaege, entwuerfe, aktionslog] = await Promise.all([
-        api.health(), api.mails(), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.entwuerfe(), api.aktionslog(),
+      const [health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, aktionslog] = await Promise.all([
+        api.health(), api.mails(), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.wissensbasis(), api.wissensvorschlaege(), api.entwuerfe(), api.aktionslog(),
       ]);
-      setDaten({ health, mails, katalog, rechnungen, faq, faqVorschlaege, entwuerfe, aktionslog });
+      setDaten({ health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, aktionslog });
       setFehler(null);
     } catch (e) {
       if (e.status === 401) {
@@ -1068,7 +1071,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         <nav className="flex items-center">
           <NavTab icon={InboxIcon} label="Posteingang" active={tab === "posteingang"} onClick={() => setTab("posteingang")} />
           <NavTab icon={Receipt} label="Rechnungen" count={offeneRechnungen} accent active={tab === "rechnungen"} onClick={() => setTab("rechnungen")} />
-          <NavTab icon={BookOpen} label="Wissensdatenbank" count={abgeleitet.faqVorschlaege.length} accent active={tab === "wissen"} onClick={() => setTab("wissen")} />
+          <NavTab icon={BookOpen} label="Wissensdatenbank" count={daten.wissensvorschlaege.length} accent active={tab === "wissen"} onClick={() => setTab("wissen")} />
           <EinstellungenMenu active={tab === "klassifikationen" || tab === "aktionslog"} onWaehlen={setTab} />
         </nav>
         <div className="ml-auto flex items-center gap-2">
@@ -1109,7 +1112,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
 
       {tab === "posteingang" && <PosteingangView mails={abgeleitet.mails} katalog={daten.katalog} onReload={neuLaden} />}
       {tab === "rechnungen" && <RechnungenView rechnungen={daten.rechnungen} onReload={neuLaden} />}
-      {tab === "wissen" && <WissensdatenbankView faqEintraege={daten.faq} faqVorschlaege={abgeleitet.faqVorschlaege} onReload={neuLaden} />}
+      {tab === "wissen" && <WissensdatenbankViewNeu basis={daten.wissensbasis} faqEintraege={daten.faq} vorschlaege={daten.wissensvorschlaege} onReload={neuLaden} />}
       {tab === "klassifikationen" && <KlassifikationenView katalog={daten.katalog} onReload={neuLaden} />}
       {tab === "aktionslog" && <AktionslogView eintraege={abgeleitet.aktionslog} />}
     </div>

@@ -187,13 +187,67 @@ class Rechnung(Base):
     dublettenschluessel: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+class Produktfamilie(Base):
+    __tablename__ = "produktfamilie"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(150), unique=True)
+    beschreibung: Mapped[str | None] = mapped_column(Text, nullable=True)
+    aktiv: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Produkt(Base):
+    __tablename__ = "produkt"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    produktfamilie_id: Mapped[int | None] = mapped_column(
+        ForeignKey("produktfamilie.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    artikelnummer: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
+    aliases: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    website_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    aktiv: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Wissenseintrag(Base):
+    """Freigegebene Fakten, getrennt nach Geltungsbereich und Quelle."""
+    __tablename__ = "wissenseintrag"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # allgemein | ablauf | produktfamilie | produkt
+    wissensart: Mapped[str] = mapped_column(String(30), index=True)
+    produktfamilie_id: Mapped[int | None] = mapped_column(
+        ForeignKey("produktfamilie.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    produkt_id: Mapped[int | None] = mapped_column(
+        ForeignKey("produkt.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    titel: Mapped[str] = mapped_column(String(255))
+    inhalt: Mapped[str] = mapped_column(Text)
+    quelle: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stand: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # entwurf | geprueft | freigegeben | veraltet
+    status: Mapped[str] = mapped_column(String(20), default="entwurf", index=True)
+    sensibel: Mapped[bool] = mapped_column(Boolean, default=False)
+    schlagwoerter: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class FaqEintrag(Base):
     __tablename__ = "faq_eintrag"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    produkt_id: Mapped[int | None] = mapped_column(
+        ForeignKey("produkt.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     kategorie: Mapped[str] = mapped_column(String(100))
     frage: Mapped[str] = mapped_column(Text)
     antwort: Mapped[str] = mapped_column(Text)
+    quelle: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # entwurf | freigegeben | veraltet
+    status: Mapped[str] = mapped_column(String(20), default="freigegeben", index=True)
+    sortierung: Mapped[int] = mapped_column(Integer, default=0)
     aktiv: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
@@ -223,6 +277,32 @@ class Aktionslog(Base):
     # "klassifiziert" | "bestaetigt" | "verschoben" | "verschieben_fehlgeschlagen"
     ereignis: Mapped[str] = mapped_column(String(50))
     detail: Mapped[str] = mapped_column(Text)
+    erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class WissensVorschlag(Base):
+    """Ein einzelner, nach Antwortversand erkannter Ergänzungsvorschlag."""
+    __tablename__ = "wissens_vorschlag"
+    __table_args__ = (
+        UniqueConstraint("entwurf_id", name="uq_wissens_vorschlag_entwurf"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quelle_mail_id: Mapped[int] = mapped_column(ForeignKey("mail.id"), index=True)
+    entwurf_id: Mapped[int | None] = mapped_column(
+        ForeignKey("entwurf.id", ondelete="SET NULL"), nullable=True
+    )
+    produkt_id: Mapped[int | None] = mapped_column(
+        ForeignKey("produkt.id", ondelete="SET NULL"), nullable=True
+    )
+    # wissen | faq
+    ziel: Mapped[str] = mapped_column(String(20))
+    wissensart: Mapped[str] = mapped_column(String(30), default="allgemein")
+    titel: Mapped[str] = mapped_column(String(255))
+    inhalt: Mapped[str] = mapped_column(Text)
+    begruendung: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # offen | uebernommen | verworfen
+    status: Mapped[str] = mapped_column(String(20), default="offen", index=True)
     erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

@@ -55,6 +55,35 @@ export const api = {
     anfrage(`/rechnungen/${rechnungId}/als-bezahlt`, { method: "POST" }),
 
   faq: () => anfrage("/faq"),
+  wissensbasis: () => anfrage("/wissensbasis"),
+  produktSpeichern: (id, daten) =>
+    anfrage(id ? `/produkte/${id}` : "/produkte", {
+      method: id ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(daten),
+    }),
+  wissenSpeichern: (id, daten) =>
+    anfrage(id ? `/wissen/${id}` : "/wissen", {
+      method: id ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(daten),
+    }),
+  faqSpeichern: (id, daten) =>
+    anfrage(id ? `/faq/${id}` : "/faq", {
+      method: id ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(daten),
+    }),
+  faqExport: (produktId) => anfrage(`/produkte/${produktId}/faq-export`),
+  wissensvorschlaege: () => anfrage("/wissensvorschlaege"),
+  wissensvorschlagUebernehmen: (id, daten) =>
+    anfrage(`/wissensvorschlaege/${id}/uebernehmen`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(daten),
+    }),
+  wissensvorschlagVerwerfen: (id) =>
+    anfrage(`/wissensvorschlaege/${id}/verwerfen`, { method: "POST" }),
   faqVorschlaege: () => anfrage("/faq/vorschlaege"),
   faqVorschlagUebernehmen: (id) =>
     anfrage(`/faq/vorschlaege/${id}/uebernehmen`, { method: "POST" }),

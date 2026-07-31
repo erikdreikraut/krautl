@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,11 @@ from .auth import (
 from .models import (
     Aktionslog, Base, Mail, MailAufgabe, Rechnung, FaqEintrag, FaqVorschlag,
     Entwurf, Korrektur, Klassifikation, KlassifikationAufgabe, SystemStatus,
+    Produkt, Produktfamilie, Wissenseintrag, WissensVorschlag,
+)
+from .wissensbasis import (
+    FAQ_STATUS, WISSENSARTEN, WISSENSSTATUS, faq_als_jtl_html,
+    relevante_wissensbasis, wissenszuwachs_nach_antwort_pruefen,
 )
 
 app = FastAPI(title="Krautl API")
@@ -49,6 +54,48 @@ class EntwurfFreigabe(BaseModel):
 class Anmeldung(BaseModel):
     benutzername: str
     passwort: str
+
+
+class ProduktAenderung(BaseModel):
+    name: str
+    artikelnummer: str | None = None
+    familie: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+    website_url: str | None = None
+    aktiv: bool = True
+
+
+class WissenAenderung(BaseModel):
+    wissensart: str
+    titel: str
+    inhalt: str
+    produkt_id: int | None = None
+    produktfamilie_id: int | None = None
+    quelle: str | None = None
+    stand: str | None = None
+    status: str = "entwurf"
+    sensibel: bool = False
+    schlagwoerter: list[str] = Field(default_factory=list)
+
+
+class FaqAenderung(BaseModel):
+    produkt_id: int | None = None
+    kategorie: str
+    frage: str
+    antwort: str
+    quelle: str | None = None
+    status: str = "entwurf"
+    sortierung: int = 0
+    aktiv: bool = True
+
+
+class VorschlagUebernahme(BaseModel):
+    ziel: str
+    wissensart: str = "allgemein"
+    produkt_id: int | None = None
+    titel: str
+    inhalt: str
+    kategorie: str = "Kundenfragen"
 
 
 @app.middleware("http")
@@ -282,8 +329,243 @@ async def rechnung_als_bezahlt(rechnung_id: int, session: AsyncSession = Depends
 
 @app.get("/faq")
 async def liste_faq(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(FaqEintrag).where(FaqEintrag.aktiv.is_(True)))
+    result = await session.execute(select(FaqEintrag).order_by(
+        FaqEintrag.produkt_id, FaqEintrag.sortierung, FaqEintrag.id
+    ))
     return result.scalars().all()
+
+
+@app.get("/wissensbasis")
+async def wissensbasis_laden(session: AsyncSession = Depends(get_session)):
+    familien = (await session.execute(
+        select(Produktfamilie).order_by(Produktfamilie.name)
+    )).scalars().all()
+    produkte = (await session.execute(
+        select(Produkt).order_by(Produkt.name)
+    )).scalars().all()
+    eintraege = (await session.execute(
+        select(Wissenseintrag).order_by(Wissenseintrag.wissensart, Wissenseintrag.titel)
+    )).scalars().all()
+    return {"familien": familien, "produkte": produkte, "eintraege": eintraege}
+
+
+async def _familie_holen_oder_anlegen(session, name: str | None):
+    name = (name or "").strip()
+    if not name:
+        return None
+    familie = (await session.execute(
+        select(Produktfamilie).where(func.lower(Produktfamilie.name) == name.lower())
+    )).scalar_one_or_none()
+    if familie is None:
+        familie = Produktfamilie(name=name, aktiv=True)
+        session.add(familie)
+        await session.flush()
+    return familie
+
+
+@app.post("/produkte")
+async def produkt_anlegen(aenderung: ProduktAenderung, session: AsyncSession = Depends(get_session)):
+    familie = await _familie_holen_oder_anlegen(session, aenderung.familie)
+    produkt = Produkt(
+        produktfamilie_id=familie.id if familie else None,
+        name=aenderung.name.strip(), artikelnummer=(aenderung.artikelnummer or "").strip() or None,
+        aliases=[a.strip() for a in aenderung.aliases if a.strip()],
+        website_url=(aenderung.website_url or "").strip() or None, aktiv=aenderung.aktiv,
+    )
+    if not produkt.name:
+        raise HTTPException(status_code=422, detail="Produktname fehlt")
+    session.add(produkt)
+    await session.commit()
+    await session.refresh(produkt)
+    return produkt
+
+
+@app.put("/produkte/{produkt_id}")
+async def produkt_aktualisieren(
+    produkt_id: int, aenderung: ProduktAenderung, session: AsyncSession = Depends(get_session)
+):
+    produkt = await session.get(Produkt, produkt_id)
+    if produkt is None:
+        raise HTTPException(status_code=404, detail="Produkt nicht gefunden")
+    if not aenderung.name.strip():
+        raise HTTPException(status_code=422, detail="Produktname fehlt")
+    familie = await _familie_holen_oder_anlegen(session, aenderung.familie)
+    produkt.produktfamilie_id = familie.id if familie else None
+    produkt.name = aenderung.name.strip()
+    produkt.artikelnummer = (aenderung.artikelnummer or "").strip() or None
+    produkt.aliases = [a.strip() for a in aenderung.aliases if a.strip()]
+    produkt.website_url = (aenderung.website_url or "").strip() or None
+    produkt.aktiv = aenderung.aktiv
+    await session.commit()
+    return produkt
+
+
+def _wissen_validieren(aenderung: WissenAenderung):
+    if aenderung.wissensart not in WISSENSARTEN:
+        raise HTTPException(status_code=422, detail="Unbekannte Wissensart")
+    if aenderung.status not in WISSENSSTATUS:
+        raise HTTPException(status_code=422, detail="Unbekannter Wissensstatus")
+    if not aenderung.titel.strip() or not aenderung.inhalt.strip():
+        raise HTTPException(status_code=422, detail="Titel und Inhalt sind erforderlich")
+
+
+async def _wissen_daten(session, aenderung: WissenAenderung) -> dict:
+    """Normalisiert den Geltungsbereich, damit widersprüchliche Zuordnungen
+    nicht unbemerkt in der Wissensbasis landen."""
+    _wissen_validieren(aenderung)
+    daten = aenderung.model_dump()
+    if aenderung.wissensart in {"allgemein", "ablauf"}:
+        daten["produkt_id"] = None
+        daten["produktfamilie_id"] = None
+    elif aenderung.wissensart == "produktfamilie":
+        if not aenderung.produktfamilie_id or not await session.get(
+            Produktfamilie, aenderung.produktfamilie_id
+        ):
+            raise HTTPException(status_code=422, detail="Produktfamilie fehlt")
+        daten["produkt_id"] = None
+    elif aenderung.wissensart == "produkt":
+        if not aenderung.produkt_id or not await session.get(Produkt, aenderung.produkt_id):
+            raise HTTPException(status_code=422, detail="Produkt fehlt")
+        daten["produktfamilie_id"] = None
+    return daten
+
+
+@app.post("/wissen")
+async def wissen_anlegen(aenderung: WissenAenderung, session: AsyncSession = Depends(get_session)):
+    eintrag = Wissenseintrag(**await _wissen_daten(session, aenderung))
+    session.add(eintrag)
+    await session.commit()
+    await session.refresh(eintrag)
+    return eintrag
+
+
+@app.put("/wissen/{eintrag_id}")
+async def wissen_aktualisieren(
+    eintrag_id: int, aenderung: WissenAenderung, session: AsyncSession = Depends(get_session)
+):
+    daten = await _wissen_daten(session, aenderung)
+    eintrag = await session.get(Wissenseintrag, eintrag_id)
+    if eintrag is None:
+        raise HTTPException(status_code=404, detail="Wissenseintrag nicht gefunden")
+    for name, wert in daten.items():
+        setattr(eintrag, name, wert)
+    await session.commit()
+    return eintrag
+
+
+def _faq_validieren(aenderung: FaqAenderung):
+    if aenderung.status not in FAQ_STATUS:
+        raise HTTPException(status_code=422, detail="Unbekannter FAQ-Status")
+    if not aenderung.kategorie.strip() or not aenderung.frage.strip() or not aenderung.antwort.strip():
+        raise HTTPException(status_code=422, detail="Kategorie, Frage und Antwort sind erforderlich")
+
+
+async def _faq_daten(session, aenderung: FaqAenderung) -> dict:
+    _faq_validieren(aenderung)
+    if aenderung.produkt_id and not await session.get(Produkt, aenderung.produkt_id):
+        raise HTTPException(status_code=422, detail="Produkt nicht gefunden")
+    return aenderung.model_dump()
+
+
+@app.post("/faq")
+async def faq_anlegen(aenderung: FaqAenderung, session: AsyncSession = Depends(get_session)):
+    eintrag = FaqEintrag(**await _faq_daten(session, aenderung))
+    session.add(eintrag)
+    await session.commit()
+    await session.refresh(eintrag)
+    return eintrag
+
+
+@app.put("/faq/{faq_id}")
+async def faq_aktualisieren(
+    faq_id: int, aenderung: FaqAenderung, session: AsyncSession = Depends(get_session)
+):
+    daten = await _faq_daten(session, aenderung)
+    eintrag = await session.get(FaqEintrag, faq_id)
+    if eintrag is None:
+        raise HTTPException(status_code=404, detail="FAQ-Eintrag nicht gefunden")
+    for name, wert in daten.items():
+        setattr(eintrag, name, wert)
+    await session.commit()
+    return eintrag
+
+
+@app.get("/produkte/{produkt_id}/faq-export")
+async def faq_export(produkt_id: int, session: AsyncSession = Depends(get_session)):
+    produkt = await session.get(Produkt, produkt_id)
+    if produkt is None:
+        raise HTTPException(status_code=404, detail="Produkt nicht gefunden")
+    faq = (await session.execute(select(FaqEintrag).where(
+        FaqEintrag.produkt_id == produkt_id,
+        FaqEintrag.aktiv.is_(True),
+        FaqEintrag.status == "freigegeben",
+    ))).scalars().all()
+    return {"produkt": produkt.name, "html": faq_als_jtl_html(produkt, faq)}
+
+
+@app.get("/wissensvorschlaege")
+async def wissensvorschlaege_laden(session: AsyncSession = Depends(get_session)):
+    return (await session.execute(select(WissensVorschlag).where(
+        WissensVorschlag.status == "offen"
+    ).order_by(WissensVorschlag.erstellt_am.desc()))).scalars().all()
+
+
+@app.post("/wissensvorschlaege/{vorschlag_id}/uebernehmen")
+async def wissensvorschlag_uebernehmen(
+    vorschlag_id: int, aenderung: VorschlagUebernahme,
+    session: AsyncSession = Depends(get_session),
+):
+    vorschlag = await session.get(WissensVorschlag, vorschlag_id)
+    if vorschlag is None:
+        raise HTTPException(status_code=404, detail="Vorschlag nicht gefunden")
+    if vorschlag.status != "offen":
+        raise HTTPException(status_code=409, detail="Vorschlag wurde bereits bearbeitet")
+    if aenderung.ziel not in {"wissen", "faq"}:
+        raise HTTPException(status_code=422, detail="Unbekanntes Vorschlagsziel")
+    if not aenderung.titel.strip() or not aenderung.inhalt.strip():
+        raise HTTPException(status_code=422, detail="Titel und Inhalt sind erforderlich")
+    if aenderung.ziel == "faq":
+        if not aenderung.kategorie.strip():
+            raise HTTPException(status_code=422, detail="FAQ-Kategorie fehlt")
+        if aenderung.produkt_id and not await session.get(Produkt, aenderung.produkt_id):
+            raise HTTPException(status_code=422, detail="Produkt nicht gefunden")
+        session.add(FaqEintrag(
+            produkt_id=aenderung.produkt_id, kategorie=aenderung.kategorie.strip(),
+            frage=aenderung.titel.strip(), antwort=aenderung.inhalt.strip(),
+            quelle=f"Kundenmail #{vorschlag.quelle_mail_id}", status="entwurf", aktiv=True,
+        ))
+    else:
+        if aenderung.wissensart not in WISSENSARTEN:
+            raise HTTPException(status_code=422, detail="Unbekannte Wissensart")
+        produkt = await session.get(Produkt, aenderung.produkt_id) if aenderung.produkt_id else None
+        produkt_id = produkt.id if produkt and aenderung.wissensart == "produkt" else None
+        familie_id = (
+            produkt.produktfamilie_id
+            if produkt and aenderung.wissensart == "produktfamilie"
+            else None
+        )
+        session.add(Wissenseintrag(
+            wissensart=aenderung.wissensart,
+            produkt_id=produkt_id,
+            produktfamilie_id=familie_id,
+            titel=aenderung.titel.strip(), inhalt=aenderung.inhalt.strip(),
+            quelle=f"Kundenmail #{vorschlag.quelle_mail_id}", status="entwurf",
+        ))
+    vorschlag.status = "uebernommen"
+    await session.commit()
+    return {"status": "uebernommen"}
+
+
+@app.post("/wissensvorschlaege/{vorschlag_id}/verwerfen")
+async def wissensvorschlag_verwerfen(
+    vorschlag_id: int, session: AsyncSession = Depends(get_session)
+):
+    vorschlag = await session.get(WissensVorschlag, vorschlag_id)
+    if vorschlag is None:
+        raise HTTPException(status_code=404, detail="Vorschlag nicht gefunden")
+    vorschlag.status = "verworfen"
+    await session.commit()
+    return {"status": "verworfen"}
 
 
 @app.get("/faq/vorschlaege")
@@ -370,9 +652,7 @@ async def entwurf_freigeben(
     mail = await session.get(Mail, entwurf.mail_id)
     if mail is None:
         raise HTTPException(status_code=404, detail="Zugehörige Mail nicht gefunden")
-    faq = (await session.execute(
-        select(FaqEintrag).where(FaqEintrag.aktiv.is_(True))
-    )).scalars().all()
+    _produkt, _wissen, faq = await relevante_wissensbasis(session, mail)
 
     bisherige_blockierungen = (await session.execute(
         select(func.count(Aktionslog.id)).where(
@@ -385,7 +665,9 @@ async def entwurf_freigeben(
 
     if not pruefung_uebersprungen:
         try:
-            pruefung = await antwort_vor_versand_pruefen(mail, finaler_text, faq)
+            pruefung = await antwort_vor_versand_pruefen(
+                mail, finaler_text, faq, _wissen
+            )
         except Exception as exc:
             raise HTTPException(
                 status_code=502,
@@ -457,6 +739,27 @@ async def entwurf_freigeben(
             f"Message-ID {versandergebnis['message_id']}"
         ),
     ))
+    try:
+        vorschlag = await wissenszuwachs_nach_antwort_pruefen(
+            session, mail, entwurf, finaler_text
+        )
+        if vorschlag is not None:
+            session.add(Aktionslog(
+                mail_id=mail.id,
+                ereignis="wissensvorschlag_erstellt",
+                detail=(
+                    f"Nach Antwortfreigabe Vorschlag #{vorschlag.id} "
+                    f"für {vorschlag.ziel} erstellt"
+                ),
+            ))
+    except Exception as exc:
+        # Der Versand ist zu diesem Zeitpunkt bereits erfolgt. Eine optionale
+        # Wissensprüfung darf ihn weder zurücknehmen noch als Fehler darstellen.
+        session.add(Aktionslog(
+            mail_id=mail.id,
+            ereignis="wissenspruefung_fehlgeschlagen",
+            detail=f"Antwort wurde versendet; Wissensprüfung nicht möglich: {exc}",
+        ))
     await session.commit()
     return {
         "status": "versendet",

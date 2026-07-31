@@ -58,7 +58,11 @@
    Alle übrigen Mails benötigen eine Bestätigung; vorhandene Bestandsmails
    werden einmalig nachgezogen:
    `docker compose exec app python -m scripts.synchronisiere_bestaetigungen`
-8. Der `frontend`-Dienst bindet TLS/Domain **nicht** selbst — er lauscht nur
+8. Einmalig die Wissensbasis anlegen. Die Migration ergänzt Produkte,
+   Produktfamilien, Wissenseinträge, produktbezogene FAQ und übernimmt das
+   bisherige `data/fallwissen.md` als sichtbaren, freigegebenen Eintrag:
+   `docker compose exec app python -m scripts.migrate_wissensbasis`
+9. Der `frontend`-Dienst bindet TLS/Domain **nicht** selbst — er lauscht nur
    intern auf Host-Port `8081`. Läuft davor bereits ein eigener Reverse Proxy
    (z. B. bei Elestio), muss dessen Domain-Routing auf Port `8081` dieses
    Servers zeigen. Ohne eigenen vorgeschalteten Proxy reicht ein simpler
@@ -86,11 +90,14 @@ gespeichert wurde.
   `IMAP_ERIK_USER` und `IMAP_ERIK_PASSWORD` auf dem Server gesetzt sein.
 - Antwortentwürfe können manuell aus der Mailansicht oder automatisch über die
   Klassifikationsaufgabe **Antwortvorschlag erstellen** erzeugt werden. Grundlage
-  sind `data/stilprofil.md`, die freigegebenen FAQ und die jeweilige Mail.
+  sind `data/stilprofil.md`, die passend ausgewählten freigegebenen Wissens-
+  und FAQ-Einträge sowie die jeweilige Mail.
   Fehlende betriebliche Fakten werden nicht erfunden, sondern zur menschlichen
   Bearbeitung markiert.
-- FAQ-Vorschläge (`FaqVorschlag`) werden ebenfalls noch nicht automatisch
-  erkannt.
+- Wenn ein Mensch einen KI-Antwortentwurf fachlich verändert und versendet,
+  prüft Krautl auf wiederverwendbaren Wissenszuwachs. Höchstens ein kompakter
+  Wissens- oder FAQ-Vorschlag entsteht; er bleibt stets ein Entwurf und wird
+  nie automatisch veröffentlicht.
 - Der SMTP-Versand befindet sich im sicheren Testbetrieb: Vor jedem Versand
   prüft Claude den finalen Text auf Vollständigkeit und offene Prüfhinweise.
   Die Prüfung darf denselben Entwurf höchstens zweimal blockieren; der dritte
@@ -128,33 +135,42 @@ gespeichert wurde.
 - Rollenbasierte Rechteprüfung fehlt noch; derzeit haben alle drei eingerichteten
   Nutzer Vollzugriff.
 
-## Geparkt: produktbezogene Wissensbasis und FAQ
+## Produktbezogene Wissensbasis und FAQ
 
-Die Wissensbasis wird erst weitergebaut, wenn Mail-Abruf, Aufgaben,
-Verschieben und Rechnungsverarbeitung zuverlässig laufen. Das fachliche
-Regelwerk für spätere FAQ-Entwürfe liegt bereits unter
-`data/faq-stilprofil.md`.
-
-Wiederkehrende betriebliche Fälle, die kein Schreibstil und keine klassische
-Produkt-FAQ sind, stehen getrennt unter `data/fallwissen.md`. Dieses Fallwissen
-wird bei Antwortvorschlägen und bei der Prüfung vor dem Versand berücksichtigt.
-
-Geplante Struktur:
+Unter **Wissensdatenbank** werden vier Geltungsbereiche getrennt gepflegt:
 
 1. **Allgemeines dreikraut-Wissen** — zum Beispiel Versand, Zahlung,
    Rückgabe, Bio-Zertifizierung und Unternehmensangaben.
-2. **Produktfamilie** — gemeinsames Rohstoffwissen, etwa zu Hagebutte,
+2. **Abläufe & Fallwissen** — wiederkehrende betriebliche Fälle und die
+   gewünschte Behandlung, unabhängig vom Schreibstil.
+3. **Produktfamilie** — gemeinsames Rohstoffwissen, etwa zu Hagebutte,
    Weihrauch oder Kurkuma.
-3. **Konkretes Produkt** — Zusammensetzung, Varianten, Herkunft,
-   Verarbeitung, Anwendung, Pflichtangaben, freigegebene FAQ und typische
-   Kundenfragen. Der erste Testfall wird das Bio-Hagebuttenpulver,
-   Artikelnummer 20810.
+4. **Konkretes Produkt** — Zusammensetzung, Varianten, Herkunft,
+   Verarbeitung, Anwendung, Pflichtangaben und typische Kundenfragen.
 
-Wissen und fertige Formulierungen bleiben getrennt. Jeder Wissenseintrag
-erhält Quelle, Stand und Freigabestatus. Gesundheitsbezogene Aussagen sind
-prüfpflichtig und dürfen weder erfunden noch durch Umformulierung verstärkt
-werden. Neue FAQ werden aus wiederkehrenden Kundenfragen nur vorgeschlagen;
-sie werden erst nach menschlicher Prüfung verbindliches Wissen.
+Der erste angelegte Testfall ist das Bio-Hagebuttenpulver, Artikelnummer
+20810. Krautl erkennt das Produkt über Name, Artikelnummer und pflegbare
+Suchbegriffe. Antwortentwurf und Versandkontrolle erhalten nur allgemeines
+Wissen, Abläufe sowie das zur Mail passende Familien-/Produktwissen und FAQ.
+
+Wissen und fertige FAQ-Formulierungen bleiben getrennt. Jeder Wissenseintrag
+hat Quelle, Stand und Freigabestatus. Nur **freigegebene** Einträge gelangen in
+KI-Antworten. Gesundheitsbezogene Aussagen können als sensibel markiert
+werden und dürfen weder erfunden noch durch Umformulierung verstärkt werden.
+
+FAQ werden in der Oberfläche als einfache Frage und Antwort bearbeitet. Für
+Absätze, Aufzählungen, `**Fettdruck**` und Weblinks ist kein HTML nötig. Für
+jedes Produkt erzeugt **Gesamtes JTL-HTML kopieren** alle aktiven,
+freigegebenen FAQ in einem vollständigen Schema.org-`FAQPage`-Accordion mit
+den bei dreikraut verwendeten Bootstrap-/JTL-Attributen. Der Block kann als
+Ganzes in JTL eingefügt werden; HTML muss nicht von Hand gepflegt werden.
+
+Nach dem Versand einer manuell veränderten Kundenantwort vergleicht Krautl
+Kundenfrage, ursprünglichen KI-Entwurf, endgültige Antwort und vorhandenes
+Wissen. Nur eine wirklich wiederverwendbare Ergänzung wird vorgeschlagen.
+Unter **Vorschläge** kann sie verworfen oder als weiterhin unfertiger
+Wissens-/FAQ-Entwurf übernommen und anschließend redaktionell freigegeben
+werden.
 
 ## Nächste Stabilisierungsschritte
 
@@ -171,7 +187,7 @@ sie werden erst nach menschlicher Prüfung verbindliches Wissen.
    Ladezeit der Oberfläche.
 5. Die ersten Antwortvorschläge mit unterschiedlichen Mailtypen prüfen und
    daraus Prompt sowie Stilprofil behutsam verfeinern; anschließend die
-   produktbezogene Wissensbasis weiterbauen.
+   Produkt- und FAQ-Inhalte in der neuen Wissensdatenbank schrittweise füllen.
 
 ### Dropbox einmalig dauerhaft anmelden
 
