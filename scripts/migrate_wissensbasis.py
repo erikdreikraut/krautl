@@ -9,6 +9,9 @@ from app.models import Base, Produkt, Produktfamilie, Wissenseintrag
 
 
 FALLWISSEN_PFAD = Path(__file__).resolve().parent.parent / "data" / "fallwissen.md"
+AUFTRAGSNUMMERN_PFAD = (
+    Path(__file__).resolve().parent.parent / "data" / "auftragsnummern-vertriebskanaele.md"
+)
 
 
 FAQ_SPALTEN = {
@@ -72,6 +75,24 @@ async def migriere() -> None:
                 quelle="data/fallwissen.md",
                 status="freigegeben",
                 schlagwoerter=["Amazon", "Rezension", "Gratispackung"],
+            ))
+        auftragsnummern = (await session.execute(
+            select(Wissenseintrag).where(
+                Wissenseintrag.quelle == "data/auftragsnummern-vertriebskanaele.md"
+            )
+        )).scalar_one_or_none()
+        if auftragsnummern is None and AUFTRAGSNUMMERN_PFAD.exists():
+            session.add(Wissenseintrag(
+                wissensart="ablauf",
+                titel="Vertriebskanal aus Bestell- und Auftragsnummern erkennen",
+                inhalt=AUFTRAGSNUMMERN_PFAD.read_text(encoding="utf-8"),
+                quelle="data/auftragsnummern-vertriebskanaele.md",
+                stand="2026-08-01",
+                status="freigegeben",
+                schlagwoerter=[
+                    "Auftragsnummer", "Bestellnummer", "JTL", "Amazon",
+                    "Temu", "Shop Apotheke", "Vertriebskanal",
+                ],
             ))
         await session.commit()
     print("Wissensbasis-Migration abgeschlossen.")

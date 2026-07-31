@@ -60,7 +60,9 @@
    `docker compose exec app python -m scripts.synchronisiere_bestaetigungen`
 8. Einmalig die Wissensbasis anlegen. Die Migration ergänzt Produkte,
    Produktfamilien, Wissenseinträge, produktbezogene FAQ und übernimmt das
-   bisherige `data/fallwissen.md` als sichtbaren, freigegebenen Eintrag:
+   bisherige `data/fallwissen.md` sowie die Regeln zur Erkennung von
+   Vertriebskanälen aus Auftragsnummern als sichtbare, freigegebene Einträge.
+   Die Migration ist wiederholbar und ergänzt dabei fehlende Einträge:
    `docker compose exec app python -m scripts.migrate_wissensbasis`
 9. Der `frontend`-Dienst bindet TLS/Domain **nicht** selbst — er lauscht nur
    intern auf Host-Port `8081`. Läuft davor bereits ein eigener Reverse Proxy
