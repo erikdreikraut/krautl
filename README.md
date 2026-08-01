@@ -174,6 +174,14 @@ Unter **Vorschläge** kann sie verworfen oder als weiterhin unfertiger
 Wissens-/FAQ-Entwurf übernommen und anschließend redaktionell freigegeben
 werden.
 
+Gruppenbezeichnungen sind produktbezogen und nicht auf ein starres Set
+beschränkt. Vorhandene Gruppen werden beim Bearbeiten vorgeschlagen. Für das
+Bio-Hagebuttenpulver übernimmt die Wissensbasis initial die 11 veröffentlichten
+FAQ in den Gruppen **Herkunft & Qualität**, **Nährstoffe & Wirkung** und
+**Anwendung & Praktisches** von der dreikraut-Produktseite. Ein erneuter Lauf
+der Migration legt keine Dubletten an und überschreibt spätere redaktionelle
+Änderungen nicht.
+
 ## Nächste Stabilisierungsschritte
 
 1. Dropbox mit dauerhaft erneuerbarer Anmeldung konfigurieren

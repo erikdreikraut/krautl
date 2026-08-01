@@ -1,6 +1,8 @@
 import os
+import json
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import patch
 
 from sqlalchemy import select
@@ -99,6 +101,19 @@ class WissensbasisTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("<ul>", export)
         self.assertIn("&lt;script&gt;nein&lt;/script&gt;", export)
         self.assertNotIn("<script>", export)
+
+    async def test_hagebutten_faq_hat_gruppen_und_vollstaendige_reihenfolge(self):
+        pfad = Path(__file__).resolve().parent.parent / "data" / "hagebutten-faq.json"
+        faq = json.loads(pfad.read_text(encoding="utf-8"))
+        self.assertEqual(11, len(faq))
+        self.assertEqual(
+            {"Herkunft & Qualität", "Nährstoffe & Wirkung", "Anwendung & Praktisches"},
+            {eintrag["gruppe"] for eintrag in faq},
+        )
+        self.assertEqual(
+            list(range(10, 111, 10)),
+            [eintrag["sortierung"] for eintrag in faq],
+        )
 
     async def test_unveraenderter_entwurf_erzeugt_keinen_vorschlag(self):
         async with SessionLocal() as session:

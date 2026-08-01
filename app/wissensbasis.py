@@ -96,6 +96,13 @@ def _antwort_html(text: str) -> str:
                 for zeile in zeilen
             )
             ergebnis.append("        </ul>")
+        elif zeilen and all(re.match(r"^\s*\d+\.\s+", zeile) for zeile in zeilen):
+            ergebnis.append("        <ol>")
+            ergebnis.extend(
+                f"          <li>{_inline_html(re.sub(r'^\s*\d+\.\s+', '', zeile))}</li>"
+                for zeile in zeilen
+            )
+            ergebnis.append("        </ol>")
         else:
             ergebnis.append(
                 f"        <p>{_inline_html(absatz).replace(chr(10), '<br>')}</p>"

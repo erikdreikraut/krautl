@@ -1,17 +1,20 @@
 """Legt die redaktionelle Wissensbasis an und erweitert bestehende FAQ."""
 import asyncio
+import json
 from pathlib import Path
 
 from sqlalchemy import inspect, select, text
 
 from app.db import SessionLocal, engine
-from app.models import Base, Produkt, Produktfamilie, Wissenseintrag
+from app.models import Base, FaqEintrag, Produkt, Produktfamilie, Wissenseintrag
 
 
 FALLWISSEN_PFAD = Path(__file__).resolve().parent.parent / "data" / "fallwissen.md"
 AUFTRAGSNUMMERN_PFAD = (
     Path(__file__).resolve().parent.parent / "data" / "auftragsnummern-vertriebskanaele.md"
 )
+HAGEBUTTEN_FAQ_PFAD = Path(__file__).resolve().parent.parent / "data" / "hagebutten-faq.json"
+HAGEBUTTEN_URL = "https://dreikraut.de/Bio-Hagebuttenpulver-aus-EU-Wildsammlung"
 
 
 FAQ_SPALTEN = {
@@ -54,14 +57,16 @@ async def migriere() -> None:
             select(Produkt).where(Produkt.artikelnummer == "20810")
         )).scalar_one_or_none()
         if produkt is None:
-            session.add(Produkt(
+            produkt = Produkt(
                 produktfamilie_id=familie.id,
                 name="Bio-Hagebuttenpulver aus EU-Wildsammlung",
                 artikelnummer="20810",
                 aliases=["Hagebuttenpulver", "Bio-Hagebuttenpulver", "Hagebutte"],
                 website_url="https://dreikraut.de/Bio-Hagebuttenpulver-aus-EU-Wildsammlung",
                 aktiv=True,
-            ))
+            )
+            session.add(produkt)
+            await session.flush()
         fallwissen = (await session.execute(
             select(Wissenseintrag).where(
                 Wissenseintrag.quelle == "data/fallwissen.md"
@@ -94,6 +99,26 @@ async def migriere() -> None:
                     "Temu", "Shop Apotheke", "Vertriebskanal",
                 ],
             ))
+        if HAGEBUTTEN_FAQ_PFAD.exists():
+            vorhandene_fragen = {
+                eintrag.frage
+                for eintrag in (await session.execute(
+                    select(FaqEintrag).where(FaqEintrag.produkt_id == produkt.id)
+                )).scalars().all()
+            }
+            for daten in json.loads(HAGEBUTTEN_FAQ_PFAD.read_text(encoding="utf-8")):
+                if daten["frage"] in vorhandene_fragen:
+                    continue
+                session.add(FaqEintrag(
+                    produkt_id=produkt.id,
+                    kategorie=daten["gruppe"],
+                    frage=daten["frage"],
+                    antwort=daten["antwort"],
+                    quelle=HAGEBUTTEN_URL,
+                    status="freigegeben",
+                    sortierung=daten["sortierung"],
+                    aktiv=True,
+                ))
         await session.commit()
     print("Wissensbasis-Migration abgeschlossen.")
 
