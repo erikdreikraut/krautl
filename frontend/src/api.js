@@ -62,6 +62,8 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(daten),
     }),
+  produkteAusShopImportieren: () =>
+    anfrage("/produkte/shop-import", { method: "POST" }),
   wissenSpeichern: (id, daten) =>
     anfrage(id ? `/wissen/${id}` : "/wissen", {
       method: id ? "PUT" : "POST",

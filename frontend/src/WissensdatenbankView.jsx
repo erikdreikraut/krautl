@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Check, Database, Download, Pencil, Plus, Save, Search, Sparkles, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Database, Download, Pencil, Plus, RefreshCw, Save, Search, Sparkles, X } from "lucide-react";
 import { api } from "./api.js";
 
 const farben = {
@@ -15,11 +15,12 @@ function Marke({ children, warn = false }) {
   return <span className="inline-flex px-2 py-1" style={{ ...mono, fontSize: "10px", border: `1px solid ${farben.line}`, borderLeft: `4px solid ${warn ? farben.amber : farben.moss}` }}>{children}</span>;
 }
 
-function Formular({ editor, setEditor, speichern, produkte, familien, faqGruppen }) {
+function Formular({ editor, setEditor, speichern, produkte, familien, faqGruppen, formularRef }) {
   const d = editor.daten;
   const set = (name, wert) => setEditor({ ...editor, daten: { ...d, [name]: wert } });
-  return <div className="mb-5 p-4" style={{ background: farben.paperRaised, border: `1px solid ${farben.line}`, borderLeft: `4px solid ${farben.moss}`, borderRadius: "6px" }}>
-    <div className="flex justify-between mb-3"><h3 style={{ ...serif, fontSize: "16px", fontWeight: 700 }}>{editor.id ? "Eintrag bearbeiten" : "Neuen Eintrag anlegen"}</h3><button onClick={() => setEditor(null)}><X size={15}/></button></div>
+  const bezeichnung = editor.typ === "faq" ? "FAQ-Punkt" : editor.typ === "produkt" ? "Produkt" : "Wissenseintrag";
+  return <div ref={formularRef} className="mb-5 p-4" style={{ background: farben.paperRaised, border: `1px solid ${farben.line}`, borderLeft: `4px solid ${farben.moss}`, borderRadius: "6px" }}>
+    <div className="flex justify-between mb-3"><h3 style={{ ...serif, fontSize: "16px", fontWeight: 700 }}>{editor.id ? `${bezeichnung} bearbeiten` : `${bezeichnung} anlegen`}</h3><button onClick={() => setEditor(null)}><X size={15}/></button></div>
     {editor.typ === "produkt" && <div className="grid grid-cols-2 gap-3">
       <input className="px-3 py-2" style={feld} placeholder="Produktname" value={d.name} onChange={(e) => set("name", e.target.value)}/>
       <input className="px-3 py-2" style={feld} placeholder="Artikelnummer" value={d.artikelnummer} onChange={(e) => set("artikelnummer", e.target.value)}/>
@@ -60,6 +61,8 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
   const [editor, setEditor] = useState(null);
   const [exportHtml, setExportHtml] = useState(null);
   const [meldung, setMeldung] = useState("");
+  const [shopImportLaeuft, setShopImportLaeuft] = useState(false);
+  const formularRef = useRef(null);
   const produkte = basis?.produkte || [];
   const familien = basis?.familien || [];
   const familienNachId = Object.fromEntries(familien.map((f) => [f.id, f]));
@@ -89,10 +92,16 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
       .filter(Boolean)
   )];
 
+  useEffect(() => {
+    if (editor) requestAnimationFrame(() => formularRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }, [editor?.typ, editor?.id]);
+
   const neu = (typ) => {
     if (typ === "produkt") return setEditor({ typ, daten: { name: "", artikelnummer: "", familie: "", aliasesText: "", website_url: "", aktiv: true } });
     if (typ === "wissen") return setEditor({ typ, daten: { wissensart: produkt ? "produkt" : familie ? "produktfamilie" : auswahl === "ablauf" ? "ablauf" : "allgemein", titel: "", inhalt: "", produkt_id: produkt?.id || null, produktfamilie_id: familie?.id || produkt?.produktfamilie_id || null, quelle: "", stand: "", status: "entwurf", sensibel: false, schlagwoerter: [] } });
-    setEditor({ typ, daten: { produkt_id: produkt?.id || null, kategorie: "Allgemeines", frage: "", antwort: "", quelle: produkt?.website_url || "", status: "entwurf", sortierung: 0, aktiv: true } });
+    const familienProdukte = familie ? produkte.filter((p) => p.produktfamilie_id === familie.id) : [];
+    const faqProdukt = produkt || (familienProdukte.length === 1 ? familienProdukte[0] : null);
+    setEditor({ typ, daten: { produkt_id: faqProdukt?.id || null, kategorie: "Allgemeines", frage: "", antwort: "", quelle: faqProdukt?.website_url || "", status: "entwurf", sortierung: 0, aktiv: true } });
   };
   const speichern = async () => {
     const { typ, daten, id } = editor;
@@ -108,6 +117,16 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
     try { await navigator.clipboard.writeText(ergebnis.html); setMeldung("JTL-HTML wurde in die Zwischenablage kopiert."); }
     catch { setMeldung("HTML ist unten zum Kopieren geöffnet."); }
   };
+  const shopProdukteImportieren = async () => {
+    setShopImportLaeuft(true); setMeldung("Produktbestand wird aus dem Shop gelesen …");
+    try {
+      const ergebnis = await api.produkteAusShopImportieren();
+      setMeldung(`${ergebnis.im_shop} Shop-Produkte gefunden · ${ergebnis.angelegt} neu angelegt · ${ergebnis.aktualisiert} aktualisiert.`);
+      await onReload();
+    } catch (fehler) {
+      setMeldung(`Shop-Produkte konnten nicht aktualisiert werden: ${fehler.message}`);
+    } finally { setShopImportLaeuft(false); }
+  };
   const tab = (id, label) => <button onClick={() => setBereich(id)} className="pb-2" style={{ ...ui, fontSize: "13px", fontWeight: bereich === id ? 600 : 500, color: bereich === id ? farben.mossDeep : farben.muted, borderBottom: bereich === id ? `2px solid ${farben.mossDeep}` : "2px solid transparent" }}>{label}</button>;
 
   return <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -121,8 +140,9 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
       <div className="mt-5 px-2.5" style={{ ...mono, fontSize: "10px", color: farben.muted }}>PRODUKTFAMILIEN</div>{familien.map((f) => <button key={f.id} onClick={() => setAuswahl(`familie:${f.id}`)} className="w-full text-left px-2.5 py-2" style={{ ...ui, fontSize: "12px", fontWeight: familieId === f.id ? 600 : 400, color: familieId === f.id ? farben.mossDeep : farben.muted, background: familieId === f.id ? farben.mossPale : "transparent", borderRadius: "5px" }}>{f.name}</button>)}
       <div className="mt-5 px-2.5" style={{ ...mono, fontSize: "10px", color: farben.muted }}>PRODUKTE</div>{produkte.map((p) => <div key={p.id} className="flex items-start"><button onClick={() => setAuswahl(`produkt:${p.id}`)} className="flex-1 text-left px-2.5 py-2" style={{ ...ui, fontSize: "12px", fontWeight: produktId === p.id ? 600 : 400, color: produktId === p.id ? farben.mossDeep : farben.muted, background: produktId === p.id ? farben.mossPale : "transparent", borderRadius: "5px" }}>{p.name}<span className="block" style={{ ...mono, fontSize: "9.5px" }}>{p.artikelnummer || familienNachId[p.produktfamilie_id]?.name}</span></button><button title="Produkt bearbeiten" onClick={() => setEditor({ typ: "produkt", id: p.id, daten: { ...p, familie: familienNachId[p.produktfamilie_id]?.name || "", aliasesText: (p.aliases || []).join(", ") } })} className="p-2" style={{ color: farben.muted }}><Pencil size={12}/></button></div>)}
       <button onClick={() => neu("produkt")} className="flex items-center gap-1.5 mt-2 px-2.5 py-2" style={{ ...ui, fontSize: "12px", color: farben.mossDeep }}><Plus size={12}/> Produkt anlegen</button>
+      <button disabled={shopImportLaeuft} onClick={shopProdukteImportieren} className="flex items-center gap-1.5 px-2.5 py-2 text-left" style={{ ...ui, fontSize: "12px", color: farben.mossDeep, opacity: shopImportLaeuft ? 0.6 : 1 }}><RefreshCw size={12} className={shopImportLaeuft ? "animate-spin" : ""}/> Shop-Produkte aktualisieren</button>
     </aside>
-    <main className="flex-1 overflow-y-auto p-6">{meldung && <div className="mb-4 px-3 py-2" style={{ ...ui, fontSize: "12.5px", color: farben.mossDeep, background: farben.mossPale }}>{meldung}</div>}{editor && <Formular editor={editor} setEditor={setEditor} speichern={speichern} produkte={produkte} familien={familien} faqGruppen={faqGruppen}/>}
+    <main className="flex-1 overflow-y-auto p-6">{meldung && <div className="mb-4 px-3 py-2" style={{ ...ui, fontSize: "12.5px", color: farben.mossDeep, background: farben.mossPale }}>{meldung}</div>}{editor && <Formular formularRef={formularRef} editor={editor} setEditor={setEditor} speichern={speichern} produkte={produkte} familien={familien} faqGruppen={faqGruppen}/>}
       {bereich === "wissen" && <><div className="flex items-center gap-2 mb-4"><Database size={15} color={farben.moss}/><h3 style={{ ...serif, fontWeight: 700 }}>{produkt?.name || familie?.name || "Wissenseinträge"}</h3></div><div className="grid grid-cols-2 gap-3">{wissen.map((e) => <button key={e.id} onClick={() => setEditor({ typ: "wissen", id: e.id, daten: { ...e, schlagwoerter: e.schlagwoerter || [] } })} className="text-left p-4" style={{ background: farben.paperRaised, border: `1px solid ${farben.line}`, borderRadius: "6px" }}><div className="flex justify-between"><Marke warn={e.sensibel}>{e.wissensart.toUpperCase()}</Marke><span style={{ ...mono, fontSize: "10px", color: farben.muted }}>{e.status}</span></div><div className="mt-2" style={{ ...serif, fontWeight: 700 }}>{e.titel}</div><div className="mt-1" style={{ ...ui, fontSize: "12.5px", color: farben.muted, lineHeight: 1.5 }}>{e.inhalt}</div></button>)}</div>{wissen.length === 0 && <LeereAnsicht text="Noch kein passendes Wissen hinterlegt." aktion={() => neu("wissen")} label="Ersten Wissenseintrag anlegen"/>}</>}
       {bereich === "faq" && <><div className="flex justify-between mb-4"><h3 style={{ ...serif, fontWeight: 700 }}>{produkt ? `FAQ · ${produkt.name}` : "FAQ"}</h3>{produkt && <button onClick={exportieren} className="flex items-center gap-1.5 px-3 py-2" style={{ ...ui, fontSize: "12px", color: farben.mossDeep, border: `1px solid ${farben.line}`, borderRadius: "5px" }}><Download size={13}/> Gesamtes JTL-HTML kopieren</button>}</div>{[...new Set(faq.map((f) => f.kategorie))].map((g) => <div key={g} className="mb-5"><div style={{ ...mono, fontSize: "10.5px", color: farben.muted }}>{g.toUpperCase()}</div>{faq.filter((f) => f.kategorie === g).map((f) => <button key={f.id} onClick={() => setEditor({ typ: "faq", id: f.id, daten: { ...f } })} className="block w-full text-left py-3" style={{ borderBottom: `1px solid ${farben.line}` }}><div className="flex justify-between"><b style={serif}>{f.frage}</b><span style={{ ...mono, fontSize: "10px", color: farben.muted }}>{f.status}</span></div><div style={{ ...serif, fontSize: "14px", color: farben.muted }}>{f.antwort}</div></button>)}</div>)}{faq.length === 0 && <LeereAnsicht text="Noch keine FAQ für diese Auswahl." aktion={() => neu("faq")} label="Erstes FAQ anlegen"/>}</>}
       {bereich === "vorschlaege" && <><div className="flex items-center gap-2"><Sparkles size={16} color={farben.amber}/><h3 style={{ ...serif, fontWeight: 700 }}>Ergänzungen aus bearbeiteten Antworten</h3></div><p style={{ ...ui, fontSize: "12.5px", color: farben.muted }}>Nur wiederverwendbare Ergänzungen; nichts wird automatisch freigegeben.</p><div className="flex flex-col gap-3 mt-4">{vorschlaege.map((v) => <div key={v.id} className="p-4" style={{ background: farben.paperRaised, border: `1px solid ${farben.line}`, borderLeft: `4px solid ${farben.amber}` }}><div className="flex justify-between"><Marke warn>{(v.ziel === "faq" ? "FAQ" : v.wissensart).toUpperCase()}</Marke><span style={{ ...mono, fontSize: "10px" }}>Mail #{v.quelle_mail_id}</span></div><b className="block mt-2" style={serif}>{v.titel}</b><div style={{ ...serif, fontSize: "14px" }}>{v.inhalt}</div>{v.begruendung && <small style={{ ...ui, color: farben.muted }}>{v.begruendung}</small>}<div className="flex gap-2 mt-3"><button onClick={async () => { await api.wissensvorschlagUebernehmen(v.id, { ziel: v.ziel, wissensart: v.wissensart, produkt_id: v.produkt_id, titel: v.titel, inhalt: v.inhalt, kategorie: "Kundenfragen" }); await onReload(); }} className="flex items-center gap-1 px-3 py-1.5" style={{ ...ui, fontSize: "12px", color: "#fff", background: farben.moss }}><Check size={12}/> Als Entwurf übernehmen</button><button onClick={async () => { await api.wissensvorschlagVerwerfen(v.id); await onReload(); }} className="px-3 py-1.5" style={{ ...ui, fontSize: "12px", border: `1px solid ${farben.line}` }}>Verwerfen</button></div></div>)}</div>{vorschlaege.length === 0 && <LeereAnsicht text="Keine offenen Vorschläge. Sie entstehen nur, wenn eine bearbeitete Antwort wirklich neues Wissen enthält."/>}</>}

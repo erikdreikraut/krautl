@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -25,6 +26,7 @@ from .wissensbasis import (
     FAQ_STATUS, WISSENSARTEN, WISSENSSTATUS, faq_als_jtl_html,
     relevante_wissensbasis, wissenszuwachs_nach_antwort_pruefen,
 )
+from .shop_import import shop_katalog_laden, shop_katalog_speichern
 
 app = FastAPI(title="Krautl API")
 
@@ -378,6 +380,18 @@ async def produkt_anlegen(aenderung: ProduktAenderung, session: AsyncSession = D
     await session.commit()
     await session.refresh(produkt)
     return produkt
+
+
+@app.post("/produkte/shop-import")
+async def produkte_aus_shop_importieren(session: AsyncSession = Depends(get_session)):
+    try:
+        katalog = await asyncio.to_thread(shop_katalog_laden)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Produktbestand konnte nicht aus dem Shop gelesen werden: {exc}",
+        ) from exc
+    return await shop_katalog_speichern(session, katalog)
 
 
 @app.put("/produkte/{produkt_id}")

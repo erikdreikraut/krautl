@@ -167,6 +167,12 @@ freigegebenen FAQ in einem vollständigen Schema.org-`FAQPage`-Accordion mit
 den bei dreikraut verwendeten Bootstrap-/JTL-Attributen. Der Block kann als
 Ganzes in JTL eingefügt werden; HTML muss nicht von Hand gepflegt werden.
 
+**Shop-Produkte aktualisieren** liest den derzeit sichtbaren Produktbestand
+aus der öffentlichen JTL-Produktübersicht ein. Vorhandene Produkte werden über
+Artikelnummer, Produktadresse oder Namen wiedererkannt; manuell gepflegte
+Produktfamilien und Suchbegriffe bleiben erhalten. Der Abgleich verändert
+keine Wissens- oder FAQ-Einträge.
+
 Nach dem Versand einer manuell veränderten Kundenantwort vergleicht Krautl
 Kundenfrage, ursprünglichen KI-Entwurf, endgültige Antwort und vorhandenes
 Wissen. Nur eine wirklich wiederverwendbare Ergänzung wird vorgeschlagen.
