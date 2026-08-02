@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.db import SessionLocal, engine
 from app.mail_parser import rechnungsanhaenge
 from app.models import Base, Mail, Postfach, Rechnung
-from app.rechnungen import rechnung_verarbeiten
+from app.rechnungen import _zahlungsstatus_absichern, rechnung_verarbeiten
 
 
 EML = b"""From: Lieferant <rechnung@example.test>\r
@@ -59,6 +59,27 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
         anhaenge = rechnungsanhaenge(EML)
         self.assertEqual(1, len(anhaenge))
         self.assertEqual(".pdf", anhaenge[0]["endung"])
+
+    def test_verrechnung_mit_guthaben_ist_nicht_offen(self):
+        daten = _zahlungsstatus_absichern({
+            "zahlungsstatus": "offen",
+            "zahlungshinweis": "Seite 2: Rechnungsbetrag wird vom Guthaben abgezogen; Rest wird ausgezahlt.",
+        })
+        self.assertEqual("automatisch", daten["zahlungsstatus"])
+
+    def test_unbelegte_automatik_bleibt_zur_pruefung_sichtbar(self):
+        daten = _zahlungsstatus_absichern({
+            "zahlungsstatus": "automatisch",
+            "zahlungshinweis": "Zahlbar innerhalb von 14 Tagen.",
+        })
+        self.assertEqual("unklar", daten["zahlungsstatus"])
+
+    def test_verneinte_abbuchung_macht_offene_rechnung_nicht_automatisch(self):
+        daten = _zahlungsstatus_absichern({
+            "zahlungsstatus": "offen",
+            "zahlungshinweis": "Der Betrag wird nicht automatisch abgebucht. Bitte überweisen.",
+        })
+        self.assertEqual("offen", daten["zahlungsstatus"])
 
     async def test_rechnung_wird_abgelegt_und_dedupliziert(self):
         config = type("Config", (), {"user": "einkauf@dreikraut.de"})()

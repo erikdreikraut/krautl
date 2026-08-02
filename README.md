@@ -195,6 +195,11 @@ der Migration legt keine Dubletten an und überschreibt spätere redaktionelle
    einen echten Upload nach `/Rechnungen/{Jahr}/` prüfen.
 2. Nach Behebung der Dropbox-Anmeldung fehlgeschlagene Rechnungsaufgaben mit
    `python -m scripts.wiederhole_rechnungen` kontrolliert wiederholen.
+   Die Rechnungsauswertung prüft alle Dokumentseiten auch auf Lastschrift,
+   Verrechnung, Guthabenabzug und Einbehalt von Auszahlungen. Sämtliche
+   Zahlungsstati bleiben in der Rechnungsansicht sichtbar und können dort
+   redaktionell korrigiert werden; nur **offen** und **unklar** zählen als
+   Rechnungen mit Handlungsbedarf.
 3. Die korrigierte postfachübergreifende Verschiebefunktion mit echten Mails
    prüfen: genau eine Kopie im Ziel, Entfernung aus dem Ursprungsordner und
    nachvollziehbarer Eintrag im Aktionslog.

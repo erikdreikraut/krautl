@@ -53,6 +53,10 @@ class EntwurfFreigabe(BaseModel):
     finaler_text: str
 
 
+class RechnungsstatusAenderung(BaseModel):
+    zahlungsstatus: str
+
+
 class Anmeldung(BaseModel):
     benutzername: str
     passwort: str
@@ -315,15 +319,43 @@ async def korrigiere_klassifikation(
 async def liste_rechnungen(session: AsyncSession = Depends(get_session)):
     result = await session.execute(
         select(Rechnung)
-        .where(Rechnung.zahlungsstatus.in_(["offen", "unklar", "bezahlt"]))
         .order_by(Rechnung.faellig_am.nulls_last(), Rechnung.rechnungsdatum.desc())
     )
     return result.scalars().all()
 
 
+@app.put("/rechnungen/{rechnung_id}/zahlungsstatus")
+async def rechnungsstatus_aendern(
+    rechnung_id: int,
+    aenderung: RechnungsstatusAenderung,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    erlaubte_stati = {"offen", "automatisch", "bezahlt", "gutschrift", "unklar"}
+    if aenderung.zahlungsstatus not in erlaubte_stati:
+        raise HTTPException(status_code=422, detail="Unbekannter Zahlungsstatus")
+    rechnung = await session.get(Rechnung, rechnung_id)
+    if rechnung is None:
+        raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
+    vorher = rechnung.zahlungsstatus
+    rechnung.zahlungsstatus = aenderung.zahlungsstatus
+    session.add(Aktionslog(
+        mail_id=rechnung.mail_id,
+        ereignis="rechnungsstatus_geaendert",
+        detail=(
+            f"Rechnung {rechnung.rechnungsnummer or rechnung.id}: {vorher} → "
+            f"{aenderung.zahlungsstatus}; durch {request.state.benutzer['name']}"
+        ),
+    ))
+    await session.commit()
+    return rechnung
+
+
 @app.post("/rechnungen/{rechnung_id}/als-bezahlt")
 async def rechnung_als_bezahlt(rechnung_id: int, session: AsyncSession = Depends(get_session)):
     rechnung = await session.get(Rechnung, rechnung_id)
+    if rechnung is None:
+        raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
     rechnung.zahlungsstatus = "bezahlt"
     await session.commit()
     return {"status": "ok"}

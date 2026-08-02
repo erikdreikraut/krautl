@@ -179,7 +179,7 @@ class Rechnung(Base):
     faellig_am: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     bruttobetrag: Mapped[float | None] = mapped_column(Float, nullable=True)
     waehrung: Mapped[str] = mapped_column(String(10), default="EUR")
-    # "offen" | "bezahlt" | "unklar"
+    # "offen" | "automatisch" | "bezahlt" | "gutschrift" | "unklar"
     zahlungsstatus: Mapped[str] = mapped_column(String(20), default="unklar")
     zahlungshinweis: Mapped[str | None] = mapped_column(Text, nullable=True)
     dateipfad: Mapped[str | None] = mapped_column(String(500), nullable=True)

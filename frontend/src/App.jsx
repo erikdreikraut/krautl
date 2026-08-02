@@ -484,12 +484,27 @@ function EntwurfPanel({ entwurf, onErledigt, onVersendet }) {
 
 function RechnungenView({ rechnungen, onReload }) {
   const offen = rechnungen.filter((r) => ["offen", "unklar"].includes(r.zahlungsstatus));
-  const bezahlt = rechnungen.filter((r) => r.zahlungsstatus === "bezahlt");
+  const erledigt = rechnungen.filter((r) => !["offen", "unklar"].includes(r.zahlungsstatus));
 
-  async function alsBezahlt(id) {
-    await api.rechnungAlsBezahlt(id);
+  const statusTexte = {
+    offen: "Offen – Überweisung nötig",
+    unklar: "Unklar – bitte prüfen",
+    automatisch: "Automatisch / verrechnet",
+    bezahlt: "Bezahlt",
+    gutschrift: "Gutschrift",
+  };
+
+  async function statusAendern(id, zahlungsstatus) {
+    await api.rechnungStatusAendern(id, zahlungsstatus);
     await onReload();
   }
+
+  const statusAuswahl = (rechnung) => <select
+    value={rechnung.zahlungsstatus}
+    onChange={(e) => statusAendern(rechnung.id, e.target.value)}
+    className="px-2 py-1.5"
+    style={{ ...fontUI, fontSize: "12px", color: tokens.mossDeep, background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}
+  >{Object.entries(statusTexte).map(([wert, text]) => <option key={wert} value={wert}>{text}</option>)}</select>;
 
   return (
     <div className="flex-1 overflow-y-auto px-8 py-6">
@@ -500,22 +515,19 @@ function RechnungenView({ rechnungen, onReload }) {
       </div>
 
       <div style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
-        <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1.6fr 1fr 1fr 1fr 1.2fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
-          <div>AUSSTELLER</div><div>RECHNUNG-NR.</div><div>BETRAG</div><div>FÄLLIG AM</div><div></div>
+        <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1.6fr 1fr 1fr 1fr 1.5fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
+          <div>AUSSTELLER</div><div>RECHNUNG-NR.</div><div>BETRAG</div><div>FÄLLIG AM</div><div>ZAHLUNGSSTATUS</div>
         </div>
         {offen.map((r) => (
-          <div key={r.id} className="grid items-center px-4 py-3" style={{ gridTemplateColumns: "1.6fr 1fr 1fr 1fr 1.2fr", borderBottom: `1px solid ${tokens.line}` }}>
+          <div key={r.id} className="grid items-center px-4 py-3" style={{ gridTemplateColumns: "1.6fr 1fr 1fr 1fr 1.5fr", borderBottom: `1px solid ${tokens.line}` }}>
             <div>
               <div style={{ ...fontSerif, fontSize: "14.5px", fontWeight: 600 }}>{r.aussteller}</div>
-              {r.zahlungsstatus === "unklar" && <span title={r.zahlungshinweis || "Zahlungsweg unklar"} style={{ ...fontUI, fontSize: "11px", color: tokens.rust }}>Zahlungsweg prüfen</span>}
+              <span title={r.zahlungshinweis || "Kein Zahlungshinweis erkannt"} style={{ ...fontUI, fontSize: "11px", color: r.zahlungsstatus === "unklar" ? tokens.rust : tokens.inkMuted }}>{r.zahlungshinweis || "Kein Zahlungshinweis erkannt"}</span>
             </div>
             <div style={{ ...fontMono, fontSize: "12.5px", color: tokens.inkMuted }}>{r.rechnungsnummer}</div>
             <div style={{ ...fontMono, fontSize: "13px" }}>{formatBetrag(r.bruttobetrag, r.waehrung)}</div>
             <div style={{ ...fontUI, fontSize: "13px", color: tokens.amber, fontWeight: 600 }}>{formatDatum(r.faellig_am)}</div>
-            <button onClick={() => alsBezahlt(r.id)} className="flex items-center gap-1.5 px-2.5 py-1 justify-self-start"
-              style={{ ...fontUI, fontSize: "12px", color: tokens.moss, border: `1px solid ${tokens.moss}`, borderRadius: "6px" }}>
-              <Check size={12} /> Als bezahlt markieren
-            </button>
+            {statusAuswahl(r)}
           </div>
         ))}
         {offen.length === 0 && (
@@ -523,13 +535,15 @@ function RechnungenView({ rechnungen, onReload }) {
         )}
       </div>
 
-      <h3 className="mt-7 mb-3" style={{ ...fontDisplay, fontSize: "15px", color: tokens.inkMuted }}>Erledigt</h3>
+      <h3 className="mt-7 mb-3" style={{ ...fontDisplay, fontSize: "15px", color: tokens.inkMuted }}>Erledigt / kein manueller Zahlungsvorgang</h3>
       <div className="flex flex-col gap-1.5">
-        {bezahlt.map((r) => (
+        {erledigt.map((r) => (
           <div key={r.id} className="flex items-center gap-3 px-3 py-2" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
             <CheckCircle2 size={14} style={{ color: tokens.moss }} />
-            <span style={{ textDecoration: "line-through" }}>{r.aussteller} · {r.rechnungsnummer}</span>
+            <span>{r.aussteller} · {r.rechnungsnummer}</span>
+            <span title={r.zahlungshinweis || ""} style={{ fontSize: "11px" }}>{statusTexte[r.zahlungsstatus] || r.zahlungsstatus}</span>
             <span style={{ ...fontMono, fontSize: "12px", marginLeft: "auto" }}>{formatBetrag(r.bruttobetrag, r.waehrung)}</span>
+            {statusAuswahl(r)}
           </div>
         ))}
       </div>
@@ -1060,7 +1074,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
   }
 
   const entwuerfeOffen = daten.entwuerfe.length;
-  const offeneRechnungen = daten.rechnungen.filter((r) => r.zahlungsstatus !== "bezahlt").length;
+  const offeneRechnungen = daten.rechnungen.filter((r) => ["offen", "unklar"].includes(r.zahlungsstatus)).length;
 
   return (
     <div className="w-full h-full flex flex-col" style={{ background: tokens.paper, minHeight: "640px", color: tokens.ink }}>

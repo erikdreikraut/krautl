@@ -53,6 +53,12 @@ export const api = {
   rechnungen: () => anfrage("/rechnungen"),
   rechnungAlsBezahlt: (rechnungId) =>
     anfrage(`/rechnungen/${rechnungId}/als-bezahlt`, { method: "POST" }),
+  rechnungStatusAendern: (rechnungId, zahlungsstatus) =>
+    anfrage(`/rechnungen/${rechnungId}/zahlungsstatus`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ zahlungsstatus }),
+    }),
 
   faq: () => anfrage("/faq"),
   wissensbasis: () => anfrage("/wissensbasis"),
