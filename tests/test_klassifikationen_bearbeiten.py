@@ -1,5 +1,6 @@
 import os
 import unittest
+from types import SimpleNamespace
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_klassifikationen.db")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test")
@@ -9,6 +10,11 @@ from sqlalchemy import select
 from app.db import SessionLocal, engine
 from app.main import KlassifikationAenderung, klassifikation_aktualisieren
 from app.models import Base, Klassifikation, KlassifikationAufgabe
+
+
+ADMIN_REQUEST = SimpleNamespace(state=SimpleNamespace(benutzer={
+    "benutzername": "erik", "name": "Erik Schweitzer", "rolle": "admin",
+}))
 
 
 class KlassifikationenBearbeitenTest(unittest.IsolatedAsyncioTestCase):
@@ -54,6 +60,7 @@ class KlassifikationenBearbeitenTest(unittest.IsolatedAsyncioTestCase):
                         "MAIL_VERSCHIEBEN",
                     ],
                 ),
+                ADMIN_REQUEST,
                 session,
             )
         async with SessionLocal() as session:
@@ -78,6 +85,7 @@ class KlassifikationenBearbeitenTest(unittest.IsolatedAsyncioTestCase):
                     zielordner="Service/Neu",
                     aufgaben=["MAIL_VERSCHIEBEN"],
                 ),
+                ADMIN_REQUEST,
                 session,
             )
         async with SessionLocal() as session:
@@ -95,6 +103,7 @@ class KlassifikationenBearbeitenTest(unittest.IsolatedAsyncioTestCase):
                     zielordner="KI-Spam",
                     aufgaben=["BESTAETIGUNG_EINHOLEN", "MAIL_VERSCHIEBEN"],
                 ),
+                ADMIN_REQUEST,
                 session,
             )
         async with SessionLocal() as session:

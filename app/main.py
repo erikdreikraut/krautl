@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,13 +14,17 @@ from .mail_versand import (
     TEST_EMPFAENGER, antwort_mit_signatur, testantwort_senden,
 )
 from .auth import (
-    COOKIE_NAME, SESSION_DAUER_SEKUNDEN, anmelden, oeffentliche_daten,
+    BENUTZER, COOKIE_NAME, SESSION_DAUER_SEKUNDEN, anmelden, oeffentliche_daten,
     sitzung_erstellen, sitzung_lesen,
+)
+from .berechtigungen import (
+    ROLLE_SACHBEARBEITER, darf_klassifikation_sehen, darf_mail_sehen,
+    ist_admin, verweigerte_klassifikationen,
 )
 from .models import (
     Aktionslog, Base, Mail, MailAufgabe, Rechnung, FaqEintrag, FaqVorschlag,
     Entwurf, Korrektur, Klassifikation, KlassifikationAufgabe, SystemStatus,
-    Produkt, Produktfamilie, Wissenseintrag, WissensVorschlag,
+    Produkt, Produktfamilie, RollenMailzugriff, Wissenseintrag, WissensVorschlag,
 )
 from .wissensbasis import (
     FAQ_STATUS, WISSENSARTEN, WISSENSSTATUS, faq_als_jtl_html,
@@ -55,6 +59,10 @@ class EntwurfFreigabe(BaseModel):
 
 class RechnungsstatusAenderung(BaseModel):
     zahlungsstatus: str
+
+
+class RollenMailzugriffAenderung(BaseModel):
+    klassifikation_ids: list[str]
 
 
 class Anmeldung(BaseModel):
@@ -150,6 +158,18 @@ async def logout(response: Response):
     return {"status": "abgemeldet"}
 
 
+def _admin_erfordern(request: Request):
+    if not ist_admin(request.state.benutzer):
+        raise HTTPException(status_code=403, detail="Nur für Administratoren")
+
+
+async def _mailzugriff_erfordern(session, request: Request, mail: Mail | None):
+    if mail is None:
+        raise HTTPException(status_code=404, detail="Mail nicht gefunden")
+    if not await darf_mail_sehen(session, request.state.benutzer, mail):
+        raise HTTPException(status_code=403, detail="Kein Zugriff auf diese Mailart")
+
+
 @app.on_event("startup")
 async def on_startup():
     # Für den Start reicht create_all. Sobald das Schema sich weiterentwickelt,
@@ -180,14 +200,23 @@ async def health(session: AsyncSession = Depends(get_session)):
 
 
 @app.get("/mails")
-async def liste_mails(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(
+async def liste_mails(request: Request, session: AsyncSession = Depends(get_session)):
+    verweigert = await verweigerte_klassifikationen(session, request.state.benutzer)
+    if "*" in verweigert:
+        return []
+    abfrage = (
         select(Mail)
         .options(selectinload(Mail.aufgaben), selectinload(Mail.postfach))
         .where(Mail.im_krautl_posteingang.is_(True))
         .order_by(Mail.empfangen_am.desc())
         .limit(100)
     )
+    if verweigert:
+        abfrage = abfrage.where(or_(
+            Mail.klassifikation_id.is_(None),
+            ~Mail.klassifikation_id.in_(verweigert),
+        ))
+    result = await session.execute(abfrage)
     mails = result.scalars().all()
     return [
         {
@@ -207,12 +236,16 @@ async def liste_mails(session: AsyncSession = Depends(get_session)):
 
 
 @app.get("/klassifikationen")
-async def liste_klassifikationen(session: AsyncSession = Depends(get_session)):
+async def liste_klassifikationen(request: Request, session: AsyncSession = Depends(get_session)):
     result = await session.execute(
         select(Klassifikation)
         .options(selectinload(Klassifikation.aufgaben))
         .order_by(Klassifikation.hauptkategorie)
     )
+    klassifikationen = result.scalars().all()
+    verweigert = await verweigerte_klassifikationen(session, request.state.benutzer)
+    if "*" in verweigert:
+        return []
     return [
         {
             **{spalte.name: getattr(k, spalte.name) for spalte in Klassifikation.__table__.columns},
@@ -221,16 +254,116 @@ async def liste_klassifikationen(session: AsyncSession = Depends(get_session)):
                 for a in k.aufgaben
             ],
         }
-        for k in result.scalars().all()
+        for k in klassifikationen
+        if k.klassifikation_id not in verweigert
     ]
+
+
+@app.get("/rollen-mailzugriff")
+async def rollen_mailzugriff_laden(
+    request: Request, session: AsyncSession = Depends(get_session)
+):
+    _admin_erfordern(request)
+    klassifikationen = (await session.execute(
+        select(Klassifikation).order_by(
+            Klassifikation.hauptkategorie, Klassifikation.klassifikation_id
+        )
+    )).scalars().all()
+    rechte = {
+        zeile.klassifikation_id: zeile.darf_sehen
+        for zeile in (await session.execute(select(RollenMailzugriff).where(
+            RollenMailzugriff.rolle == ROLLE_SACHBEARBEITER
+        ))).scalars().all()
+    }
+    return {
+        "rollen": [
+            {
+                "id": "admin",
+                "name": "Admin",
+                "benutzer": [
+                    oeffentliche_daten(b) for b in BENUTZER.values()
+                    if b["rolle"] == "admin"
+                ],
+                "alle_mailarten": True,
+            },
+            {
+                "id": ROLLE_SACHBEARBEITER,
+                "name": "Sachbearbeiter",
+                "benutzer": [
+                    oeffentliche_daten(b) for b in BENUTZER.values()
+                    if b["rolle"] == ROLLE_SACHBEARBEITER
+                ],
+                "klassifikation_ids": [
+                    k.klassifikation_id for k in klassifikationen
+                    if rechte.get(k.klassifikation_id, True)
+                ],
+            },
+        ],
+        "klassifikationen": [
+            {
+                "klassifikation_id": k.klassifikation_id,
+                "hauptkategorie": k.hauptkategorie,
+                "beschreibung": k.beschreibung,
+            }
+            for k in klassifikationen
+        ],
+    }
+
+
+@app.put("/rollen-mailzugriff/{rolle}")
+async def rollen_mailzugriff_speichern(
+    rolle: str,
+    aenderung: RollenMailzugriffAenderung,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    _admin_erfordern(request)
+    if rolle != ROLLE_SACHBEARBEITER:
+        raise HTTPException(status_code=422, detail="Diese Rolle ist nicht editierbar")
+    klassifikation_ids = set((await session.execute(
+        select(Klassifikation.klassifikation_id)
+    )).scalars().all())
+    ausgewaehlt = set(aenderung.klassifikation_ids)
+    unbekannt = ausgewaehlt - klassifikation_ids
+    if unbekannt:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unbekannte Klassifikation: {sorted(unbekannt)[0]}",
+        )
+    vorhanden = {
+        zeile.klassifikation_id: zeile
+        for zeile in (await session.execute(select(RollenMailzugriff).where(
+            RollenMailzugriff.rolle == rolle
+        ))).scalars().all()
+    }
+    for klassifikation_id in klassifikation_ids:
+        zeile = vorhanden.get(klassifikation_id)
+        if zeile is None:
+            zeile = RollenMailzugriff(
+                rolle=rolle, klassifikation_id=klassifikation_id
+            )
+            session.add(zeile)
+        zeile.darf_sehen = klassifikation_id in ausgewaehlt
+    session.add(Aktionslog(
+        mail_id=None,
+        ereignis="rollenzugriff_geaendert",
+        detail=(
+            f"Sachbearbeiter: {len(ausgewaehlt)} von {len(klassifikation_ids)} "
+            f"Mailarten freigegeben; durch {request.state.benutzer['name']}"
+        ),
+    ))
+    await session.commit()
+    return {"status": "gespeichert", "freigegeben": len(ausgewaehlt)}
 
 
 @app.put("/klassifikationen/{klassifikation_id}")
 async def klassifikation_aktualisieren(
     klassifikation_id: str,
     aenderung: KlassifikationAenderung,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ):
+    _admin_erfordern(request)
     klassifikation = await session.get(Klassifikation, klassifikation_id)
     if klassifikation is None:
         raise HTTPException(status_code=404, detail="Klassifikation nicht gefunden")
@@ -275,8 +408,16 @@ async def klassifikation_aktualisieren(
 
 
 @app.post("/mails/{mail_id}/bestaetigen")
-async def mail_bestaetigen(mail_id: int, bestaetigt_von: str | None = None):
-    ergebnis = await bestaetigung_erfassen(mail_id, bestaetigt_von)
+async def mail_bestaetigen(
+    mail_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    mail = await session.get(Mail, mail_id)
+    await _mailzugriff_erfordern(session, request, mail)
+    ergebnis = await bestaetigung_erfassen(
+        mail_id, request.state.benutzer["name"]
+    )
     if ergebnis["status"] == "mail_nicht_gefunden":
         raise HTTPException(status_code=404, detail="Mail nicht gefunden")
     if ergebnis["status"] == "keine_bestaetigung_offen":
@@ -285,7 +426,8 @@ async def mail_bestaetigen(mail_id: int, bestaetigt_von: str | None = None):
 
 
 @app.get("/aktionslog")
-async def liste_aktionslog(session: AsyncSession = Depends(get_session)):
+async def liste_aktionslog(request: Request, session: AsyncSession = Depends(get_session)):
+    _admin_erfordern(request)
     result = await session.execute(
         select(Aktionslog).order_by(Aktionslog.erstellt_am.desc()).limit(200)
     )
@@ -294,10 +436,17 @@ async def liste_aktionslog(session: AsyncSession = Depends(get_session)):
 
 @app.post("/mails/{mail_id}/korrektur")
 async def korrigiere_klassifikation(
-    mail_id: int, neue_klassifikation_id: str, notiz: str | None = None,
+    mail_id: int, request: Request, neue_klassifikation_id: str, notiz: str | None = None,
     session: AsyncSession = Depends(get_session),
 ):
     mail = await session.get(Mail, mail_id)
+    await _mailzugriff_erfordern(session, request, mail)
+    if not await session.get(Klassifikation, neue_klassifikation_id):
+        raise HTTPException(status_code=404, detail="Klassifikation nicht gefunden")
+    if not await darf_klassifikation_sehen(
+        session, request.state.benutzer, neue_klassifikation_id
+    ):
+        raise HTTPException(status_code=403, detail="Kein Zugriff auf die neue Mailart")
     korrektur = Korrektur(
         mail_id=mail_id,
         alte_klassifikation_id=mail.klassifikation_id,
@@ -316,11 +465,21 @@ async def korrigiere_klassifikation(
 
 
 @app.get("/rechnungen")
-async def liste_rechnungen(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(
-        select(Rechnung)
-        .order_by(Rechnung.faellig_am.nulls_last(), Rechnung.rechnungsdatum.desc())
+async def liste_rechnungen(request: Request, session: AsyncSession = Depends(get_session)):
+    verweigert = await verweigerte_klassifikationen(session, request.state.benutzer)
+    if "*" in verweigert:
+        return []
+    abfrage = select(Rechnung).outerjoin(Mail, Rechnung.mail_id == Mail.id).order_by(
+        Rechnung.faellig_am.nulls_last(), Rechnung.rechnungsdatum.desc()
     )
+    if not ist_admin(request.state.benutzer):
+        abfrage = abfrage.where(Rechnung.mail_id.is_not(None))
+    if verweigert:
+        abfrage = abfrage.where(or_(
+            Mail.klassifikation_id.is_(None),
+            ~Mail.klassifikation_id.in_(verweigert),
+        ))
+    result = await session.execute(abfrage)
     return result.scalars().all()
 
 
@@ -337,6 +496,12 @@ async def rechnungsstatus_aendern(
     rechnung = await session.get(Rechnung, rechnung_id)
     if rechnung is None:
         raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
+    if rechnung.mail_id:
+        await _mailzugriff_erfordern(
+            session, request, await session.get(Mail, rechnung.mail_id)
+        )
+    elif not ist_admin(request.state.benutzer):
+        raise HTTPException(status_code=403, detail="Kein Zugriff auf diese Rechnung")
     vorher = rechnung.zahlungsstatus
     rechnung.zahlungsstatus = aenderung.zahlungsstatus
     session.add(Aktionslog(
@@ -352,10 +517,20 @@ async def rechnungsstatus_aendern(
 
 
 @app.post("/rechnungen/{rechnung_id}/als-bezahlt")
-async def rechnung_als_bezahlt(rechnung_id: int, session: AsyncSession = Depends(get_session)):
+async def rechnung_als_bezahlt(
+    rechnung_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
     rechnung = await session.get(Rechnung, rechnung_id)
     if rechnung is None:
         raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
+    if rechnung.mail_id:
+        await _mailzugriff_erfordern(
+            session, request, await session.get(Mail, rechnung.mail_id)
+        )
+    elif not ist_admin(request.state.benutzer):
+        raise HTTPException(status_code=403, detail="Kein Zugriff auf diese Rechnung")
     rechnung.zahlungsstatus = "bezahlt"
     await session.commit()
     return {"status": "ok"}
@@ -550,20 +725,37 @@ async def faq_export(produkt_id: int, session: AsyncSession = Depends(get_sessio
 
 
 @app.get("/wissensvorschlaege")
-async def wissensvorschlaege_laden(session: AsyncSession = Depends(get_session)):
-    return (await session.execute(select(WissensVorschlag).where(
+async def wissensvorschlaege_laden(
+    request: Request, session: AsyncSession = Depends(get_session)
+):
+    verweigert = await verweigerte_klassifikationen(session, request.state.benutzer)
+    if "*" in verweigert:
+        return []
+    abfrage = select(WissensVorschlag).join(
+        Mail, WissensVorschlag.quelle_mail_id == Mail.id
+    ).where(
         WissensVorschlag.status == "offen"
-    ).order_by(WissensVorschlag.erstellt_am.desc()))).scalars().all()
+    ).order_by(WissensVorschlag.erstellt_am.desc())
+    if verweigert:
+        abfrage = abfrage.where(or_(
+            Mail.klassifikation_id.is_(None),
+            ~Mail.klassifikation_id.in_(verweigert),
+        ))
+    return (await session.execute(abfrage)).scalars().all()
 
 
 @app.post("/wissensvorschlaege/{vorschlag_id}/uebernehmen")
 async def wissensvorschlag_uebernehmen(
     vorschlag_id: int, aenderung: VorschlagUebernahme,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     vorschlag = await session.get(WissensVorschlag, vorschlag_id)
     if vorschlag is None:
         raise HTTPException(status_code=404, detail="Vorschlag nicht gefunden")
+    await _mailzugriff_erfordern(
+        session, request, await session.get(Mail, vorschlag.quelle_mail_id)
+    )
     if vorschlag.status != "offen":
         raise HTTPException(status_code=409, detail="Vorschlag wurde bereits bearbeitet")
     if aenderung.ziel not in {"wissen", "faq"}:
@@ -604,25 +796,48 @@ async def wissensvorschlag_uebernehmen(
 
 @app.post("/wissensvorschlaege/{vorschlag_id}/verwerfen")
 async def wissensvorschlag_verwerfen(
-    vorschlag_id: int, session: AsyncSession = Depends(get_session)
+    vorschlag_id: int, request: Request, session: AsyncSession = Depends(get_session)
 ):
     vorschlag = await session.get(WissensVorschlag, vorschlag_id)
     if vorschlag is None:
         raise HTTPException(status_code=404, detail="Vorschlag nicht gefunden")
+    await _mailzugriff_erfordern(
+        session, request, await session.get(Mail, vorschlag.quelle_mail_id)
+    )
     vorschlag.status = "verworfen"
     await session.commit()
     return {"status": "verworfen"}
 
 
 @app.get("/faq/vorschlaege")
-async def liste_faq_vorschlaege(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(FaqVorschlag).where(FaqVorschlag.status == "offen"))
+async def liste_faq_vorschlaege(
+    request: Request, session: AsyncSession = Depends(get_session)
+):
+    verweigert = await verweigerte_klassifikationen(session, request.state.benutzer)
+    if "*" in verweigert:
+        return []
+    abfrage = select(FaqVorschlag).join(
+        Mail, FaqVorschlag.quelle_mail_id == Mail.id
+    ).where(FaqVorschlag.status == "offen")
+    if verweigert:
+        abfrage = abfrage.where(or_(
+            Mail.klassifikation_id.is_(None),
+            ~Mail.klassifikation_id.in_(verweigert),
+        ))
+    result = await session.execute(abfrage)
     return result.scalars().all()
 
 
 @app.post("/faq/vorschlaege/{vorschlag_id}/uebernehmen")
-async def faq_vorschlag_uebernehmen(vorschlag_id: int, session: AsyncSession = Depends(get_session)):
+async def faq_vorschlag_uebernehmen(
+    vorschlag_id: int, request: Request, session: AsyncSession = Depends(get_session)
+):
     vorschlag = await session.get(FaqVorschlag, vorschlag_id)
+    if vorschlag is None:
+        raise HTTPException(status_code=404, detail="Vorschlag nicht gefunden")
+    await _mailzugriff_erfordern(
+        session, request, await session.get(Mail, vorschlag.quelle_mail_id)
+    )
     eintrag = FaqEintrag(
         kategorie=vorschlag.kategorie,
         frage=vorschlag.frage,
@@ -635,27 +850,45 @@ async def faq_vorschlag_uebernehmen(vorschlag_id: int, session: AsyncSession = D
 
 
 @app.post("/faq/vorschlaege/{vorschlag_id}/verwerfen")
-async def faq_vorschlag_verwerfen(vorschlag_id: int, session: AsyncSession = Depends(get_session)):
+async def faq_vorschlag_verwerfen(
+    vorschlag_id: int, request: Request, session: AsyncSession = Depends(get_session)
+):
     vorschlag = await session.get(FaqVorschlag, vorschlag_id)
+    if vorschlag is None:
+        raise HTTPException(status_code=404, detail="Vorschlag nicht gefunden")
+    await _mailzugriff_erfordern(
+        session, request, await session.get(Mail, vorschlag.quelle_mail_id)
+    )
     vorschlag.status = "verworfen"
     await session.commit()
     return {"status": "verworfen"}
 
 
 @app.get("/entwuerfe")
-async def liste_entwuerfe(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Entwurf).where(Entwurf.status == "wartet"))
+async def liste_entwuerfe(request: Request, session: AsyncSession = Depends(get_session)):
+    verweigert = await verweigerte_klassifikationen(session, request.state.benutzer)
+    if "*" in verweigert:
+        return []
+    abfrage = select(Entwurf).join(Mail, Entwurf.mail_id == Mail.id).where(
+        Entwurf.status == "wartet"
+    )
+    if verweigert:
+        abfrage = abfrage.where(or_(
+            Mail.klassifikation_id.is_(None),
+            ~Mail.klassifikation_id.in_(verweigert),
+        ))
+    result = await session.execute(abfrage)
     return result.scalars().all()
 
 
 @app.post("/mails/{mail_id}/antwortentwurf")
 async def mail_antwortentwurf_erzeugen(
     mail_id: int,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     mail = await session.get(Mail, mail_id)
-    if mail is None:
-        raise HTTPException(status_code=404, detail="Mail nicht gefunden")
+    await _mailzugriff_erfordern(session, request, mail)
 
     try:
         entwurf, erzeugt = await antwortentwurf_speichern(session, mail)
@@ -686,6 +919,8 @@ async def entwurf_freigeben(
     )).scalar_one_or_none()
     if entwurf is None:
         raise HTTPException(status_code=404, detail="Entwurf nicht gefunden")
+    mail = await session.get(Mail, entwurf.mail_id)
+    await _mailzugriff_erfordern(session, request, mail)
     if entwurf.status == "versendet":
         return {
             "status": "bereits_versendet",
@@ -695,9 +930,6 @@ async def entwurf_freigeben(
     finaler_text = freigabe.finaler_text.strip()
     if not finaler_text:
         raise HTTPException(status_code=422, detail="Die Antwort ist leer")
-    mail = await session.get(Mail, entwurf.mail_id)
-    if mail is None:
-        raise HTTPException(status_code=404, detail="Zugehörige Mail nicht gefunden")
     _produkt, _wissen, faq = await relevante_wissensbasis(session, mail)
 
     bisherige_blockierungen = (await session.execute(
@@ -816,8 +1048,16 @@ async def entwurf_freigeben(
 
 
 @app.post("/entwuerfe/{entwurf_id}/verwerfen")
-async def entwurf_verwerfen(entwurf_id: int, session: AsyncSession = Depends(get_session)):
+async def entwurf_verwerfen(
+    entwurf_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
     entwurf = await session.get(Entwurf, entwurf_id)
+    if entwurf is None:
+        raise HTTPException(status_code=404, detail="Entwurf nicht gefunden")
+    mail = await session.get(Mail, entwurf.mail_id)
+    await _mailzugriff_erfordern(session, request, mail)
     entwurf.status = "verworfen"
     await session.commit()
     return {"status": "verworfen"}

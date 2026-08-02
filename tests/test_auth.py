@@ -15,9 +15,12 @@ class AuthTest(unittest.TestCase):
 
     def test_drei_feste_nutzer_koennen_sich_anmelden(self):
         with patch.dict(os.environ, self.umgebung, clear=False):
-            self.assertEqual("Erik Schweitzer", anmelden("erik", "erik-passwort")["name"])
-            self.assertEqual("Gursewak Singh", anmelden("gursewak", "gursewak-passwort")["name"])
-            self.assertEqual("Ludwig Schnorrenberg", anmelden("ludwig", "ludwig-passwort")["name"])
+            erik = anmelden("erik", "erik-passwort")
+            gursewak = anmelden("gursewak", "gursewak-passwort")
+            ludwig = anmelden("ludwig", "ludwig-passwort")
+            self.assertEqual(("Erik Schweitzer", "admin"), (erik["name"], erik["rolle"]))
+            self.assertEqual(("Gursewak Singh", "sachbearbeiter"), (gursewak["name"], gursewak["rolle"]))
+            self.assertEqual(("Ludwig Schnorrenberg", "sachbearbeiter"), (ludwig["name"], ludwig["rolle"]))
             self.assertIsNone(anmelden("erik", "falsch"))
 
     def test_signierte_sitzung_erkennt_manipulation(self):
@@ -26,7 +29,7 @@ class AuthTest(unittest.TestCase):
             benutzer = sitzung_lesen(token)
             self.assertEqual("Gursewak Singh", benutzer["name"])
             self.assertEqual("Auszubildender", benutzer["titel"])
-            self.assertEqual("vollzugriff", benutzer["rolle"])
+            self.assertEqual("sachbearbeiter", benutzer["rolle"])
             self.assertIsNone(sitzung_lesen(token + "manipuliert"))
 
 

@@ -23,8 +23,8 @@
   sein letztes Lebenszeichen in der Datenbank
 - `app/main.py` — FastAPI mit den Endpunkten, die die Oberfläche braucht
 - `app/auth.py` — persönliche Anmeldung mit signierten Sitzungen für Erik,
-  Gursewak und Ludwig; das Rollenfeld ist für spätere Rechteunterschiede
-  bereits vorhanden
+  Gursewak und Ludwig sowie deren Rollen **Admin** beziehungsweise
+  **Sachbearbeiter**
 - `scripts/import_klassifikationen.py` — importiert/aktualisiert die
   `klassifikation`-Tabelle aus `data/mail-klassifikationen.csv` (idempotent)
 - `frontend/` — Vite+React-Oberfläche, spricht die Backend-Endpunkte über
@@ -109,7 +109,7 @@ gespeichert wurde.
   `SMTP_SERVICE_HOST`, `SMTP_SERVICE_PORT`, `SMTP_SERVICE_USER` und
   `SMTP_SERVICE_PASSWORD` gesetzt sein.
 - Alle fachlichen API-Funktionen erfordern eine persönliche Krautl-Anmeldung.
-  Aktuell haben `erik`, `gursewak` und `ludwig` identischen Vollzugriff.
+  `erik` ist Admin; `gursewak` und `ludwig` sind Sachbearbeiter.
   Passwörter stehen ausschließlich in den Elestio-Umgebungsvariablen
   `KRAUTL_PASSWORD_ERIK`, `KRAUTL_PASSWORD_GURSEWAK` und
   `KRAUTL_PASSWORD_LUDWIG`. `KRAUTL_SESSION_SECRET` signiert die
@@ -131,11 +131,14 @@ gespeichert wurde.
   mit `OPENAI_TRANSCRIPTION_MODEL` geändert werden. Die reine Gliederung und
   Formatierung übernimmt standardmäßig das kleine, schnelle Claude Haiku 4.5;
   `AUDIO_FORMATTING_MODEL` kann dieses zweite Modell bei Bedarf überschreiben.
-- Bestätigungen gelten aktuell für alle Nutzer mit Zugriff auf Krautl. Das
-  Datenmodell enthält bereits Zieltyp/-referenz für spätere Rollen oder
-  einzelne Nutzer; Nutzerverwaltung und Rollenprüfung fehlen noch.
-- Rollenbasierte Rechteprüfung fehlt noch; derzeit haben alle drei eingerichteten
-  Nutzer Vollzugriff.
+- Unter **Einstellungen → Rollen & Mailzugriff** legt ein Admin je
+  Klassifikation fest, welche Mailarten Sachbearbeiter sehen und bearbeiten
+  dürfen. Die Prüfung erfolgt auch im Backend für Posteingang, Bestätigungen,
+  Kategoriekorrekturen, Antwortentwürfe, zugehörige Rechnungen und aus Mails
+  abgeleitete Wissensvorschläge. Admins haben stets Zugriff auf alle Mailarten.
+- Bestätiger-Ziele pro Aufgabe sind weiterhin nicht nach einzelnen Personen
+  oder Rollen differenziert; innerhalb einer freigegebenen Mailart darf jeder
+  Sachbearbeiter bestätigen.
 
 ## Produktbezogene Wissensbasis und FAQ
 

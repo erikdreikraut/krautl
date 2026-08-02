@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   Search, ChevronRight, ChevronDown, CheckCircle2, PenLine, Paperclip, X,
   Inbox as InboxIcon, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
-  LogOut, UserRound,
+  LogOut, ShieldCheck, UserRound,
 } from "lucide-react";
 import { api } from "./api.js";
 import logo from "./assets/krautl-logo.png";
@@ -110,6 +110,7 @@ const EREIGNIS_LABEL = {
   wissenspruefung_fehlgeschlagen: "Wissensprüfung fehlgeschlagen",
   audio_transkribiert: "Audio transkribiert",
   audio_transkription_fehlgeschlagen: "Audiotranskription fehlgeschlagen",
+  rollenzugriff_geaendert: "Rollenzugriff geändert",
 };
 function farbeFuerEreignis(ereignis) {
   if (ereignis.endsWith("fehlgeschlagen")) return tokens.rust;
@@ -615,6 +616,92 @@ function WissensdatenbankView({ faqEintraege, faqVorschlaege, onReload }) {
   );
 }
 
+function RollenMailzugriffView({ konfiguration, onReload }) {
+  const sachbearbeiter = konfiguration.rollen.find((r) => r.id === "sachbearbeiter");
+  const admin = konfiguration.rollen.find((r) => r.id === "admin");
+  const [auswahl, setAuswahl] = useState(() => new Set(sachbearbeiter?.klassifikation_ids || []));
+  const [speichert, setSpeichert] = useState(false);
+  const [meldung, setMeldung] = useState("");
+  const gruppen = useMemo(() => {
+    const ergebnis = {};
+    for (const k of konfiguration.klassifikationen) {
+      (ergebnis[k.hauptkategorie] ||= []).push(k);
+    }
+    return ergebnis;
+  }, [konfiguration]);
+
+  useEffect(() => {
+    setAuswahl(new Set(sachbearbeiter?.klassifikation_ids || []));
+  }, [sachbearbeiter?.klassifikation_ids?.join("|")]);
+
+  function umschalten(id) {
+    setAuswahl((alt) => {
+      const neu = new Set(alt);
+      if (neu.has(id)) neu.delete(id); else neu.add(id);
+      return neu;
+    });
+    setMeldung("");
+  }
+
+  function gruppeSetzen(klassifikationen, erlaubt) {
+    setAuswahl((alt) => {
+      const neu = new Set(alt);
+      for (const k of klassifikationen) {
+        if (erlaubt) neu.add(k.klassifikation_id); else neu.delete(k.klassifikation_id);
+      }
+      return neu;
+    });
+  }
+
+  async function speichern() {
+    setSpeichert(true); setMeldung("");
+    try {
+      await api.rollenMailzugriffSpeichern("sachbearbeiter", [...auswahl]);
+      setMeldung("Mailzugriff gespeichert.");
+      await onReload();
+    } catch (fehler) {
+      setMeldung(`Speichern fehlgeschlagen: ${fehler.message}`);
+    } finally { setSpeichert(false); }
+  }
+
+  const nutzerNamen = (rolle) => (rolle?.benutzer || []).map((b) => b.name).join(", ");
+  return <div className="flex-1 overflow-y-auto px-8 py-6">
+    <h2 style={{ ...fontDisplay, fontSize: "20px", color: tokens.mossDeep }}>Rollen & Mailzugriff</h2>
+    <p className="mb-5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
+      Admins sehen und bearbeiten alle Mailarten. Für Sachbearbeiter legen Sie die sichtbaren Klassifikationen fest.
+    </p>
+    <div className="grid grid-cols-2 gap-3 mb-6">
+      <div className="p-4" style={{ background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderLeft: `4px solid ${tokens.moss}`, borderRadius: "7px" }}>
+        <div className="flex items-center gap-2"><ShieldCheck size={15} color={tokens.moss}/><b style={fontSerif}>Admin</b></div>
+        <div className="mt-1" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{nutzerNamen(admin)} · alle Mailarten</div>
+      </div>
+      <div className="p-4" style={{ background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderLeft: `4px solid ${tokens.amber}`, borderRadius: "7px" }}>
+        <div className="flex items-center gap-2"><UserRound size={15} color={tokens.amber}/><b style={fontSerif}>Sachbearbeiter</b></div>
+        <div className="mt-1" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{nutzerNamen(sachbearbeiter)} · {auswahl.size} von {konfiguration.klassifikationen.length} Mailarten</div>
+      </div>
+    </div>
+    <div className="grid grid-cols-2 gap-4">
+      {Object.entries(gruppen).map(([gruppe, klassifikationen]) => {
+        const alle = klassifikationen.every((k) => auswahl.has(k.klassifikation_id));
+        return <div key={gruppe} className="p-4" style={{ background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "7px" }}>
+          <div className="flex items-center justify-between mb-2">
+            <b style={{ ...fontUI, fontSize: "12.5px", color: tokens.mossDeep }}>{gruppe}</b>
+            <button onClick={() => gruppeSetzen(klassifikationen, !alle)} style={{ ...fontUI, fontSize: "11px", color: tokens.moss }}>{alle ? "Gruppe abwählen" : "Gruppe auswählen"}</button>
+          </div>
+          {klassifikationen.map((k) => <label key={k.klassifikation_id} className="flex items-start gap-2 py-1.5" style={{ ...fontUI, fontSize: "12px", color: tokens.ink }} title={k.beschreibung}>
+            <input type="checkbox" checked={auswahl.has(k.klassifikation_id)} onChange={() => umschalten(k.klassifikation_id)} />
+            <span><span style={fontMono}>{k.klassifikation_id}</span>{k.beschreibung && <span className="block" style={{ fontSize: "11px", color: tokens.inkMuted }}>{k.beschreibung}</span>}</span>
+          </label>)}
+        </div>;
+      })}
+    </div>
+    <div className="flex items-center gap-3 mt-5">
+      <button onClick={speichern} disabled={speichert} className="px-4 py-2" style={{ ...fontUI, fontSize: "12.5px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px", opacity: speichert ? 0.6 : 1 }}>{speichert ? "Speichert …" : "Mailzugriff speichern"}</button>
+      {meldung && <span style={{ ...fontUI, fontSize: "12.5px", color: tokens.mossDeep }}>{meldung}</span>}
+    </div>
+  </div>;
+}
+
 function EinstellungenMenu({ active, onWaehlen }) {
   const [offen, setOffen] = useState(false);
   const ref = useRef(null);
@@ -643,6 +730,10 @@ function EinstellungenMenu({ active, onWaehlen }) {
           <button onClick={() => { onWaehlen("aktionslog"); setOffen(false); }} className="w-full text-left px-3.5 py-2"
             style={{ ...fontUI, fontSize: "13px", color: tokens.ink }}>
             Aktionslog
+          </button>
+          <button onClick={() => { onWaehlen("rollen"); setOffen(false); }} className="w-full text-left px-3.5 py-2"
+            style={{ ...fontUI, fontSize: "13px", color: tokens.ink }}>
+            Rollen & Mailzugriff
           </button>
         </div>
       )}
@@ -836,7 +927,7 @@ function AktionslogView({ eintraege }) {
   );
 }
 
-function verwendeKrautlDaten(onNichtAngemeldet) {
+function verwendeKrautlDaten(onNichtAngemeldet, benutzer) {
   const [daten, setDaten] = useState(null);
   const [fehler, setFehler] = useState(null);
   const laedt = useRef(false);
@@ -845,10 +936,13 @@ function verwendeKrautlDaten(onNichtAngemeldet) {
     if (laedt.current) return;
     laedt.current = true;
     try {
-      const [health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, aktionslog] = await Promise.all([
-        api.health(), api.mails(), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.wissensbasis(), api.wissensvorschlaege(), api.entwuerfe(), api.aktionslog(),
+      const istAdmin = benutzer?.rolle === "admin";
+      const [health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, aktionslog, rollenMailzugriff] = await Promise.all([
+        api.health(), api.mails(), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.wissensbasis(), api.wissensvorschlaege(), api.entwuerfe(),
+        istAdmin ? api.aktionslog() : Promise.resolve([]),
+        istAdmin ? api.rollenMailzugriff() : Promise.resolve(null),
       ]);
-      setDaten({ health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, aktionslog });
+      setDaten({ health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, aktionslog, rollenMailzugriff });
       setFehler(null);
     } catch (e) {
       if (e.status === 401) {
@@ -861,7 +955,7 @@ function verwendeKrautlDaten(onNichtAngemeldet) {
     } finally {
       laedt.current = false;
     }
-  }, [onNichtAngemeldet]);
+  }, [onNichtAngemeldet, benutzer]);
 
   useEffect(() => {
     laden();
@@ -989,7 +1083,7 @@ export default function KrautlUI() {
 
 function KrautlAnwendung({ benutzer, onAbmelden }) {
   const [tab, setTab] = useState("posteingang");
-  const { daten, fehler, neuLaden } = verwendeKrautlDaten(onAbmelden);
+  const { daten, fehler, neuLaden } = verwendeKrautlDaten(onAbmelden, benutzer);
 
   const abgeleitet = useMemo(() => {
     if (!daten) return null;
@@ -1086,7 +1180,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
           <NavTab icon={InboxIcon} label="Posteingang" active={tab === "posteingang"} onClick={() => setTab("posteingang")} />
           <NavTab icon={Receipt} label="Rechnungen" count={offeneRechnungen} accent active={tab === "rechnungen"} onClick={() => setTab("rechnungen")} />
           <NavTab icon={BookOpen} label="Wissensdatenbank" count={daten.wissensvorschlaege.length} accent active={tab === "wissen"} onClick={() => setTab("wissen")} />
-          <EinstellungenMenu active={tab === "klassifikationen" || tab === "aktionslog"} onWaehlen={setTab} />
+          {benutzer.rolle === "admin" && <EinstellungenMenu active={["klassifikationen", "aktionslog", "rollen"].includes(tab)} onWaehlen={setTab} />}
         </nav>
         <div className="ml-auto flex items-center gap-2">
           <span
@@ -1111,7 +1205,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
           <span style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{entwuerfeOffen} Entwürfe warten auf Freigabe</span>
           <div className="flex items-center gap-1.5 pl-3 ml-1" style={{ borderLeft: `1px solid ${tokens.line}` }}>
             <UserRound size={13} style={{ color: tokens.mossDeep }} />
-            <span style={{ ...fontUI, fontSize: "12.5px", color: tokens.ink }}>{benutzer.name}</span>
+            <span style={{ ...fontUI, fontSize: "12.5px", color: tokens.ink }}>{benutzer.name} · {benutzer.rolle === "admin" ? "Admin" : "Sachbearbeiter"}</span>
             <button
               onClick={onAbmelden}
               title="Abmelden"
@@ -1129,6 +1223,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
       {tab === "wissen" && <WissensdatenbankViewNeu basis={daten.wissensbasis} faqEintraege={daten.faq} vorschlaege={daten.wissensvorschlaege} onReload={neuLaden} />}
       {tab === "klassifikationen" && <KlassifikationenView katalog={daten.katalog} onReload={neuLaden} />}
       {tab === "aktionslog" && <AktionslogView eintraege={abgeleitet.aktionslog} />}
+      {tab === "rollen" && daten.rollenMailzugriff && <RollenMailzugriffView konfiguration={daten.rollenMailzugriff} onReload={neuLaden} />}
     </div>
   );
 }

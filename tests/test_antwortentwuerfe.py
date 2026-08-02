@@ -22,7 +22,7 @@ TEST_BENUTZER = {
     "benutzername": "erik",
     "name": "Erik Schweitzer",
     "titel": None,
-    "rolle": "vollzugriff",
+    "rolle": "admin",
 }
 
 
@@ -61,9 +61,9 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         generator = AsyncMock(return_value="Hallo Ada,\n\nsehr gern.")
         with patch("app.antworten.antwortentwurf_erzeugen", generator):
             async with SessionLocal() as session:
-                erstes = await mail_antwortentwurf_erzeugen(self.mail_id, session)
+                erstes = await mail_antwortentwurf_erzeugen(self.mail_id, test_request(), session)
             async with SessionLocal() as session:
-                zweites = await mail_antwortentwurf_erzeugen(self.mail_id, session)
+                zweites = await mail_antwortentwurf_erzeugen(self.mail_id, test_request(), session)
 
         self.assertEqual("erzeugt", erstes["status"])
         self.assertEqual("vorhanden", zweites["status"])

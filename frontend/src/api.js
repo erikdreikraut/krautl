@@ -42,6 +42,13 @@ export const api = {
       body: JSON.stringify(daten),
     }),
   aktionslog: () => anfrage("/aktionslog"),
+  rollenMailzugriff: () => anfrage("/rollen-mailzugriff"),
+  rollenMailzugriffSpeichern: (rolle, klassifikationIds) =>
+    anfrage(`/rollen-mailzugriff/${rolle}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ klassifikation_ids: klassifikationIds }),
+    }),
   mailBestaetigen: (mailId) =>
     anfrage(`/mails/${mailId}/bestaetigen`, { method: "POST" }),
   korrigiereKlassifikation: (mailId, neueKlassifikationId, notiz) =>

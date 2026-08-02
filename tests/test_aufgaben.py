@@ -1,6 +1,7 @@
 import os
 import unittest
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import patch
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_aufgaben.db")
@@ -15,6 +16,11 @@ from app.models import (
     Aktionslog, Base, Klassifikation, KlassifikationAufgabe, Mail, MailAufgabe, Postfach,
 )
 from scripts.bereinige_posteingang import bereinige
+
+
+ADMIN_REQUEST = SimpleNamespace(state=SimpleNamespace(benutzer={
+    "benutzername": "erik", "name": "Erik Schweitzer", "rolle": "admin",
+}))
 
 
 class AufgabenPipelineTest(unittest.IsolatedAsyncioTestCase):
@@ -88,7 +94,7 @@ class AufgabenPipelineTest(unittest.IsolatedAsyncioTestCase):
                 select(Aktionslog.ereignis).order_by(Aktionslog.id)
             )).scalars().all()
             self.assertEqual(["bestaetigt", "verschoben"], list(ereignisse))
-            self.assertEqual([], await liste_mails(session))
+            self.assertEqual([], await liste_mails(ADMIN_REQUEST, session))
 
     async def test_fehlgeschlagenes_verschieben_wird_protokolliert_und_mail_ausgeblendet(self):
         fake_config = type("Config", (), {
@@ -101,7 +107,7 @@ class AufgabenPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("fehlgeschlagen", ergebnis["status"])
 
         async with SessionLocal() as session:
-            self.assertEqual([], await liste_mails(session))
+            self.assertEqual([], await liste_mails(ADMIN_REQUEST, session))
             mail = await session.get(Mail, self.mail_id)
             self.assertFalse(mail.im_krautl_posteingang)
             aufgabe = (await session.execute(

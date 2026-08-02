@@ -51,8 +51,7 @@ class KlassifikationAufgabe(Base):
     """Geordnete Aufgabenvorlage einer Klassifikation.
 
     `bestaetiger_typ`/`bestaetiger_referenz` sind bewusst schon vorhanden,
-    obwohl Krautl aktuell noch keine Nutzer/Rollen kennt. Heute ist nur
-    `alle` aktiv; später kann hier `rolle` oder `nutzer` stehen.
+    `alle`, `rolle` oder `nutzer` als mögliche Bestätiger-Ziele aufnehmen.
     """
     __tablename__ = "klassifikation_aufgabe"
     __table_args__ = (
@@ -70,6 +69,21 @@ class KlassifikationAufgabe(Base):
     bestaetiger_referenz: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     klassifikation: Mapped["Klassifikation"] = relationship(back_populates="aufgaben")
+
+
+class RollenMailzugriff(Base):
+    """Legt je Rolle und Mail-Klassifikation fest, ob sie sichtbar ist."""
+    __tablename__ = "rollen_mailzugriff"
+    __table_args__ = (
+        UniqueConstraint("rolle", "klassifikation_id", name="uq_rolle_mailklassifikation"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rolle: Mapped[str] = mapped_column(String(50), index=True)
+    klassifikation_id: Mapped[str] = mapped_column(
+        ForeignKey("klassifikation.klassifikation_id", ondelete="CASCADE"), index=True
+    )
+    darf_sehen: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class Mail(Base):
