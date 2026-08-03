@@ -52,6 +52,44 @@ function formatZeit(iso) {
   return d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: ZEITZONE });
 }
 
+const BERLIN_TAG_FORMAT = new Intl.DateTimeFormat("de-DE", {
+  timeZone: ZEITZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function berlinTag(datum) {
+  const teile = Object.fromEntries(
+    BERLIN_TAG_FORMAT.formatToParts(datum)
+      .filter((teil) => teil.type !== "literal")
+      .map((teil) => [teil.type, Number(teil.value)])
+  );
+  return {
+    jahr: teile.year,
+    wert: Date.UTC(teile.year, teile.month - 1, teile.day),
+  };
+}
+
+function formatMailZeit(iso, jetzt = new Date()) {
+  if (!iso) return "";
+  const datum = new Date(iso);
+  if (Number.isNaN(datum.getTime())) return "";
+  const mailTag = berlinTag(datum);
+  const heute = berlinTag(jetzt);
+  const tageAbstand = Math.round((heute.wert - mailTag.wert) / 86_400_000);
+  const uhrzeit = formatZeit(iso);
+  if (tageAbstand === 0) return uhrzeit;
+  if (tageAbstand === 1) return `Gestern, ${uhrzeit}`;
+  const datumsOptionen = {
+    day: "2-digit",
+    month: "2-digit",
+    ...(mailTag.jahr === heute.jahr ? {} : { year: "numeric" }),
+    timeZone: ZEITZONE,
+  };
+  return `${datum.toLocaleDateString("de-DE", datumsOptionen)}, ${uhrzeit}`;
+}
+
 function formatDatum(iso) {
   if (!iso) return "";
   return new Date(iso).toLocaleDateString("de-DE", { timeZone: ZEITZONE });
@@ -349,7 +387,7 @@ function PosteingangView({ mails, katalog, onReload }) {
               style={{ borderBottom: `1px solid ${tokens.line}`, background: selected?.id === m.id ? tokens.mossPale : "transparent" }}>
               <div className="flex items-center justify-between gap-2">
                 <Badge label={m.katId} color={farbeFuerKategorie(m.kat)} />
-                <span style={{ ...fontMono, fontSize: "11px", color: tokens.inkMuted }}>{m.zeit}</span>
+                <span className="whitespace-nowrap" style={{ ...fontMono, fontSize: "11px", color: tokens.inkMuted }}>{m.zeit}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span style={{ ...fontSerif, fontSize: "14px", fontWeight: 600 }}>{m.absender}</span>
@@ -380,7 +418,7 @@ function PosteingangView({ mails, katalog, onReload }) {
                 </div>
               </div>
               <h2 style={{ ...fontDisplay, fontSize: "19px", marginTop: "12px" }}>{selected.betreff}</h2>
-              <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, marginTop: "4px" }}>{selected.absender} · {selected.zeit} Uhr</div>
+              <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, marginTop: "4px" }}>{selected.absender} · {selected.zeit}</div>
             </div>
             <div className="px-6 py-4" style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere", borderBottom: `1px solid ${tokens.line}` }}>{selected.snippet}</div>
             {Object.keys(selected.felder).length > 0 && (
@@ -1148,7 +1186,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         absender: m.absender_name || m.absender_adresse,
         betreff: m.betreff,
         snippet: m.text_auszug,
-        zeit: formatZeit(m.empfangen_am),
+        zeit: formatMailZeit(m.empfangen_am),
         konfidenz: m.konfidenz,
         aufgaben: m.aufgaben ?? [],
         bestaetigungErforderlich: Boolean(m.bestaetigung_erforderlich),
