@@ -1,7 +1,9 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from app.imap_client import PostfachConfig, mail_verschieben, neue_mails_abrufen
+from app.imap_client import (
+    PostfachConfig, mail_loeschen, mail_verschieben, neue_mails_abrufen,
+)
 
 
 class _ClientKontext:
@@ -55,6 +57,23 @@ class ImapVerschiebenTest(unittest.TestCase):
         ziel.append.assert_not_called()
         ziel.remove_flags.assert_called_once_with([42], [b"\\Draft"])
         quell_loeschen.delete_messages.assert_called_once_with([7])
+
+    def test_mail_wird_nur_nach_message_id_pruefung_geloescht(self):
+        client = MagicMock()
+        client.fetch.return_value = {7: {b"RFC822": self.eml}}
+        with patch("app.imap_client.IMAPClient", new=_ClientKontext([client])):
+            mail_loeschen(self.quelle, 7, "<test@example.test>")
+        client.delete_messages.assert_called_once_with([7])
+        client.expunge.assert_called_once_with()
+
+    def test_falsche_message_id_verhindert_das_loeschen(self):
+        client = MagicMock()
+        client.fetch.return_value = {7: {b"RFC822": self.eml}}
+        with patch("app.imap_client.IMAPClient", new=_ClientKontext([client])):
+            with self.assertRaises(RuntimeError):
+                mail_loeschen(self.quelle, 7, "<andere@example.test>")
+        client.delete_messages.assert_not_called()
+        client.expunge.assert_not_called()
 
     def test_neue_uid_wird_auch_gelesen_abgerufen(self):
         client = MagicMock()

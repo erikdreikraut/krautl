@@ -110,6 +110,40 @@ def mail_einstellen(
         return True
 
 
+def mail_loeschen(
+    config: PostfachConfig,
+    uid: int,
+    erwartete_message_id: str,
+    ordner: str = "INBOX",
+) -> None:
+    """Löscht eine eindeutig geprüfte Mail dauerhaft aus einem IMAP-Ordner.
+
+    Vor dem Löschen wird die Message-ID kontrolliert. Damit kann eine veraltete
+    UID niemals versehentlich eine andere Nachricht treffen.
+    """
+    with IMAPClient(config.host, ssl=True, timeout=60) as client:
+        client.login(config.user, config.password)
+        client.select_folder(ordner)
+        daten = client.fetch([uid], ["RFC822"])
+        if uid not in daten:
+            raise RuntimeError(f"Mail mit UID {uid} nicht mehr im Ordner {ordner} gefunden")
+        eml = daten[uid].get(b"RFC822")
+        if not eml:
+            raise RuntimeError("Mail konnte vor dem Löschen nicht geprüft werden")
+        tatsaechliche_message_id = message_from_bytes(
+            eml, policy=policy.default
+        ).get("Message-ID")
+        if not tatsaechliche_message_id or (
+            tatsaechliche_message_id.strip() != erwartete_message_id.strip()
+        ):
+            raise RuntimeError(
+                "Sicherheitsabbruch: Die IMAP-Mail stimmt nicht mit dem "
+                "Krautl-Eintrag überein"
+            )
+        client.delete_messages([uid])
+        client.expunge()
+
+
 def mail_verschieben(
     quelle: PostfachConfig,
     quell_uid: int,

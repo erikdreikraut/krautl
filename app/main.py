@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,7 @@ from .antworten import antwort_vor_versand_pruefen, antwortentwurf_speichern
 from .mail_versand import (
     TEST_EMPFAENGER, antwort_mit_signatur, testantwort_senden,
 )
+from .imap_client import lade_postfaecher, mail_loeschen as mail_imap_loeschen
 from .auth import (
     BENUTZER, COOKIE_NAME, SESSION_DAUER_SEKUNDEN, anmelden, oeffentliche_daten,
     sitzung_erstellen, sitzung_lesen,
@@ -22,7 +23,7 @@ from .berechtigungen import (
     ist_admin, verweigerte_klassifikationen,
 )
 from .models import (
-    Aktionslog, Base, Mail, MailAufgabe, Rechnung, FaqEintrag, FaqVorschlag,
+    Aktionslog, Base, Mail, MailAufgabe, Postfach, Rechnung, FaqEintrag, FaqVorschlag,
     Entwurf, Korrektur, Klassifikation, KlassifikationAufgabe, SystemStatus,
     Produkt, Produktfamilie, RollenMailzugriff, Wissenseintrag, WissensVorschlag,
 )
@@ -423,6 +424,63 @@ async def mail_bestaetigen(
     if ergebnis["status"] == "keine_bestaetigung_offen":
         raise HTTPException(status_code=409, detail="Für diese Mail wartet keine Bestätigung")
     return ergebnis
+
+
+@app.delete("/mails/{mail_id}")
+async def mail_loeschen(
+    mail_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    mail = (await session.execute(
+        select(Mail).where(Mail.id == mail_id).with_for_update()
+    )).scalar_one_or_none()
+    await _mailzugriff_erfordern(session, request, mail)
+    if not mail.im_krautl_posteingang:
+        raise HTTPException(status_code=409, detail="Mail ist nicht mehr im Krautl-Posteingang")
+
+    postfach = await session.get(Postfach, mail.postfach_id)
+    configs = {config.user.casefold(): config for config in lade_postfaecher()}
+    config = configs.get(postfach.adresse.casefold()) if postfach else None
+    if config is None or mail.imap_uid is None:
+        raise HTTPException(
+            status_code=502,
+            detail="Quellpostfach oder IMAP-UID ist nicht konfiguriert",
+        )
+
+    try:
+        await asyncio.to_thread(
+            mail_imap_loeschen, config, mail.imap_uid, mail.message_id
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Mail konnte nicht gelöscht werden: {exc}"
+        ) from exc
+
+    jetzt = datetime.now(timezone.utc)
+    mail.im_krautl_posteingang = False
+    await session.execute(
+        update(MailAufgabe)
+        .where(
+            MailAufgabe.mail_id == mail.id,
+            MailAufgabe.status.in_(["wartet", "blockiert"]),
+        )
+        .values(
+            status="abgebrochen",
+            fehler="Mail manuell gelöscht",
+            erledigt_am=jetzt,
+        )
+    )
+    session.add(Aktionslog(
+        mail_id=mail.id,
+        ereignis="mail_geloescht",
+        detail=(
+            f"Dauerhaft aus {postfach.adresse}/INBOX gelöscht; "
+            f"durch {request.state.benutzer['name']}"
+        ),
+    ))
+    await session.commit()
+    return {"status": "geloescht"}
 
 
 @app.get("/aktionslog")

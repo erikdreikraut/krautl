@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   Search, ChevronRight, ChevronDown, CheckCircle2, PenLine, Paperclip, X,
   Inbox as InboxIcon, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
-  LogOut, ShieldCheck, UserRound,
+  LogOut, ShieldCheck, Trash2, UserRound,
 } from "lucide-react";
 import { api } from "./api.js";
 import logo from "./assets/krautl-logo.png";
@@ -111,9 +111,11 @@ const EREIGNIS_LABEL = {
   audio_transkribiert: "Audio transkribiert",
   audio_transkription_fehlgeschlagen: "Audiotranskription fehlgeschlagen",
   rollenzugriff_geaendert: "Rollenzugriff geändert",
+  mail_geloescht: "Mail gelöscht",
 };
 function farbeFuerEreignis(ereignis) {
   if (ereignis.endsWith("fehlgeschlagen")) return tokens.rust;
+  if (ereignis === "mail_geloescht") return tokens.rust;
   if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt", "antwort_versendet_test", "audio_transkribiert", "wissensvorschlag_erstellt"].includes(ereignis)) return tokens.moss;
   return tokens.inkMuted;
 }
@@ -234,6 +236,43 @@ function BestaetigenButton({ mail, onBestaetigt }) {
   );
 }
 
+function MailLoeschenButton({ mail, onGeloescht }) {
+  const [laeuft, setLaeuft] = useState(false);
+  const [fehler, setFehler] = useState("");
+
+  async function loeschen() {
+    const bestaetigt = window.confirm(
+      `Mail „${mail.betreff}“ wirklich dauerhaft aus dem Postfach löschen?\n\nDiese Aktion kann nicht rückgängig gemacht werden.`
+    );
+    if (!bestaetigt) return;
+    setLaeuft(true);
+    setFehler("");
+    try {
+      await api.mailLoeschen(mail.id);
+      await onGeloescht();
+    } catch (e) {
+      setFehler(e.message);
+    } finally {
+      setLaeuft(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {fehler && <span title={fehler} style={{ ...fontUI, fontSize: "11px", color: tokens.rust }}>Löschen fehlgeschlagen</span>}
+      <button
+        onClick={loeschen}
+        disabled={laeuft}
+        title="Mail dauerhaft aus dem Postfach löschen"
+        className="flex items-center gap-1 px-2 py-1.5 disabled:opacity-50"
+        style={{ ...fontUI, fontSize: "11.5px", color: tokens.inkMuted, border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised }}
+      >
+        <Trash2 size={12} /> {laeuft ? "Löscht …" : "Mail löschen"}
+      </button>
+    </div>
+  );
+}
+
 function AntwortvorschlagButton({ mail, onErzeugt }) {
   const [laeuft, setLaeuft] = useState(false);
   const [fehler, setFehler] = useState("");
@@ -336,6 +375,7 @@ function PosteingangView({ mails, katalog, onReload }) {
                   <AntwortvorschlagButton mail={selected} onErzeugt={onReload} />
                   <BestaetigenButton mail={selected} onBestaetigt={onReload} />
                   <KategorieKorrektur mail={selected} katalog={katalog} onKorrigiert={onReload} />
+                  <MailLoeschenButton mail={selected} onGeloescht={onReload} />
                 </div>
               </div>
               <h2 style={{ ...fontDisplay, fontSize: "19px", marginTop: "12px" }}>{selected.betreff}</h2>
