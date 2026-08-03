@@ -140,6 +140,15 @@ gespeichert wurde.
   oder Rollen differenziert; innerhalb einer freigegebenen Mailart darf jeder
   Sachbearbeiter bestätigen.
 
+Nach dem Deployment der Lieferanten-Kategorie `LIEFERANT_DIVERSES` wird die
+gezielte Katalogänderung einmalig mit folgendem Befehl eingespielt. Dabei wird
+`LIEFERANT_PREISAENDERUNG` entfernt, ohne die inzwischen im Frontend
+bearbeiteten Aktionen anderer Kategorien anzutasten:
+
+```bash
+docker compose exec app python -m scripts.aktualisiere_lieferantenkategorien
+```
+
 ## Produktbezogene Wissensbasis und FAQ
 
 Unter **Wissensdatenbank** werden vier Geltungsbereiche getrennt gepflegt:
