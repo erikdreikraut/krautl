@@ -112,6 +112,7 @@ const EREIGNIS_LABEL = {
   audio_transkription_fehlgeschlagen: "Audiotranskription fehlgeschlagen",
   rollenzugriff_geaendert: "Rollenzugriff geändert",
   mail_geloescht: "Mail gelöscht",
+  mail_loeschen_fehlgeschlagen: "Mail-Löschung fehlgeschlagen",
 };
 function farbeFuerEreignis(ereignis) {
   if (ereignis.endsWith("fehlgeschlagen")) return tokens.rust;

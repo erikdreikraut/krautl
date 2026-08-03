@@ -89,7 +89,9 @@ class MailLoeschenTest(unittest.IsolatedAsyncioTestCase):
             imap_loeschen.assert_called_once_with(
                 self.config, 17, "<loeschen@example.test>"
             )
-        self.assertEqual({"status": "geloescht"}, ergebnis)
+        self.assertEqual(
+            {"status": "geloescht", "imap_geloescht": True}, ergebnis
+        )
 
         async with SessionLocal() as session:
             mail = await session.get(Mail, self.mail_id)
@@ -105,6 +107,37 @@ class MailLoeschenTest(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(mail.im_krautl_posteingang)
             self.assertEqual("abgebrochen", aufgabe.status)
             self.assertIn("Erik Schweitzer", log.detail)
+
+    async def test_imap_fehler_wird_protokolliert_aber_mail_ausgeblendet(self):
+        async with SessionLocal() as session:
+            with (
+                patch("app.main.lade_postfaecher", return_value=[self.config]),
+                patch(
+                    "app.main.mail_imap_loeschen",
+                    side_effect=RuntimeError("Mail bereits verschoben"),
+                ),
+            ):
+                ergebnis = await mail_loeschen(
+                    self.mail_id, ADMIN_REQUEST, session
+                )
+        self.assertEqual("ausgeblendet", ergebnis["status"])
+        self.assertFalse(ergebnis["imap_geloescht"])
+
+        async with SessionLocal() as session:
+            mail = await session.get(Mail, self.mail_id)
+            aufgabe = (await session.execute(
+                select(MailAufgabe).where(MailAufgabe.mail_id == self.mail_id)
+            )).scalar_one()
+            log = (await session.execute(
+                select(Aktionslog).where(
+                    Aktionslog.mail_id == self.mail_id,
+                    Aktionslog.ereignis == "mail_loeschen_fehlgeschlagen",
+                )
+            )).scalar_one()
+            self.assertFalse(mail.im_krautl_posteingang)
+            self.assertEqual("abgebrochen", aufgabe.status)
+            self.assertIn("Mail bereits verschoben", log.detail)
+            self.assertIn("trotzdem aus Krautl-Posteingang entfernt", log.detail)
 
     async def test_rollensperre_verhindert_auch_das_loeschen(self):
         async with SessionLocal() as session:

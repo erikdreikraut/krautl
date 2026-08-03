@@ -442,20 +442,16 @@ async def mail_loeschen(
     postfach = await session.get(Postfach, mail.postfach_id)
     configs = {config.user.casefold(): config for config in lade_postfaecher()}
     config = configs.get(postfach.adresse.casefold()) if postfach else None
+    imap_fehler = None
     if config is None or mail.imap_uid is None:
-        raise HTTPException(
-            status_code=502,
-            detail="Quellpostfach oder IMAP-UID ist nicht konfiguriert",
-        )
-
-    try:
-        await asyncio.to_thread(
-            mail_imap_loeschen, config, mail.imap_uid, mail.message_id
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502, detail=f"Mail konnte nicht gelöscht werden: {exc}"
-        ) from exc
+        imap_fehler = "Quellpostfach oder IMAP-UID ist nicht konfiguriert"
+    else:
+        try:
+            await asyncio.to_thread(
+                mail_imap_loeschen, config, mail.imap_uid, mail.message_id
+            )
+        except Exception as exc:
+            imap_fehler = str(exc)
 
     jetzt = datetime.now(timezone.utc)
     mail.im_krautl_posteingang = False
@@ -467,20 +463,40 @@ async def mail_loeschen(
         )
         .values(
             status="abgebrochen",
-            fehler="Mail manuell gelöscht",
+            fehler=(
+                "Mail manuell gelöscht"
+                if imap_fehler is None
+                else "IMAP-Löschversuch fehlgeschlagen; manuell aus Krautl entfernt"
+            ),
             erledigt_am=jetzt,
         )
     )
+    postfachname = postfach.adresse if postfach else "unbekanntes Postfach"
     session.add(Aktionslog(
         mail_id=mail.id,
-        ereignis="mail_geloescht",
+        ereignis=(
+            "mail_geloescht" if imap_fehler is None
+            else "mail_loeschen_fehlgeschlagen"
+        ),
         detail=(
-            f"Dauerhaft aus {postfach.adresse}/INBOX gelöscht; "
+            f"Dauerhaft aus {postfachname}/INBOX gelöscht; "
             f"durch {request.state.benutzer['name']}"
+            if imap_fehler is None
+            else (
+                f"Löschversuch in {postfachname}/INBOX fehlgeschlagen: "
+                f"{imap_fehler}; trotzdem aus Krautl-Posteingang entfernt; "
+                f"durch {request.state.benutzer['name']}"
+            )
         ),
     ))
     await session.commit()
-    return {"status": "geloescht"}
+    if imap_fehler is not None:
+        return {
+            "status": "ausgeblendet",
+            "imap_geloescht": False,
+            "detail": imap_fehler,
+        }
+    return {"status": "geloescht", "imap_geloescht": True}
 
 
 @app.get("/aktionslog")
