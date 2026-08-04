@@ -51,6 +51,8 @@ export const api = {
     }),
   mailBestaetigen: (mailId) =>
     anfrage(`/mails/${mailId}/bestaetigen`, { method: "POST" }),
+  mailErledigen: (mailId) =>
+    anfrage(`/mails/${mailId}/erledigen`, { method: "POST" }),
   mailLoeschen: (mailId) =>
     anfrage(`/mails/${mailId}`, { method: "DELETE" }),
   korrigiereKlassifikation: (mailId, neueKlassifikationId, notiz) =>

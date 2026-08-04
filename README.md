@@ -86,6 +86,12 @@ Der aktuelle Zustand ist über `/api/health` beziehungsweise intern über
 `true`, wenn innerhalb der letzten fünf Minuten ein Abruf-Lebenszeichen
 gespeichert wurde.
 
+Jede sichtbare Mail kann unabhängig von ihrer Klassifikation manuell als
+**Erledigt** markiert werden. Sie verschwindet dann aus der Krautl-Arbeitsliste,
+bleibt im IMAP-Postfach aber unverändert erhalten; offene Krautl-Aufgaben werden
+abgebrochen und der Vorgang protokolliert. **Mail löschen** ist davon klar
+getrennt und versucht zusätzlich, die Nachricht dauerhaft aus IMAP zu löschen.
+
 ## Bekannt fehlend / bewusst noch nicht eingebunden
 
 - Für das Verschieben von Rechnungen müssen `IMAP_ERIK_HOST`,

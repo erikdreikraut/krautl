@@ -149,13 +149,14 @@ const EREIGNIS_LABEL = {
   audio_transkribiert: "Audio transkribiert",
   audio_transkription_fehlgeschlagen: "Audiotranskription fehlgeschlagen",
   rollenzugriff_geaendert: "Rollenzugriff geändert",
+  mail_manuell_erledigt: "Manuell erledigt",
   mail_geloescht: "Mail gelöscht",
   mail_loeschen_fehlgeschlagen: "Mail-Löschung fehlgeschlagen",
 };
 function farbeFuerEreignis(ereignis) {
   if (ereignis.endsWith("fehlgeschlagen")) return tokens.rust;
   if (ereignis === "mail_geloescht") return tokens.rust;
-  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt", "antwort_versendet_test", "audio_transkribiert", "wissensvorschlag_erstellt"].includes(ereignis)) return tokens.moss;
+  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt", "antwort_versendet_test", "audio_transkribiert", "wissensvorschlag_erstellt", "mail_manuell_erledigt"].includes(ereignis)) return tokens.moss;
   return tokens.inkMuted;
 }
 
@@ -312,6 +313,43 @@ function MailLoeschenButton({ mail, onGeloescht }) {
   );
 }
 
+function MailErledigenButton({ mail, onErledigt }) {
+  const [laeuft, setLaeuft] = useState(false);
+  const [fehler, setFehler] = useState("");
+
+  async function erledigen() {
+    const bestaetigt = window.confirm(
+      `Mail „${mail.betreff}“ in Krautl als erledigt markieren?\n\nSie verschwindet aus dieser Liste, bleibt im Mailpostfach aber unverändert erhalten.`
+    );
+    if (!bestaetigt) return;
+    setLaeuft(true);
+    setFehler("");
+    try {
+      await api.mailErledigen(mail.id);
+      await onErledigt();
+    } catch (e) {
+      setFehler(e.message);
+    } finally {
+      setLaeuft(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {fehler && <span title={fehler} style={{ ...fontUI, fontSize: "11px", color: tokens.rust }}>Erledigen fehlgeschlagen</span>}
+      <button
+        onClick={erledigen}
+        disabled={laeuft}
+        title="Nur aus der Krautl-Arbeitsliste entfernen; die Mail bleibt im Postfach"
+        className="flex items-center gap-1 px-2 py-1.5 disabled:opacity-50"
+        style={{ ...fontUI, fontSize: "11.5px", color: tokens.mossDeep, border: `1px solid ${tokens.moss}`, borderRadius: "6px", background: tokens.paperRaised }}
+      >
+        <CheckCircle2 size={12} /> {laeuft ? "Erledigt …" : "Erledigt"}
+      </button>
+    </div>
+  );
+}
+
 function AntwortvorschlagButton({ mail, onErzeugt }) {
   const [laeuft, setLaeuft] = useState(false);
   const [fehler, setFehler] = useState("");
@@ -410,10 +448,11 @@ function PosteingangView({ mails, katalog, onReload }) {
                     {selected.zielhinweis}
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   <AntwortvorschlagButton mail={selected} onErzeugt={onReload} />
                   <BestaetigenButton mail={selected} onBestaetigt={onReload} />
                   <KategorieKorrektur mail={selected} katalog={katalog} onKorrigiert={onReload} />
+                  <MailErledigenButton mail={selected} onErledigt={onReload} />
                   <MailLoeschenButton mail={selected} onGeloescht={onReload} />
                 </div>
               </div>

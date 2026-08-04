@@ -12,7 +12,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 
 from app.db import SessionLocal, engine
 from app.imap_client import PostfachConfig
-from app.main import mail_loeschen
+from app.main import mail_erledigen, mail_loeschen
 from app.models import (
     Aktionslog, Base, Klassifikation, Mail, MailAufgabe, Postfach,
     RollenMailzugriff,
@@ -154,6 +154,37 @@ class MailLoeschenTest(unittest.IsolatedAsyncioTestCase):
                     )
             imap_loeschen.assert_not_called()
         self.assertEqual(403, fehler.exception.status_code)
+
+    async def test_erledigen_blendet_nur_in_krautl_aus(self):
+        async with SessionLocal() as session:
+            with (
+                patch("app.main.lade_postfaecher") as configs_laden,
+                patch("app.main.mail_imap_loeschen") as imap_loeschen,
+            ):
+                ergebnis = await mail_erledigen(
+                    self.mail_id, ADMIN_REQUEST, session
+                )
+            configs_laden.assert_not_called()
+            imap_loeschen.assert_not_called()
+
+        self.assertEqual(
+            {"status": "erledigt", "imap_unveraendert": True}, ergebnis
+        )
+        async with SessionLocal() as session:
+            mail = await session.get(Mail, self.mail_id)
+            aufgabe = (await session.execute(
+                select(MailAufgabe).where(MailAufgabe.mail_id == self.mail_id)
+            )).scalar_one()
+            log = (await session.execute(
+                select(Aktionslog).where(
+                    Aktionslog.mail_id == self.mail_id,
+                    Aktionslog.ereignis == "mail_manuell_erledigt",
+                )
+            )).scalar_one()
+            self.assertFalse(mail.im_krautl_posteingang)
+            self.assertEqual("abgebrochen", aufgabe.status)
+            self.assertIn("IMAP-Postfach unverändert", log.detail)
+            self.assertIn("Erik Schweitzer", log.detail)
 
 
 if __name__ == "__main__":

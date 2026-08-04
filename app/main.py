@@ -426,6 +426,46 @@ async def mail_bestaetigen(
     return ergebnis
 
 
+@app.post("/mails/{mail_id}/erledigen")
+async def mail_erledigen(
+    mail_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """Entfernt eine Mail nur aus der Krautl-Arbeitsliste, nicht aus IMAP."""
+    mail = (await session.execute(
+        select(Mail).where(Mail.id == mail_id).with_for_update()
+    )).scalar_one_or_none()
+    await _mailzugriff_erfordern(session, request, mail)
+    if not mail.im_krautl_posteingang:
+        raise HTTPException(status_code=409, detail="Mail ist bereits erledigt")
+
+    jetzt = datetime.now(timezone.utc)
+    mail.im_krautl_posteingang = False
+    await session.execute(
+        update(MailAufgabe)
+        .where(
+            MailAufgabe.mail_id == mail.id,
+            MailAufgabe.status.in_(["wartet", "blockiert"]),
+        )
+        .values(
+            status="abgebrochen",
+            fehler="Mail manuell in Krautl erledigt",
+            erledigt_am=jetzt,
+        )
+    )
+    session.add(Aktionslog(
+        mail_id=mail.id,
+        ereignis="mail_manuell_erledigt",
+        detail=(
+            "Aus Krautl-Posteingang entfernt; Mail im IMAP-Postfach "
+            f"unverändert; durch {request.state.benutzer['name']}"
+        ),
+    ))
+    await session.commit()
+    return {"status": "erledigt", "imap_unveraendert": True}
+
+
 @app.delete("/mails/{mail_id}")
 async def mail_loeschen(
     mail_id: int,
