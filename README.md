@@ -149,6 +149,14 @@ bearbeiteten Aktionen anderer Kategorien anzutasten:
 docker compose exec app python -m scripts.aktualisiere_lieferantenkategorien
 ```
 
+Die beiden getrennten Shop-Apotheke-Kategorien für Bestellungen und wichtige
+Plattformmeldungen werden nach dem entsprechenden Deployment einmalig so
+eingespielt, ohne andere Klassifikationen zu überschreiben:
+
+```bash
+docker compose exec app python -m scripts.aktualisiere_shopapotheke_kategorien
+```
+
 ## Produktbezogene Wissensbasis und FAQ
 
 Unter **Wissensdatenbank** werden vier Geltungsbereiche getrennt gepflegt:

@@ -49,6 +49,21 @@ echte oder plausibel wirkende Namen, verständliche Freitexte, übliche
 Bestellnummern oder sonstige sinnvoll verwertbare Daten. Einzelne ungewöhnliche
 Werte oder Tippfehler genügen nicht; es müssen mehrere klare Unsinnsmerkmale
 zusammenkommen.
+
+MARKTPLATZ-ZUORDNUNG:
+Die Identität des Marktplatzes hat Vorrang vor bloß ähnlichen Betreffzeilen
+oder Themen. AMAZON_STATUS und AMAZON_WICHTIG dürfen nur gewählt werden, wenn
+die Nachricht tatsächlich Amazon betrifft. Nachrichten von oder über Shop
+Apotheke, Shop Apotheke Marketplace, Redcare Pharmacy oder deren Mirakl-Portal
+dürfen niemals einer Amazon-Klassifikation zugeordnet werden.
+
+Konkrete neue Shop-Apotheke-Bestellungen mit einer Bestellnummer im Muster
+COM-... sowie Angaben zu Kunde, Artikeln, Mengen, Lieferadresse oder Versandfrist
+gehören in SHOPAPOTHEKE_BESTELLUNG, sofern diese ID im Katalog vorhanden ist.
+Wichtige Richtlinien-, Compliance-, Konto-, Listing- oder Plattformmeldungen
+von Shop Apotheke/Redcare gehören in SHOPAPOTHEKE_WICHTIG, sofern diese ID im
+Katalog vorhanden ist. Fehlt eine passende Shop-Apotheke-Klasse, ist
+UNGEKLAERT einer sachlich falschen Amazon-Klassifikation vorzuziehen.
 """
 
 KLASSIFIZIERUNGS_TOOL = {
@@ -71,6 +86,39 @@ KLASSIFIZIERUNGS_TOOL = {
         ],
     },
 }
+
+
+def marktplatz_zuordnung_absichern(
+    ergebnis: dict, mail: dict, katalog: list[dict]
+) -> dict:
+    """Verhindert Verwechslungen zwischen Shop Apotheke und Amazon."""
+    text = " ".join(str(mail.get(feld, "")) for feld in (
+        "absender_name", "absender_adresse", "betreff", "text_auszug"
+    )).casefold()
+    shopapotheke = any(marker in text for marker in (
+        "shop apotheke", "shopapotheke", "redcare pharmacy", "redcare",
+        "mirakl.net", "mirakl",
+    ))
+    if not shopapotheke:
+        return ergebnis
+
+    katalog_ids = {eintrag["klassifikation_id"] for eintrag in katalog}
+    ist_bestellung = "com-" in text and any(marker in text for marker in (
+        "bestellnummer", "zu versendende bestellung", "lieferadresse",
+        "/mmp/shop/order/",
+    ))
+    abgesichert = dict(ergebnis)
+    if ist_bestellung and "SHOPAPOTHEKE_BESTELLUNG" in katalog_ids:
+        abgesichert["klassifikation_id"] = "SHOPAPOTHEKE_BESTELLUNG"
+        abgesichert["aktion_erforderlich"] = True
+    elif str(ergebnis.get("klassifikation_id", "")).startswith("AMAZON_"):
+        abgesichert["klassifikation_id"] = (
+            "SHOPAPOTHEKE_WICHTIG"
+            if "SHOPAPOTHEKE_WICHTIG" in katalog_ids
+            else "UNGEKLAERT"
+        )
+        abgesichert["aktion_erforderlich"] = True
+    return abgesichert
 
 
 def klassifiziere(mail: dict, katalog: list[dict], beispiele: list[dict] | None = None) -> dict:
@@ -108,5 +156,5 @@ Spam-Score: {mail.get('spam_score', 'nicht vorhanden')}
 
     for block in response.content:
         if block.type == "tool_use":
-            return block.input
+            return marktplatz_zuordnung_absichern(block.input, mail, katalog)
     raise RuntimeError("Keine Klassifizierung erhalten.")
