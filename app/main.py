@@ -833,9 +833,15 @@ async def faq_export(produkt_id: int, session: AsyncSession = Depends(get_sessio
     faq = (await session.execute(select(FaqEintrag).where(
         FaqEintrag.produkt_id == produkt_id,
         FaqEintrag.aktiv.is_(True),
-        FaqEintrag.status == "freigegeben",
+        FaqEintrag.status.in_(["entwurf", "freigegeben"]),
     ))).scalars().all()
-    return {"produkt": produkt.name, "html": faq_als_jtl_html(produkt, faq)}
+    entwuerfe = sum(eintrag.status == "entwurf" for eintrag in faq)
+    return {
+        "produkt": produkt.name,
+        "html": faq_als_jtl_html(produkt, faq),
+        "anzahl": len(faq),
+        "entwuerfe": entwuerfe,
+    }
 
 
 @app.get("/wissensvorschlaege")

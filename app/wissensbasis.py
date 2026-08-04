@@ -111,7 +111,7 @@ def _antwort_html(text: str) -> str:
 
 
 def faq_als_jtl_html(produkt: Produkt, faq: list[FaqEintrag]) -> str:
-    """Exportiert alle freigegebenen Produkt-FAQ im vorhandenen JTL-Schema."""
+    """Exportiert die übergebenen Produkt-FAQ im vorhandenen JTL-Schema."""
     faq = sorted(faq, key=lambda e: (e.sortierung, e.kategorie.casefold(), e.id))
     gruppen: dict[str, list[FaqEintrag]] = {}
     for eintrag in faq:

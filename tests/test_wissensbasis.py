@@ -19,6 +19,7 @@ from app.wissensbasis import (
     faq_als_jtl_html, relevante_wissensbasis,
     wissenszuwachs_nach_antwort_pruefen,
 )
+from app.main import faq_export
 
 
 class WissensbasisTest(unittest.IsolatedAsyncioTestCase):
@@ -84,8 +85,41 @@ class WissensbasisTest(unittest.IsolatedAsyncioTestCase):
         export = faq_als_jtl_html(produkt, faq)
         self.assertIn('itemtype="https://schema.org/FAQPage"', export)
         self.assertIn('data-target="#faq-1"', export)
+        self.assertIn('<!-- Abschnitt: Anwendung &amp; Praktisches -->', export)
+        self.assertIn('<h2 class="mt-4 mb-2">Anwendung &amp; Praktisches</h2>', export)
+        self.assertIn('itemtype="https://schema.org/Question" class="card"', export)
+        self.assertIn('itemtype="https://schema.org/Answer" class="collapse"', export)
+        self.assertIn('itemprop="text" class="card-body"', export)
         self.assertIn("Anwendung &amp; Praktisches", export)
         self.assertIn("Kalt oder lauwarm einrühren.", export)
+
+    async def test_jtl_export_enthaelt_aktive_entwuerfe_aber_nichts_veraltetes(self):
+        async with SessionLocal() as session:
+            session.add_all([
+                FaqEintrag(
+                    produkt_id=self.produkt_id, kategorie="Qualität",
+                    frage="Aktiver Entwurf?", antwort="Ja.",
+                    status="entwurf", aktiv=True, sortierung=20,
+                ),
+                FaqEintrag(
+                    produkt_id=self.produkt_id, kategorie="Alt",
+                    frage="Veraltet?", antwort="Ja.",
+                    status="veraltet", aktiv=True, sortierung=30,
+                ),
+                FaqEintrag(
+                    produkt_id=self.produkt_id, kategorie="Inaktiv",
+                    frage="Ausgewählt?", antwort="Nein.",
+                    status="freigegeben", aktiv=False, sortierung=40,
+                ),
+            ])
+            await session.commit()
+            ergebnis = await faq_export(self.produkt_id, session)
+
+        self.assertEqual(2, ergebnis["anzahl"])
+        self.assertEqual(1, ergebnis["entwuerfe"])
+        self.assertIn("Aktiver Entwurf?", ergebnis["html"])
+        self.assertNotIn("Veraltet?", ergebnis["html"])
+        self.assertNotIn("Ausgewählt?", ergebnis["html"])
 
     async def test_export_unterstuetzt_einfache_formatierung_ohne_rohes_html(self):
         async with SessionLocal() as session:

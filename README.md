@@ -188,10 +188,13 @@ werden und dürfen weder erfunden noch durch Umformulierung verstärkt werden.
 
 FAQ werden in der Oberfläche als einfache Frage und Antwort bearbeitet. Für
 Absätze, Aufzählungen, `**Fettdruck**` und Weblinks ist kein HTML nötig. Für
-jedes Produkt erzeugt **Gesamtes JTL-HTML kopieren** alle aktiven,
-freigegebenen FAQ in einem vollständigen Schema.org-`FAQPage`-Accordion mit
-den bei dreikraut verwendeten Bootstrap-/JTL-Attributen. Der Block kann als
-Ganzes in JTL eingefügt werden; HTML muss nicht von Hand gepflegt werden.
+jedes Produkt erzeugt **Aktuelles JTL-HTML kopieren** alle als **Im aktuellen
+FAQ enthalten** markierten Entwürfe und freigegebenen FAQ in einem vollständigen
+Schema.org-`FAQPage`-Accordion mit den bei dreikraut verwendeten
+Bootstrap-/JTL-Attributen. Veraltete oder inaktive Einträge werden nicht
+exportiert. Sind Entwürfe enthalten, verlangt Krautl vor dem Kopieren eine
+ausdrückliche Bestätigung. Der Block kann als Ganzes in JTL eingefügt werden.
+HTML muss nicht von Hand gepflegt werden.
 
 **Shop-Produkte aktualisieren** liest den derzeit sichtbaren Produktbestand
 aus der öffentlichen JTL-Produktübersicht ein. Vorhandene Produkte werden über
@@ -199,7 +202,7 @@ Artikelnummer, Produktadresse oder Namen wiedererkannt; manuell gepflegte
 Produktfamilien und Suchbegriffe bleiben erhalten. Der Abgleich verändert
 keine Wissens- oder FAQ-Einträge.
 
-Als Test für die einmalige FAQ-Erstbefüllung können neun redaktionell zu prüfende
+Als Test für die einmalige FAQ-Erstbefüllung können acht redaktionell zu prüfende
 Entwürfe für die Chlorella-Presslinge eingespielt werden. Der Import arbeitet
 nur, wenn dieses Produkt noch gar keine FAQ besitzt, lässt alle anderen
 Produkte unberührt und veröffentlicht nichts automatisch:
