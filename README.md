@@ -193,6 +193,21 @@ Artikelnummer, Produktadresse oder Namen wiedererkannt; manuell gepflegte
 Produktfamilien und Suchbegriffe bleiben erhalten. Der Abgleich verändert
 keine Wissens- oder FAQ-Einträge.
 
+Als Test für die einmalige FAQ-Erstbefüllung können neun redaktionell zu prüfende
+Entwürfe für die Chlorella-Presslinge eingespielt werden. Der Import arbeitet
+nur, wenn dieses Produkt noch gar keine FAQ besitzt, lässt alle anderen
+Produkte unberührt und veröffentlicht nichts automatisch:
+
+```bash
+docker compose exec app python -m scripts.importiere_chlorella_faq_entwuerfe
+```
+
+Die Fragen orientieren sich an typischen Kundenfragen und vergleichbaren
+Angeboten. Die Antworten verwenden ausschließlich die dreikraut-Produktseite
+und bei den allgemeinen Fragen zusätzlich ausgewiesene Verbraucherquellen.
+Alle Einträge erhalten den Status **Entwurf** und müssen in Krautl einzeln
+redaktionell geprüft und freigegeben werden.
+
 Nach dem Versand einer manuell veränderten Kundenantwort vergleicht Krautl
 Kundenfrage, ursprünglichen KI-Entwurf, endgültige Antwort und vorhandenes
 Wissen. Nur eine wirklich wiederverwendbare Ergänzung wird vorgeschlagen.

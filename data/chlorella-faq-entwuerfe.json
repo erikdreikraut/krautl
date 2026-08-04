@@ -1,0 +1,85 @@
+[
+  {
+    "gruppe": "Zusammensetzung & Qualität",
+    "frage": "Woraus bestehen die Chlorella-Presslinge?",
+    "antwort": "Aus 100 Prozent Chlorella vulgaris aus kontrolliert biologischer Aquakultur – sonst nichts. Wir verwenden weder Hilfs- noch Zusatzstoffe. Ein Pressling enthält 400 mg Chlorella; in der Packung stecken 750 Presslinge beziehungsweise 300 g.",
+    "quellen": [
+      "https://dreikraut.de/bio-chlorella-tabletten-presslinge"
+    ],
+    "sortierung": 10
+  },
+  {
+    "gruppe": "Zusammensetzung & Qualität",
+    "frage": "Sind die Chlorella-Presslinge bio-zertifiziert?",
+    "antwort": "Ja. Die Chlorella stammt aus kontrolliert biologischer Aquakultur und ist als Nicht-EU-Landwirtschaft gekennzeichnet. Zuständige Bio-Kontrollstelle ist DE-ÖKO-039.",
+    "quellen": [
+      "https://dreikraut.de/bio-chlorella-tabletten-presslinge"
+    ],
+    "sortierung": 20
+  },
+  {
+    "gruppe": "Herkunft & Herstellung",
+    "frage": "Wie werden die Chlorella-Algen angebaut und verarbeitet?",
+    "antwort": "Die Algen wachsen in geschlossenen Wassertanks unter kontrollierten Bedingungen. Laut unserer Produktbeschreibung werden dabei unter anderem Wassertemperatur und pH-Wert überwacht. Nach der Ernte werden die Algen getrocknet, zu Pulver verarbeitet und ohne weitere Hilfsstoffe zu Presslingen gepresst.",
+    "quellen": [
+      "https://dreikraut.de/bio-chlorella-tabletten-presslinge"
+    ],
+    "sortierung": 30
+  },
+  {
+    "gruppe": "Herkunft & Herstellung",
+    "frage": "Sind die Zellmembranen der Chlorella aufgebrochen?",
+    "antwort": "Nein. Bei unseren Presslingen bleiben die Zellmembranen bewusst in ihrer natürlichen Form. Wir verzichten auf diesen zusätzlichen Verarbeitungsschritt, weil dabei empfindliche Bestandteile beeinträchtigt und Oxidationsprozesse begünstigt werden können. Die menschliche Verdauung kann Chlorella-Zellen grundsätzlich selbst aufschließen.",
+    "quellen": [
+      "https://dreikraut.de/bio-chlorella-tabletten-presslinge"
+    ],
+    "sortierung": 40
+  },
+  {
+    "gruppe": "Anwendung & Praktisches",
+    "frage": "Wie nehme ich die Chlorella-Presslinge ein?",
+    "antwort": "Für Erwachsene empfehlen wir zweimal täglich drei Presslinge. Bitte unzerkaut mit ausreichend Flüssigkeit vor oder zu einer Mahlzeit einnehmen. Die empfohlene Tagesmenge von sechs Presslingen sollte nicht überschritten werden.",
+    "quellen": [
+      "https://dreikraut.de/bio-chlorella-tabletten-presslinge"
+    ],
+    "sortierung": 50
+  },
+  {
+    "gruppe": "Anwendung & Praktisches",
+    "frage": "Wie lange reicht eine Packung?",
+    "antwort": "Bei der empfohlenen Tagesmenge von sechs Presslingen reicht eine Packung mit 750 Stück rechnerisch für 125 Tage – also gut vier Monate.",
+    "quellen": [
+      "https://dreikraut.de/bio-chlorella-tabletten-presslinge"
+    ],
+    "sortierung": 60
+  },
+  {
+    "gruppe": "Sicherheit & Hinweise",
+    "frage": "Kann ich die Chlorella-Presslinge in Schwangerschaft und Stillzeit einnehmen?",
+    "antwort": "Schwangere und Stillende sollten die Einnahme vorab mit ihrer Ärztin oder ihrem Arzt besprechen. Das ist auch der Hinweis auf unserer Produktseite; eine pauschale Empfehlung wäre hier nicht seriös.",
+    "quellen": [
+      "https://dreikraut.de/bio-chlorella-tabletten-presslinge"
+    ],
+    "sortierung": 70
+  },
+  {
+    "gruppe": "Sicherheit & Hinweise",
+    "frage": "Sind Chlorella-Presslinge eine verlässliche Vitamin-B12-Quelle?",
+    "antwort": "Nein, darauf sollte man sich nicht verlassen. Für unsere Presslinge ist keine Vitamin-B12-Menge deklariert. Zudem weist die Verbraucherzentrale darauf hin, dass die B12-Gehalte von Algenprodukten erheblich schwanken können. Wer seine Vitamin-B12-Versorgung sicherstellen muss, sollte deshalb ein verlässlich dosiertes Präparat wählen und die Versorgung bei Bedarf ärztlich prüfen lassen.",
+    "quellen": [
+      "https://dreikraut.de/bio-chlorella-tabletten-presslinge",
+      "https://www.verbraucherzentrale.de/wissen/lebensmittel/nahrungsergaenzungsmittel/vitamin-b12-gegen-erschoepfung-und-muedigkeit-8243"
+    ],
+    "sortierung": 80
+  },
+  {
+    "gruppe": "Produktvergleich",
+    "frage": "Was ist der Unterschied zwischen Chlorella und Spirulina?",
+    "antwort": "Chlorella ist eine echte grüne Mikroalge; Spirulina gehört biologisch zu den Cyanobakterien und wird nur umgangssprachlich als Alge bezeichnet. Unsere Presslinge bestehen ausschließlich aus Chlorella vulgaris. Die beiden Rohstoffe sind deshalb keine bloß unterschiedlich benannten Varianten desselben Produkts.",
+    "quellen": [
+      "https://dreikraut.de/bio-chlorella-tabletten-presslinge",
+      "https://www.verbraucherzentrale.de/wissen/lebensmittel/kennzeichnung-und-inhaltsstoffe/marktcheck-essbare-algen-naehrstoffquelle-mit-potenziellem-gesundheitsrisiko-102668"
+    ],
+    "sortierung": 90
+  }
+]
