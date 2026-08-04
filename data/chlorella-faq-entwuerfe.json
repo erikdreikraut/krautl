@@ -63,16 +63,6 @@
     "sortierung": 70
   },
   {
-    "gruppe": "Sicherheit & Hinweise",
-    "frage": "Sind Chlorella-Presslinge eine verlässliche Vitamin-B12-Quelle?",
-    "antwort": "Nein, darauf sollte man sich nicht verlassen. Für unsere Presslinge ist keine Vitamin-B12-Menge deklariert. Zudem weist die Verbraucherzentrale darauf hin, dass die B12-Gehalte von Algenprodukten erheblich schwanken können. Wer seine Vitamin-B12-Versorgung sicherstellen muss, sollte deshalb ein verlässlich dosiertes Präparat wählen und die Versorgung bei Bedarf ärztlich prüfen lassen.",
-    "quellen": [
-      "https://dreikraut.de/bio-chlorella-tabletten-presslinge",
-      "https://www.verbraucherzentrale.de/wissen/lebensmittel/nahrungsergaenzungsmittel/vitamin-b12-gegen-erschoepfung-und-muedigkeit-8243"
-    ],
-    "sortierung": 80
-  },
-  {
     "gruppe": "Produktvergleich",
     "frage": "Was ist der Unterschied zwischen Chlorella und Spirulina?",
     "antwort": "Chlorella ist eine echte grüne Mikroalge. Spirulina gehört biologisch zu den Cyanobakterien und wird nur umgangssprachlich als Alge bezeichnet. Unsere Presslinge bestehen ausschließlich aus Chlorella vulgaris. Die beiden Rohstoffe sind deshalb keine bloß unterschiedlich benannten Varianten desselben Produkts.",
@@ -80,6 +70,6 @@
       "https://dreikraut.de/bio-chlorella-tabletten-presslinge",
       "https://www.verbraucherzentrale.de/wissen/lebensmittel/kennzeichnung-und-inhaltsstoffe/marktcheck-essbare-algen-naehrstoffquelle-mit-potenziellem-gesundheitsrisiko-102668"
     ],
-    "sortierung": 90
+    "sortierung": 80
   }
 ]

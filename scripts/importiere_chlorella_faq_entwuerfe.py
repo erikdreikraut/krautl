@@ -32,20 +32,30 @@ QUELLENHINWEIS_KORREKTUREN = {
     "Das ist auch der Hinweis auf unserer Produktseite. ": "",
 }
 
+ZU_ENTFERNENDE_FRAGEN = {
+    "Sind Chlorella-Presslinge eine verlässliche Vitamin-B12-Quelle?",
+}
 
-async def _quellenhinweise_bereinigen(session, produkt_id: int) -> int:
+
+async def _entwuerfe_bereinigen(session, produkt_id: int) -> tuple[int, int]:
     eintraege = (await session.execute(
         select(FaqEintrag).where(FaqEintrag.produkt_id == produkt_id)
     )).scalars().all()
     geaendert = 0
+    entfernt = 0
     for eintrag in eintraege:
+        if eintrag.frage in ZU_ENTFERNENDE_FRAGEN:
+            await session.delete(eintrag)
+            entfernt += 1
+            continue
         antwort = eintrag.antwort
         for alter_text, neuer_text in QUELLENHINWEIS_KORREKTUREN.items():
             antwort = antwort.replace(alter_text, neuer_text)
         if antwort != eintrag.antwort:
             eintrag.antwort = antwort
             geaendert += 1
-    return geaendert
+    await session.flush()
+    return geaendert, entfernt
 
 
 async def importiere(session, daten: list[dict] | None = None) -> dict:
@@ -61,7 +71,7 @@ async def importiere(session, daten: list[dict] | None = None) -> dict:
             "Wissensdatenbank 'Shop-Produkte aktualisieren' ausführen."
         )
 
-    bereinigt = await _quellenhinweise_bereinigen(session, produkt.id)
+    bereinigt, entfernt = await _entwuerfe_bereinigen(session, produkt.id)
     vorhandene_anzahl = (await session.execute(
         select(func.count(FaqEintrag.id)).where(FaqEintrag.produkt_id == produkt.id)
     )).scalar_one()
@@ -71,6 +81,7 @@ async def importiere(session, daten: list[dict] | None = None) -> dict:
             "produkt": produkt.name,
             "angelegt": 0,
             "bereinigt": bereinigt,
+            "entfernt": entfernt,
             "uebersprungen": True,
             "grund": f"bereits {vorhandene_anzahl} FAQ-Einträge vorhanden",
         }
@@ -94,6 +105,7 @@ async def importiere(session, daten: list[dict] | None = None) -> dict:
         "produkt": produkt.name,
         "angelegt": len(daten),
         "bereinigt": bereinigt,
+        "entfernt": entfernt,
         "uebersprungen": False,
     }
 
@@ -104,7 +116,8 @@ async def main() -> None:
     if ergebnis["uebersprungen"]:
         print(
             f"Keine neuen FAQ: {ergebnis['produkt']} – {ergebnis['grund']}. "
-            f"{ergebnis['bereinigt']} Quellenhinweis(e) bereinigt."
+            f"{ergebnis['bereinigt']} Quellenhinweis(e) bereinigt, "
+            f"{ergebnis['entfernt']} ungeeignete Frage(n) entfernt."
         )
     else:
         print(

@@ -216,8 +216,9 @@ redaktionell geprüft und freigegeben werden.
 
 Ein erneuter Lauf überschreibt keine redaktionellen Änderungen. Er entfernt
 lediglich zwei bekannte Selbstverweise auf Produktseite beziehungsweise
-Produktbeschreibung aus bereits importierten Chlorella-Entwürfen. Die Quellen
-bleiben dabei intern im Feld **Quelle** erhalten.
+Produktbeschreibung und den ungeeigneten B12-FAQ-Punkt aus bereits importierten
+Chlorella-Entwürfen. Die Quellen bleiben dabei intern im Feld **Quelle**
+erhalten.
 
 Nach dem Versand einer manuell veränderten Kundenantwort vergleicht Krautl
 Kundenfrage, ursprünglichen KI-Entwurf, endgültige Antwort und vorhandenes

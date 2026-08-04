@@ -28,6 +28,34 @@ Das Hagebutten-FAQ trifft den gewünschten Ton beispielsweise dort besonders gut
 
 In der Regel genügen ein bis zwei kurze Absätze. Listen sind sinnvoll, wenn mehrere Anwendungen, Varianten oder Schritte genannt werden.
 
+## Auswahl geeigneter Fragen
+
+FAQ sind kein vollständiges Lexikon rund um einen Rohstoff. Sie beantworten
+Fragen, die Kaufentscheidung, Anwendung, Qualität oder sichere Nutzung des
+konkreten Produkts sinnvoll unterstützen.
+
+Vor dem Schreiben wird deshalb geprüft:
+
+- Ist die Frage für genau dieses Produkt und seine tatsächlichen Eigenschaften
+  relevant?
+- Lässt sie sich mit belegten Angaben hilfreich und aus Produktsicht fair
+  beantworten?
+- Räumt sie ein häufiges Missverständnis aus, erklärt sie einen echten Vorteil
+  oder erleichtert sie die richtige Anwendung?
+- Würde die Frage ohne konkreten Kundenanlass lediglich einen Nachteil, eine
+  fehlende Eigenschaft oder einen Grund gegen das Produkt hervorheben?
+
+Wirft die ehrliche Antwort vor allem ein schlechtes Licht auf das Produkt, wird
+zuerst nach einem anderen, sachlich belegbaren Blickwinkel gesucht. Gibt es
+keinen solchen Blickwinkel, wird die Frage nicht als FAQ vorgeschlagen. Eine
+nicht ausgelobte Produkteigenschaft wird nicht durch eine negative Antwort
+überhaupt erst zum Thema gemacht.
+
+Davon ausgenommen sind notwendige Sicherheits- und Anwendungshinweise,
+gesetzlich erforderliche Informationen und tatsächlich häufige
+Missverständnisse. Sie werden nie verschwiegen oder beschönigt. Entscheidend
+ist der Kundennutzen, nicht das künstliche Erzeugen zusätzlicher Einwände.
+
 ## Verbindliche Quellenrangfolge
 
 1. Freigegebene Angaben auf der jeweiligen Produktseite, Verpackung und aktuelle Produktspezifikation.
@@ -91,6 +119,8 @@ Vor einer Freigabe ist zu prüfen:
 - pauschale Versprechen wie „garantiert“, „immer“, „für jeden“ oder „problemlos“
 - erfundene Herkunfts-, Qualitäts- oder Herstellungsdetails
 - unnötige Wiederholung der Produktbeschreibung
+- Fragen, die ohne Kundennutzen nur fehlende oder nachteilige Eigenschaften
+  des Produkts hervorheben
 - künstliche Lockerheit, Ausrufezeichenketten oder ein Witz pro Antwort
 - die bloße Verlängerung einer Antwort, damit sie „hochwertiger“ wirkt
 - Semikolons. Sie werden ohne Ausnahme durch einen Punkt, ein Komma oder zwei

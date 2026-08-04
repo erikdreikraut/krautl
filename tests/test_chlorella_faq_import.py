@@ -93,6 +93,42 @@ class ChlorellaFaqImportTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Produktbeschreibung", eintrag.antwort)
         self.assertIn("Dabei werden", eintrag.antwort)
 
+    async def test_ungeeignete_b12_frage_wird_entfernt(self):
+        async with SessionLocal() as session:
+            produkt = (await session.execute(select(Produkt))).scalar_one()
+            session.add_all([
+                FaqEintrag(
+                    produkt_id=produkt.id,
+                    kategorie="Sicherheit & Hinweise",
+                    frage=(
+                        "Sind Chlorella-Presslinge eine verlässliche "
+                        "Vitamin-B12-Quelle?"
+                    ),
+                    antwort="Nein.",
+                    status="entwurf",
+                    sortierung=80,
+                    aktiv=True,
+                ),
+                FaqEintrag(
+                    produkt_id=produkt.id,
+                    kategorie="Anwendung",
+                    frage="Wie nehme ich sie ein?",
+                    antwort="Mit Wasser.",
+                    status="entwurf",
+                    sortierung=50,
+                    aktiv=True,
+                ),
+            ])
+            await session.commit()
+            ergebnis = await importiere(session)
+            fragen = (await session.execute(
+                select(FaqEintrag.frage)
+            )).scalars().all()
+
+        self.assertTrue(ergebnis["uebersprungen"])
+        self.assertEqual(1, ergebnis["entfernt"])
+        self.assertEqual(["Wie nehme ich sie ein?"], fragen)
+
 
 if __name__ == "__main__":
     unittest.main()
