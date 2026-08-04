@@ -1,7 +1,8 @@
 """Importiert einmalig redaktionelle FAQ-Entwürfe für Chlorella.
 
-Der Import verändert keine vorhandenen FAQ. Sobald für das Produkt bereits
-mindestens ein FAQ-Eintrag existiert, wird der gesamte Lauf übersprungen.
+Der Import überschreibt keine vorhandenen FAQ. Zwei bekannte redaktionelle
+Selbstverweise werden bei einem erneuten Lauf jedoch sicher aus den bereits
+importierten Chlorella-Entwürfen entfernt.
 
 Ausführen nach dem Deployment:
     docker compose exec app python -m scripts.importiere_chlorella_faq_entwuerfe
@@ -23,6 +24,29 @@ DATEN_PFAD = (
     Path(__file__).resolve().parent.parent / "data" / "chlorella-faq-entwuerfe.json"
 )
 
+QUELLENHINWEIS_KORREKTUREN = {
+    (
+        "Laut unserer Produktbeschreibung werden dabei unter anderem "
+        "Wassertemperatur und pH-Wert überwacht."
+    ): "Dabei werden unter anderem Wassertemperatur und pH-Wert überwacht.",
+    "Das ist auch der Hinweis auf unserer Produktseite. ": "",
+}
+
+
+async def _quellenhinweise_bereinigen(session, produkt_id: int) -> int:
+    eintraege = (await session.execute(
+        select(FaqEintrag).where(FaqEintrag.produkt_id == produkt_id)
+    )).scalars().all()
+    geaendert = 0
+    for eintrag in eintraege:
+        antwort = eintrag.antwort
+        for alter_text, neuer_text in QUELLENHINWEIS_KORREKTUREN.items():
+            antwort = antwort.replace(alter_text, neuer_text)
+        if antwort != eintrag.antwort:
+            eintrag.antwort = antwort
+            geaendert += 1
+    return geaendert
+
 
 async def importiere(session, daten: list[dict] | None = None) -> dict:
     produkt = (await session.execute(
@@ -37,13 +61,16 @@ async def importiere(session, daten: list[dict] | None = None) -> dict:
             "Wissensdatenbank 'Shop-Produkte aktualisieren' ausführen."
         )
 
+    bereinigt = await _quellenhinweise_bereinigen(session, produkt.id)
     vorhandene_anzahl = (await session.execute(
         select(func.count(FaqEintrag.id)).where(FaqEintrag.produkt_id == produkt.id)
     )).scalar_one()
     if vorhandene_anzahl:
+        await session.commit()
         return {
             "produkt": produkt.name,
             "angelegt": 0,
+            "bereinigt": bereinigt,
             "uebersprungen": True,
             "grund": f"bereits {vorhandene_anzahl} FAQ-Einträge vorhanden",
         }
@@ -66,6 +93,7 @@ async def importiere(session, daten: list[dict] | None = None) -> dict:
     return {
         "produkt": produkt.name,
         "angelegt": len(daten),
+        "bereinigt": bereinigt,
         "uebersprungen": False,
     }
 
@@ -74,7 +102,10 @@ async def main() -> None:
     async with SessionLocal() as session:
         ergebnis = await importiere(session)
     if ergebnis["uebersprungen"]:
-        print(f"Keine Änderung: {ergebnis['produkt']} – {ergebnis['grund']}.")
+        print(
+            f"Keine neuen FAQ: {ergebnis['produkt']} – {ergebnis['grund']}. "
+            f"{ergebnis['bereinigt']} Quellenhinweis(e) bereinigt."
+        )
     else:
         print(
             f"{ergebnis['angelegt']} FAQ-Entwürfe für "

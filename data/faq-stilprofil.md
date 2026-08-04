@@ -37,6 +37,18 @@ In der Regel genügen ein bis zwei kurze Absätze. Listen sind sinnvoll, wenn me
 
 Allgemeines Modellwissen ist keine hinreichende Quelle für konkrete Produkteigenschaften. Fehlt eine belastbare Information, wird keine plausible Antwort erfunden. Stattdessen wird die Frage als fachlich zu klären markiert.
 
+Die Quellen bleiben interne Metadaten für Prüfung und Pflege. Im sichtbaren
+FAQ-Text werden die eigene Produktseite, Verpackungsangaben, freigegebene
+dreikraut-Texte und Allgemeinwissen nicht als Quellen benannt. Die Antwort
+nennt die Information unmittelbar. Formulierungen wie „laut unserer
+Produktbeschreibung“, „wie auf unserer Website beschrieben“ oder „gemäß
+unserer Wissensbasis“ sind zu vermeiden.
+
+Eine externe Fachquelle wird im Antworttext nur genannt, wenn ihr konkreter
+Hinweis selbst einen Mehrwert bietet. Automatische Quellenlisten, Fußnoten und
+Links werden nicht in die Kundenfassung übernommen. Die Quellenangabe im
+Krautl-Datensatz bleibt davon unberührt.
+
 ## Gesundheitsbezogene Aussagen
 
 Alle Aussagen über Wirkung, Vorbeugung, Behandlung, Verträglichkeit, Dosierung, Schwangerschaft, Stillzeit, Allergien, Erkrankungen oder Wechselwirkungen sind **prüfpflichtig**.

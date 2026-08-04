@@ -68,6 +68,31 @@ class ChlorellaFaqImportTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(ergebnis["uebersprungen"])
         self.assertEqual(["Bereits redaktionell gepflegt?"], [e.frage for e in eintraege])
 
+    async def test_bekannte_quellenhinweise_werden_sicher_bereinigt(self):
+        async with SessionLocal() as session:
+            produkt = (await session.execute(select(Produkt))).scalar_one()
+            session.add(FaqEintrag(
+                produkt_id=produkt.id,
+                kategorie="Herstellung",
+                frage="Wie angebaut?",
+                antwort=(
+                    "Die Algen wachsen kontrolliert. Laut unserer "
+                    "Produktbeschreibung werden dabei unter anderem "
+                    "Wassertemperatur und pH-Wert überwacht. Danach geht es weiter."
+                ),
+                status="entwurf",
+                sortierung=1,
+                aktiv=True,
+            ))
+            await session.commit()
+            ergebnis = await importiere(session)
+            eintrag = (await session.execute(select(FaqEintrag))).scalar_one()
+
+        self.assertTrue(ergebnis["uebersprungen"])
+        self.assertEqual(1, ergebnis["bereinigt"])
+        self.assertNotIn("Produktbeschreibung", eintrag.antwort)
+        self.assertIn("Dabei werden", eintrag.antwort)
+
 
 if __name__ == "__main__":
     unittest.main()

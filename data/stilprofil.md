@@ -161,6 +161,19 @@ Klar und ehrlich kommuniziert, ohne Kälte. Immer verbunden mit dem, was dennoch
 
 Unsicherheit wird offen eingestanden und explizit als solche markiert, ergänzt durch konkrete Folgeschritte oder Verweise auf geeignetere Quellen. Kein Versuch, Kompetenz vorzutäuschen.
 
+### Quellen im Kundentext
+
+Quellenangaben dienen Krautl intern zur Prüfung und Nachvollziehbarkeit. In
+Kundenmails werden die eigene Produktseite, Verpackungsangaben, die interne
+Wissensbasis und allgemein bekannte Tatsachen nicht als Quelle genannt. Solche
+Informationen werden direkt und selbstverständlich formuliert. Wendungen wie
+„laut unserer Produktbeschreibung“, „auf unserer Website steht“ oder „gemäß
+unserer Wissensbasis“ werden nicht verwendet.
+
+Externe Fachquellen werden nur genannt, wenn der konkrete Verweis für den
+Kunden einen eigenen Nutzen hat oder ausdrücklich erbeten wurde. Quellenlisten,
+Fußnoten und automatisch angehängte Links gehören nicht in normale Antworten.
+
 ---
 
 ## 6. Formulierungsgewohnheiten

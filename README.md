@@ -214,6 +214,11 @@ und bei den allgemeinen Fragen zusätzlich ausgewiesene Verbraucherquellen.
 Alle Einträge erhalten den Status **Entwurf** und müssen in Krautl einzeln
 redaktionell geprüft und freigegeben werden.
 
+Ein erneuter Lauf überschreibt keine redaktionellen Änderungen. Er entfernt
+lediglich zwei bekannte Selbstverweise auf Produktseite beziehungsweise
+Produktbeschreibung aus bereits importierten Chlorella-Entwürfen. Die Quellen
+bleiben dabei intern im Feld **Quelle** erhalten.
+
 Nach dem Versand einer manuell veränderten Kundenantwort vergleicht Krautl
 Kundenfrage, ursprünglichen KI-Entwurf, endgültige Antwort und vorhandenes
 Wissen. Nur eine wirklich wiederverwendbare Ergänzung wird vorgeschlagen.
