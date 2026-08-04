@@ -43,17 +43,17 @@ Alle Aussagen über Wirkung, Vorbeugung, Behandlung, Verträglichkeit, Dosierung
 
 Die KI darf:
 
-- vorhandene, freigegebene Angaben behutsam und ohne Bedeutungsverstärkung umformulieren;
-- klar zwischen Produktinformation, allgemeiner Information und individueller Beratung unterscheiden;
+- vorhandene, freigegebene Angaben behutsam und ohne Bedeutungsverstärkung umformulieren
+- klar zwischen Produktinformation, allgemeiner Information und individueller Beratung unterscheiden
 - bei individuellen medizinischen Fragen zur fachlichen Rücksprache raten.
 
 Die KI darf nicht:
 
-- neue Heil- oder Wirkversprechen ableiten;
-- Kundenberichte als Wirkungsnachweis behandeln;
-- aus „häufig“, „kann“ oder „in der Regel“ ein uneingeschränktes „wirkt“, „ist“ oder „problemlos“ machen;
-- eine individuelle Verträglichkeit, Langzeitanwendung oder Eignung verbindlich zusagen;
-- Dosierungen oder Anwendungshinweise ohne freigegebene Produktquelle erfinden;
+- neue Heil- oder Wirkversprechen ableiten
+- Kundenberichte als Wirkungsnachweis behandeln
+- aus „häufig“, „kann“ oder „in der Regel“ ein uneingeschränktes „wirkt“, „ist“ oder „problemlos“ machen
+- eine individuelle Verträglichkeit, Langzeitanwendung oder Eignung verbindlich zusagen
+- Dosierungen oder Anwendungshinweise ohne freigegebene Produktquelle erfinden
 - rechtliche Pflichttexte kürzen oder kreativ umformulieren.
 
 Solche Entwürfe bleiben bis zur fachlichen Freigabe ausdrücklich gekennzeichnet.
@@ -81,14 +81,16 @@ Vor einer Freigabe ist zu prüfen:
 - unnötige Wiederholung der Produktbeschreibung
 - künstliche Lockerheit, Ausrufezeichenketten oder ein Witz pro Antwort
 - die bloße Verlängerung einer Antwort, damit sie „hochwertiger“ wirkt
+- Semikolons. Sie werden ohne Ausnahme durch einen Punkt, ein Komma oder zwei
+  klar getrennte Sätze ersetzt.
 
 ## Verhältnis zu Kundenmails
 
 FAQ sind eine freigegebene Wissensquelle für spätere Antwortvorschläge in Krautl. Umgekehrt können häufig wiederkehrende Kundenfragen als neue FAQ-Kandidaten vorgeschlagen werden. Eine einzelne Mail oder Antwort ändert das FAQ jedoch nicht automatisch. Der Ablauf lautet:
 
-1. wiederkehrende Frage erkennen;
-2. vorhandene Produktquellen zusammentragen;
-3. FAQ-Entwurf in diesem Stil erstellen;
-4. Fakten und gesundheitsbezogene Aussagen prüfen;
-5. menschlich freigeben;
+1. wiederkehrende Frage erkennen
+2. vorhandene Produktquellen zusammentragen
+3. FAQ-Entwurf in diesem Stil erstellen
+4. Fakten und gesundheitsbezogene Aussagen prüfen
+5. menschlich freigeben
 6. erst danach als verbindliches Wissen für Antwortvorschläge verwenden.

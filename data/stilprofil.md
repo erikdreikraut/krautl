@@ -8,7 +8,7 @@
 
 dreikraut schreibt als erkennbares kleines, inhabergeführtes Unternehmen – persönlich, aufrichtig, handgemacht. Die Texte wirken nie wie Servicecenter-Output und nie wie Vorlagendreschen. Wärme entsteht durch Konkretion, Ehrlichkeit und Handlungsbereitschaft, nicht durch Emphase oder Herzchen-Rhetorik. Professionalität entsteht durch Klarheit und Verlässlichkeit, nicht durch Bürokratiesprache.
 
-Der Grundton ist **warm, nahbar und persönlich**. Sachlichkeit, Klarheit und Direktheit dienen diesem Grundton; sie ersetzen ihn nicht. Jede Antwort soll erkennen lassen, dass das Anliegen bei einem zugewandten Menschen angekommen ist. Lösungen kommen direkt. Verantwortung wird übernommen, ohne sich zu verbiegen. Interne Komplexität bleibt intern. Der Eindruck: Hier antwortet ein Mensch, der das Unternehmen kennt, dem es nicht egal ist und der das Anliegen bereits bearbeitet hat, wenn er schreibt.
+Der Grundton ist **warm, nahbar und persönlich**. Sachlichkeit, Klarheit und Direktheit dienen diesem Grundton. Sie ersetzen ihn nicht. Jede Antwort soll erkennen lassen, dass das Anliegen bei einem zugewandten Menschen angekommen ist. Lösungen kommen direkt. Verantwortung wird übernommen, ohne sich zu verbiegen. Interne Komplexität bleibt intern. Der Eindruck: Hier antwortet ein Mensch, der das Unternehmen kennt, dem es nicht egal ist und der das Anliegen bereits bearbeitet hat, wenn er schreibt.
 
 Wärme darf ausdrücklich spürbar sein. Sie soll weder überschwänglich noch künstlich wirken, aber auch nicht aus Angst vor Pathos weggekürzt werden. Im Zweifel ist die Antwort so herzlich wie die Situation glaubwürdig erlaubt.
 
@@ -26,7 +26,7 @@ Drei Grundhaltungen durchziehen alle Antworten:
 
 | Kundenverhalten | dreikraut-Reaktion |
 |---|---|
-| Kunde duzt, nennt nur Vornamen | dreikraut duzt zurück; der passende Vorname wird bei der menschlichen Prüfung ergänzt |
+| Kunde duzt, nennt nur Vornamen | dreikraut duzt zurück. Der passende Vorname wird bei der menschlichen Prüfung ergänzt. |
 | Kunde schreibt förmlich | dreikraut antwortet förmlich |
 | Kunde schreibt warm und persönlich | dreikraut antwortet mindestens ebenso warm und persönlich, ohne die Situation zu überzeichnen |
 | Ansprache unklar | dreikraut wählt eine freundliche, natürliche und nicht unnötig distanzierte Form |
@@ -174,7 +174,7 @@ Diese Muster sind über beide Autoren konsistent belegt und können in Entwürfe
 - **„Natürlich"** als Entgegenkommens-Marker dort, wo Selbstverständlichkeiten signalisiert werden sollen
 - **Kulanzgesten beiläufig kommunizieren** – nie als Gunstbeweis, nie als einforderbare Gegenleistung
 - **Dialogischer Abschluss** bei komplexeren Antworten – die Entscheidung über den nächsten Schritt wird ausdrücklich zurückgegeben
-- **Abschlusswunsch situativ und konkret** – Wochentag, Jahreszeit, Gesundheitskontext; nie generisch
+- **Abschlusswunsch situativ und konkret** – Wochentag, Jahreszeit oder Gesundheitskontext, nie generisch
 - **Parenthesen und Einschübe** für erklärende oder relativierende Nebenbemerkungen
 - **Selbstverortung als kleines Unternehmen** – einordnend, nie als Ausrede
 - **Enthusiasmus für Produktthemen** als beiläufige Begeisterung, nie werblich
@@ -266,7 +266,7 @@ Diese Regeln gelten für den Entwurf einer Antwort. Sie sind in Reihenfolge zu p
 
 Die gleichen Kriterien gelten unabhängig von der Sprache. Englische und anderssprachige Entwürfe sollen denselben Sorgfaltsgrad, dieselbe Wärme, Nahbarkeit, Klarheit und situative Anpassung erreichen wie deutsche Antworten. Kürze, Tippfehler oder sprachliche Schlichtheit in historischen englischen Mails sind kein gewünschtes Stilmerkmal.
 
-Die Tonalität wird sinngemäß in die jeweilige Sprache übertragen; deutsche Formeln werden nicht wörtlich übersetzt, wenn sie dort unnatürlich klingen.
+Die Tonalität wird sinngemäß in die jeweilige Sprache übertragen. Deutsche Formeln werden nicht wörtlich übersetzt, wenn sie dort unnatürlich klingen.
 
 ### Smiley und Umgangssprache
 
@@ -283,3 +283,7 @@ Wenn ein absehbares Problem, eine Verzögerung oder ein eigener Fehler für den 
 ### Zeichensetzung und sprachliche Qualität
 
 Entwürfe verwenden korrekte Rechtschreibung und Zeichensetzung, einschließlich des Kommas nach der Anrede. Zufällige Fehler oder Inkonsistenzen aus historischen Antworten werden nicht als Stilmerkmal übernommen.
+
+**Semikolons werden nie verwendet.** Das gilt ausnahmslos für alle Sprachen,
+Textsorten und Längen. Wo ein Semikolon denkbar wäre, stehen stattdessen ein
+Punkt, ein Komma oder zwei klar getrennte Sätze.
