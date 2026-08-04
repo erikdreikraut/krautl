@@ -217,11 +217,22 @@ und bei den allgemeinen Fragen zusätzlich ausgewiesene Verbraucherquellen.
 Alle Einträge erhalten den Status **Entwurf** und müssen in Krautl einzeln
 redaktionell geprüft und freigegeben werden.
 
-Ein erneuter Lauf überschreibt keine redaktionellen Änderungen. Er entfernt
-lediglich zwei bekannte Selbstverweise auf Produktseite beziehungsweise
-Produktbeschreibung und den ungeeigneten B12-FAQ-Punkt aus bereits importierten
-Chlorella-Entwürfen. Die Quellen bleiben dabei intern im Feld **Quelle**
-erhalten.
+Ein erneuter Lauf verändert keine vorhandenen Chlorella-FAQ. Sobald auch nur
+ein FAQ-Eintrag für das Produkt vorhanden ist, wird der Import vollständig
+übersprungen. Die Quellen bleiben intern im Feld **Quelle** erhalten.
+
+Ein zweiter, davon vollständig getrennter Testimport legt acht FAQ-Entwürfe für
+die **Thailändischen Riechkräuter dreikraut im Glas** an. Auch dieser Import
+arbeitet nur bei einem vollständig leeren FAQ-Bestand des Produkts:
+
+```bash
+docker compose exec app python -m scripts.importiere_thailaendische_riechkraeuter_faq_entwuerfe
+```
+
+Die Konkurrenzrecherche dient hierbei ausschließlich zum Erkennen typischer
+Fragen. Die sichtbaren Antworten beruhen auf den dreikraut-Produktangaben und
+allgemeinen, unmittelbar produktbezogenen Anwendungshinweisen. Alle Einträge
+werden als Entwurf angelegt und nicht automatisch veröffentlicht.
 
 Nach dem Versand einer manuell veränderten Kundenantwort vergleicht Krautl
 Kundenfrage, ursprünglichen KI-Entwurf, endgültige Antwort und vorhandenes

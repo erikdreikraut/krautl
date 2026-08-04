@@ -1,10 +1,10 @@
-"""Importiert einmalig redaktionelle FAQ-Entwürfe für Chlorella.
+"""Importiert einmalig FAQ-Entwürfe für thailändische Riechkräuter.
 
 Der Import verändert keine vorhandenen FAQ. Sobald für das Produkt auch nur
 ein Eintrag existiert, wird der gesamte Lauf ohne Schreibzugriff übersprungen.
 
 Ausführen nach dem Deployment:
-    docker compose exec app python -m scripts.importiere_chlorella_faq_entwuerfe
+    docker compose exec app python -m scripts.importiere_thailaendische_riechkraeuter_faq_entwuerfe
 """
 
 import asyncio
@@ -17,11 +17,14 @@ from app.db import SessionLocal
 from app.models import FaqEintrag, Produkt
 
 
-ARTIKELNUMMER = "40046"
-PRODUKT_URL = "https://dreikraut.de/bio-chlorella-tabletten-presslinge"
+ARTIKELNUMMER = "20015"
+PRODUKT_URL = "https://dreikraut.de/Thailaendische-Riechkraeuter-in-der-Dose_1"
 DATEN_PFAD = (
-    Path(__file__).resolve().parent.parent / "data" / "chlorella-faq-entwuerfe.json"
+    Path(__file__).resolve().parent.parent
+    / "data"
+    / "thailaendische-riechkraeuter-faq-entwuerfe.json"
 )
+
 
 async def importiere(session, daten: list[dict] | None = None) -> dict:
     produkt = (await session.execute(
@@ -32,8 +35,9 @@ async def importiere(session, daten: list[dict] | None = None) -> dict:
     )).scalar_one_or_none()
     if produkt is None:
         raise RuntimeError(
-            "Chlorella-Produkt nicht gefunden. Bitte zuerst in Krautl unter "
-            "Wissensdatenbank 'Shop-Produkte aktualisieren' ausführen."
+            "Produkt 'Thailändische Riechkräuter dreikraut im Glas' nicht "
+            "gefunden. Bitte zuerst in Krautl unter Wissensdatenbank "
+            "'Shop-Produkte aktualisieren' ausführen."
         )
 
     vorhandene_anzahl = (await session.execute(
