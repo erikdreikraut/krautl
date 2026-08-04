@@ -1,6 +1,6 @@
 # dreikraut – Stil- und Prüfprofil für Produkt-FAQ
 
-*Fassung 1.0 · abgeleitet aus dem dreikraut-Stilprofil und dem bestehenden FAQ zum Bio-Hagebuttenpulver*
+*Fassung 1.1 · abgeleitet aus dem dreikraut-Stilprofil und redaktionell bearbeiteten Produkt-FAQ*
 
 ## Zweck
 
@@ -17,6 +17,34 @@ Produkt-FAQ beantworten wiederkehrende Fragen dauerhaft, verständlich und verl�
 - „Wir“ bezeichnet dreikraut und wird nur verwendet, wenn es tatsächlich um eigenes Handeln, eigene Produkte oder eigene Erfahrungen geht.
 
 Das Hagebutten-FAQ trifft den gewünschten Ton beispielsweise dort besonders gut, wo eine praktische Sorge konkret und unprätentiös beantwortet wird: Der hohe Kernanteil wird erklärt und unmittelbar eingeordnet – sehr fein vermahlen, also kein Knirschen. Dieses Muster ist übertragbar: erst die sachliche Antwort, dann eine menschliche, anschauliche Einordnung.
+
+### Subjektive Sinneseindrücke
+
+Duft, Geschmack, Mundgefühl und ähnliche Eindrücke werden nicht als objektive
+Wahrheit ausgegeben. dreikraut darf hier ausdrücklich aus eigener Erfahrung
+sprechen. Ein Einstieg wie „Wir finden, dass …“ wirkt persönlicher und
+ehrlicher als eine scheinbar allgemeingültige Behauptung.
+
+Die Beschreibung folgt möglichst diesem Muster:
+
+1. Den eigenen positiven Eindruck selbstbewusst benennen.
+2. Den Eindruck anhand konkreter Zutaten, Noten oder Eigenschaften erklären.
+3. Offen einräumen, dass die Wahrnehmung individuell ist.
+4. Die Einschränkung freundlich und gern mit einem kleinen sprachlichen Dreh
+   formulieren, ohne das Produkt kleinzureden.
+5. Positiv und glaubwürdig enden, ohne Zustimmung oder Begeisterung zu
+   versprechen.
+
+Das redaktionell bearbeitete FAQ zu den thailändischen Riechkräutern ist dafür
+ein Leitbeispiel: Die Mischung wird zunächst als außergewöhnlich kraftvoll,
+frisch und würzig beschrieben. Anschließend werden die kühlen und warmen
+Duftnoten konkret erklärt. Erst danach folgt die ehrliche Einordnung, dass
+Riechen Geschmackssache ist und die exotische Kombination nicht jeder Nase
+passt, aber sehr viele Fans hat.
+
+Die Haltung dahinter lautet: überzeugt, anschaulich und ehrlich. Persönliche
+Unterschiede werden nicht verschwiegen. Sie werden aber auch nicht in eine
+kleinlaute Warnung oder einen unnötigen Einwand verwandelt.
 
 ## Aufbau einer Antwort
 
