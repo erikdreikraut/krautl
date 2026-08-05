@@ -5,6 +5,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 
 from app.agent import (
     KLASSIFIZIERUNGS_SYSTEMPROMPT,
+    einkaufszuordnung_absichern,
     marktplatz_zuordnung_absichern,
     technik_absender_zuordnung_absichern,
 )
@@ -57,6 +58,44 @@ class KlassifizierungsPromptTest(unittest.TestCase):
             [{"klassifikation_id": "UNGEKLAERT"}],
         )
         self.assertEqual("UNGEKLAERT", ohne_shopklasse["klassifikation_id"])
+
+    def test_einkaufsbestaetigung_ist_keine_eingangsrechnung(self):
+        self.assertIn("EINKAUF UND RECHNUNG ABGRENZEN", KLASSIFIZIERUNGS_SYSTEMPROMPT)
+        ergebnis = einkaufszuordnung_absichern(
+            {
+                "klassifikation_id": "RECHNUNG_EINGANG",
+                "aktion_erforderlich": False,
+            },
+            {
+                "absender_name": "eBay",
+                "betreff": "Bestellung bestätigt: Tablet Halterung",
+                "text_auszug": (
+                    "Vielen Dank! Ihre Bestellung wurde bestätigt. "
+                    "Ihre Bestellung wird verschickt an Erik Schweitzer. "
+                    "Lieferung ca. Do, 06. Aug."
+                ),
+            },
+            [
+                {"klassifikation_id": "RECHNUNG_EINGANG"},
+                {"klassifikation_id": "LIEFERANT_AUFTRAGSBESTAETIGUNG"},
+            ],
+        )
+        self.assertEqual(
+            "LIEFERANT_AUFTRAGSBESTAETIGUNG",
+            ergebnis["klassifikation_id"],
+        )
+        self.assertTrue(ergebnis["aktion_erforderlich"])
+
+    def test_echte_rechnung_in_bestellmail_bleibt_rechnung(self):
+        ergebnis = einkaufszuordnung_absichern(
+            {"klassifikation_id": "RECHNUNG_EINGANG"},
+            {
+                "betreff": "Bestellung bestätigt und Rechnung im Anhang",
+                "text_auszug": "Rechnungsnummer 4711",
+            },
+            [{"klassifikation_id": "LIEFERANT_AUFTRAGSBESTAETIGUNG"}],
+        )
+        self.assertEqual("RECHNUNG_EINGANG", ergebnis["klassifikation_id"])
 
     def test_anthropic_systemmail_ist_niemals_spam(self):
         self.assertIn("mail.anthropic.com", KLASSIFIZIERUNGS_SYSTEMPROMPT)

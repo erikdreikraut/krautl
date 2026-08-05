@@ -65,6 +65,20 @@ von Shop Apotheke/Redcare gehören in SHOPAPOTHEKE_WICHTIG, sofern diese ID im
 Katalog vorhanden ist. Fehlt eine passende Shop-Apotheke-Klasse, ist
 UNGEKLAERT einer sachlich falschen Amazon-Klassifikation vorzuziehen.
 
+EINKAUF UND RECHNUNG ABGRENZEN:
+Bestellbestätigungen zu Einkäufen von dreikraut sind keine Eingangsrechnungen.
+Formulierungen wie "Ihre Bestellung wurde bestätigt", "Bestellung bestätigt",
+"Einzelheiten zum Kauf", eine Lieferadresse von dreikraut oder ein angekündigter
+Liefertermin beschreiben normale Bestellabwicklung. Solche Nachrichten gehören
+in LIEFERANT_AUFTRAGSBESTAETIGUNG, sofern diese ID im Katalog vorhanden ist.
+LIEFERANT_DIVERSES ist nur die Auffangkategorie, wenn keine speziellere
+Einkaufskategorie passt.
+
+RECHNUNG_EINGANG darf nur gewählt werden, wenn die Nachricht tatsächlich eine
+Rechnung, einen Rechnungsanhang, eine Rechnungsnummer, einen Zahlungsbeleg oder
+eine konkrete Zahlungsforderung enthält. Ein Kaufpreis, eine Bestellnummer oder
+eine Zahlungsart innerhalb einer Bestellbestätigung genügt dafür nicht.
+
 VERTRAUENSWÜRDIGE TECHNIK-ABSENDER:
 Nachrichten von einer Absenderadresse der Domain mail.anthropic.com sind kein
 Spam. Sie gehören immer in SYSTEM_TECHNIK, sofern diese ID im Katalog
@@ -147,6 +161,45 @@ def technik_absender_zuordnung_absichern(
     return abgesichert
 
 
+def einkaufszuordnung_absichern(
+    ergebnis: dict, mail: dict, katalog: list[dict]
+) -> dict:
+    """Verhindert, dass normale Einkaufsbestätigungen als Rechnung gelten."""
+    text = " ".join(str(mail.get(feld, "")) for feld in (
+        "absender_name", "absender_adresse", "betreff", "text_auszug"
+    )).casefold()
+    ist_bestellbestaetigung = any(marker in text for marker in (
+        "bestellung bestätigt",
+        "bestellung wurde bestätigt",
+        "ihre bestellung wurde bestätigt",
+        "einzelheiten zum kauf",
+        "ihre bestellung wird verschickt an",
+        "order confirmed",
+        "your order has been confirmed",
+        "view order details",
+    ))
+    hat_rechnungsbeleg = any(marker in text for marker in (
+        "rechnung im anhang",
+        "rechnungsnummer",
+        "eingangsrechnung",
+        "zahlungsbeleg",
+        "invoice attached",
+        "invoice number",
+    ))
+    katalog_ids = {eintrag["klassifikation_id"] for eintrag in katalog}
+    if (
+        ergebnis.get("klassifikation_id") == "RECHNUNG_EINGANG"
+        and ist_bestellbestaetigung
+        and not hat_rechnungsbeleg
+        and "LIEFERANT_AUFTRAGSBESTAETIGUNG" in katalog_ids
+    ):
+        abgesichert = dict(ergebnis)
+        abgesichert["klassifikation_id"] = "LIEFERANT_AUFTRAGSBESTAETIGUNG"
+        abgesichert["aktion_erforderlich"] = True
+        return abgesichert
+    return ergebnis
+
+
 def klassifiziere(mail: dict, katalog: list[dict], beispiele: list[dict] | None = None) -> dict:
     """
     Klassifiziert eine Mail. `beispiele` sind optionale, bereits korrigierte
@@ -182,9 +235,10 @@ Spam-Score: {mail.get('spam_score', 'nicht vorhanden')}
 
     for block in response.content:
         if block.type == "tool_use":
-            ergebnis = marktplatz_zuordnung_absichern(
+            ergebnis = einkaufszuordnung_absichern(
                 block.input, mail, katalog
             )
+            ergebnis = marktplatz_zuordnung_absichern(ergebnis, mail, katalog)
             return technik_absender_zuordnung_absichern(
                 ergebnis, mail, katalog
             )
