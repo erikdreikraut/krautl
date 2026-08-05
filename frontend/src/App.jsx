@@ -313,43 +313,6 @@ function MailLoeschenButton({ mail, onGeloescht }) {
   );
 }
 
-function MailErledigenButton({ mail, onErledigt }) {
-  const [laeuft, setLaeuft] = useState(false);
-  const [fehler, setFehler] = useState("");
-
-  async function erledigen() {
-    const bestaetigt = window.confirm(
-      `Mail „${mail.betreff}“ in Krautl als erledigt markieren?\n\nSie verschwindet aus dieser Liste, bleibt im Mailpostfach aber unverändert erhalten.`
-    );
-    if (!bestaetigt) return;
-    setLaeuft(true);
-    setFehler("");
-    try {
-      await api.mailErledigen(mail.id);
-      await onErledigt();
-    } catch (e) {
-      setFehler(e.message);
-    } finally {
-      setLaeuft(false);
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-1.5">
-      {fehler && <span title={fehler} style={{ ...fontUI, fontSize: "11px", color: tokens.rust }}>Erledigen fehlgeschlagen</span>}
-      <button
-        onClick={erledigen}
-        disabled={laeuft}
-        title="Nur aus der Krautl-Arbeitsliste entfernen; die Mail bleibt im Postfach"
-        className="flex items-center gap-1 px-2 py-1.5 disabled:opacity-50"
-        style={{ ...fontUI, fontSize: "11.5px", color: tokens.mossDeep, border: `1px solid ${tokens.moss}`, borderRadius: "6px", background: tokens.paperRaised }}
-      >
-        <CheckCircle2 size={12} /> {laeuft ? "Erledigt …" : "Erledigt"}
-      </button>
-    </div>
-  );
-}
-
 function AntwortvorschlagButton({ mail, onErzeugt }) {
   const [laeuft, setLaeuft] = useState(false);
   const [fehler, setFehler] = useState("");
@@ -452,7 +415,6 @@ function PosteingangView({ mails, katalog, onReload }) {
                   <AntwortvorschlagButton mail={selected} onErzeugt={onReload} />
                   <BestaetigenButton mail={selected} onBestaetigt={onReload} />
                   <KategorieKorrektur mail={selected} katalog={katalog} onKorrigiert={onReload} />
-                  <MailErledigenButton mail={selected} onErledigt={onReload} />
                   <MailLoeschenButton mail={selected} onGeloescht={onReload} />
                 </div>
               </div>

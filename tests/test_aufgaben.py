@@ -15,7 +15,7 @@ from app.main import liste_mails
 from app.models import (
     Aktionslog, Base, Klassifikation, KlassifikationAufgabe, Mail, MailAufgabe, Postfach,
 )
-from scripts.bereinige_posteingang import bereinige
+from scripts.bereinige_posteingang import bereinige, leere_posteingang
 
 
 ADMIN_REQUEST = SimpleNamespace(state=SimpleNamespace(benutzer={
@@ -141,6 +141,33 @@ class AufgabenPipelineTest(unittest.IsolatedAsyncioTestCase):
             bestaetigbar = await session.get(Mail, self.mail_id)
             self.assertFalse(alt.im_krautl_posteingang)
             self.assertTrue(bestaetigbar.im_krautl_posteingang)
+
+    async def test_einmalige_bereinigung_leert_liste_ohne_aufgaben_auszufuehren(self):
+        anzahl = await leere_posteingang()
+        wiederholung = await leere_posteingang()
+        self.assertEqual(1, anzahl)
+        self.assertEqual(0, wiederholung)
+
+        async with SessionLocal() as session:
+            mail = await session.get(Mail, self.mail_id)
+            aufgaben = (await session.execute(
+                select(MailAufgabe)
+                .where(MailAufgabe.mail_id == self.mail_id)
+                .order_by(MailAufgabe.position)
+            )).scalars().all()
+            log = (await session.execute(
+                select(Aktionslog).where(
+                    Aktionslog.mail_id == self.mail_id,
+                    Aktionslog.ereignis == "posteingang_bereinigt",
+                )
+            )).scalar_one()
+
+        self.assertFalse(mail.im_krautl_posteingang)
+        self.assertEqual(
+            ["abgebrochen", "abgebrochen"],
+            [aufgabe.status for aufgabe in aufgaben],
+        )
+        self.assertIn("IMAP-Postfach unverändert", log.detail)
 
 
 if __name__ == "__main__":
