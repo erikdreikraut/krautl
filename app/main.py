@@ -1108,7 +1108,8 @@ async def liste_entwuerfe(request: Request, session: AsyncSession = Depends(get_
     if "*" in verweigert:
         return []
     abfrage = select(Entwurf).join(Mail, Entwurf.mail_id == Mail.id).where(
-        Entwurf.status == "wartet"
+        Entwurf.status == "wartet",
+        Mail.im_krautl_posteingang.is_(True),
     )
     if verweigert:
         abfrage = abfrage.where(or_(

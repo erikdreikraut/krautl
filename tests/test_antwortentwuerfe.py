@@ -12,7 +12,8 @@ from sqlalchemy import select
 from app.db import SessionLocal, engine
 from app.antworten import pruefergebnis_absichern
 from app.main import (
-    EntwurfFreigabe, entwurf_freigeben, mail_antwortentwurf_erzeugen,
+    EntwurfFreigabe, entwurf_freigeben, liste_entwuerfe,
+    mail_antwortentwurf_erzeugen,
 )
 from app.aufgaben import wartende_aufgaben_ausfuehren
 from app.models import Aktionslog, Base, Entwurf, Mail, MailAufgabe, Postfach
@@ -73,6 +74,27 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(1, len(entwuerfe))
             self.assertEqual("Hallo Ada,\n\nsehr gern.", entwuerfe[0].text_ki)
             self.assertEqual("wartet", entwuerfe[0].status)
+
+    async def test_entwurf_einer_ausgeblendeten_mail_wird_nicht_mehr_gezaehlt(self):
+        async with SessionLocal() as session:
+            session.add(Entwurf(
+                mail_id=self.mail_id,
+                text_ki="Guten Tag,\n\nvielen Dank.",
+                status="wartet",
+            ))
+            await session.commit()
+
+        async with SessionLocal() as session:
+            sichtbar = await liste_entwuerfe(test_request(), session)
+            mail = await session.get(Mail, self.mail_id)
+            mail.im_krautl_posteingang = False
+            await session.commit()
+
+        async with SessionLocal() as session:
+            ausgeblendet = await liste_entwuerfe(test_request(), session)
+
+        self.assertEqual(1, len(sichtbar))
+        self.assertEqual([], ausgeblendet)
 
     async def test_klassifikationsaufgabe_erzeugt_entwurf_automatisch(self):
         async with SessionLocal() as session:
