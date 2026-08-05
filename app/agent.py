@@ -79,6 +79,14 @@ Rechnung, einen Rechnungsanhang, eine Rechnungsnummer, einen Zahlungsbeleg oder
 eine konkrete Zahlungsforderung enthält. Ein Kaufpreis, eine Bestellnummer oder
 eine Zahlungsart innerhalb einer Bestellbestätigung genügt dafür nicht.
 
+STEUERN:
+Nachrichten zu Steuerberatung, Finanzbuchhaltung, Umsatzsteuer, Voranmeldungen,
+Steuererklärungen, Steuerbescheiden, Fristen oder Korrespondenz mit Finanzämtern
+gehören in RECHT_STEUERN, sofern diese ID im Katalog vorhanden ist. Alle Mails
+von CountX und vom Steuerberater Kineke gehören unabhängig vom konkreten Betreff
+in RECHT_STEUERN. Steuerliche Nachrichten sind nicht RECHT_BEHOERDE, wenn die
+speziellere Steuer-Kategorie vorhanden ist.
+
 VERTRAUENSWÜRDIGE TECHNIK-ABSENDER:
 Nachrichten von einer Absenderadresse der Domain mail.anthropic.com sind kein
 Spam. Sie gehören immer in SYSTEM_TECHNIK, sofern diese ID im Katalog
@@ -200,6 +208,26 @@ def einkaufszuordnung_absichern(
     return ergebnis
 
 
+def steuer_absender_zuordnung_absichern(
+    ergebnis: dict, mail: dict, katalog: list[dict]
+) -> dict:
+    """Ordnet bekannte Steuerdienstleister unabhängig vom Modell sicher zu."""
+    absender = " ".join(str(mail.get(feld, "")) for feld in (
+        "absender_name", "absender_adresse"
+    )).casefold()
+    bekannter_steuerabsender = any(marker in absender for marker in (
+        "countx", "kineke",
+    ))
+    katalog_ids = {eintrag["klassifikation_id"] for eintrag in katalog}
+    if not bekannter_steuerabsender or "RECHT_STEUERN" not in katalog_ids:
+        return ergebnis
+
+    abgesichert = dict(ergebnis)
+    abgesichert["klassifikation_id"] = "RECHT_STEUERN"
+    abgesichert["aktion_erforderlich"] = True
+    return abgesichert
+
+
 def klassifiziere(mail: dict, katalog: list[dict], beispiele: list[dict] | None = None) -> dict:
     """
     Klassifiziert eine Mail. `beispiele` sind optionale, bereits korrigierte
@@ -239,6 +267,9 @@ Spam-Score: {mail.get('spam_score', 'nicht vorhanden')}
                 block.input, mail, katalog
             )
             ergebnis = marktplatz_zuordnung_absichern(ergebnis, mail, katalog)
+            ergebnis = steuer_absender_zuordnung_absichern(
+                ergebnis, mail, katalog
+            )
             return technik_absender_zuordnung_absichern(
                 ergebnis, mail, katalog
             )
