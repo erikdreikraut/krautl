@@ -5,6 +5,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 
 from app.agent import (
     KLASSIFIZIERUNGS_SYSTEMPROMPT,
+    ebay_verkaufszuordnung_absichern,
     einkaufszuordnung_absichern,
     marktplatz_zuordnung_absichern,
     steuer_absender_zuordnung_absichern,
@@ -97,6 +98,44 @@ class KlassifizierungsPromptTest(unittest.TestCase):
             [{"klassifikation_id": "LIEFERANT_AUFTRAGSBESTAETIGUNG"}],
         )
         self.assertEqual("RECHNUNG_EINGANG", ergebnis["klassifikation_id"])
+
+    def test_ebay_verkauf_wird_technisch_abgesichert(self):
+        self.assertIn("EBAY-VERKAUFSBEST", KLASSIFIZIERUNGS_SYSTEMPROMPT)
+        self.assertIn("BESTELLUNG_EBAY", KLASSIFIZIERUNGS_SYSTEMPROMPT)
+        ergebnis = ebay_verkaufszuordnung_absichern(
+            {
+                "klassifikation_id": "UNGEKLAERT",
+                "aktion_erforderlich": False,
+            },
+            {
+                "absender_name": "eBay",
+                "absender_adresse": "ebay@ebay.de",
+                "betreff": "Artikel verkauft - Mistelkraut Bio",
+                "text_auszug": (
+                    "Verpacken Sie jetzt den Artikel und verschicken Sie ihn. "
+                    "Ihr Käufer hat bezahlt."
+                ),
+            },
+            [{"klassifikation_id": "BESTELLUNG_EBAY"}],
+        )
+        self.assertEqual("BESTELLUNG_EBAY", ergebnis["klassifikation_id"])
+        self.assertTrue(ergebnis["aktion_erforderlich"])
+
+    def test_ebay_einkauf_wird_nicht_zum_verkauf(self):
+        ergebnis = ebay_verkaufszuordnung_absichern(
+            {"klassifikation_id": "LIEFERANT_AUFTRAGSBESTAETIGUNG"},
+            {
+                "absender_name": "eBay",
+                "absender_adresse": "ebay@ebay.de",
+                "betreff": "Bestellung bestätigt: Tablet Halterung",
+                "text_auszug": "Ihre Bestellung wird an Erik Schweitzer verschickt.",
+            },
+            [{"klassifikation_id": "BESTELLUNG_EBAY"}],
+        )
+        self.assertEqual(
+            "LIEFERANT_AUFTRAGSBESTAETIGUNG",
+            ergebnis["klassifikation_id"],
+        )
 
     def test_countx_und_kineke_werden_als_steuern_abgesichert(self):
         self.assertIn("STEUERN:", KLASSIFIZIERUNGS_SYSTEMPROMPT)

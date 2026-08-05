@@ -65,6 +65,14 @@ von Shop Apotheke/Redcare gehören in SHOPAPOTHEKE_WICHTIG, sofern diese ID im
 Katalog vorhanden ist. Fehlt eine passende Shop-Apotheke-Klasse, ist
 UNGEKLAERT einer sachlich falschen Amazon-Klassifikation vorzuziehen.
 
+EBAY-VERKAUFSBESTÄTIGUNGEN:
+Automatische Nachrichten von eBay, die einen Verkauf durch dreikraut melden,
+gehören in BESTELLUNG_EBAY, sofern diese ID im Katalog vorhanden ist. Typische
+Merkmale sind Formulierungen wie "Artikel verkauft", "Ihr Artikel wurde
+verkauft", "Verpacken Sie jetzt den Artikel", "Versanddetails des Käufers"
+oder "Ihr Käufer hat bezahlt". Bestellbestätigungen zu einem Einkauf, bei dem
+dreikraut selbst Käufer ist, bleiben LIEFERANT_AUFTRAGSBESTAETIGUNG.
+
 EINKAUF UND RECHNUNG ABGRENZEN:
 Bestellbestätigungen zu Einkäufen von dreikraut sind keine Eingangsrechnungen.
 Formulierungen wie "Ihre Bestellung wurde bestätigt", "Bestellung bestätigt",
@@ -169,6 +177,41 @@ def technik_absender_zuordnung_absichern(
     return abgesichert
 
 
+def ebay_verkaufszuordnung_absichern(
+    ergebnis: dict, mail: dict, katalog: list[dict]
+) -> dict:
+    """Ordnet eindeutige eBay-Verkaufsbestätigungen unabhängig vom Modell zu."""
+    absender = " ".join(str(mail.get(feld, "")) for feld in (
+        "absender_name", "absender_adresse"
+    )).casefold()
+    text = " ".join(str(mail.get(feld, "")) for feld in (
+        "betreff", "text_auszug"
+    )).casefold()
+    ist_ebay = "ebay" in absender
+    ist_verkaufsbestaetigung = any(marker in text for marker in (
+        "artikel verkauft",
+        "ihr artikel wurde verkauft",
+        "verpacken sie jetzt den artikel",
+        "versanddetails des käufers",
+        "ihr käufer hat bezahlt",
+        "your item sold",
+        "you made the sale",
+        "buyer has paid",
+    ))
+    katalog_ids = {eintrag["klassifikation_id"] for eintrag in katalog}
+    if not (
+        ist_ebay
+        and ist_verkaufsbestaetigung
+        and "BESTELLUNG_EBAY" in katalog_ids
+    ):
+        return ergebnis
+
+    abgesichert = dict(ergebnis)
+    abgesichert["klassifikation_id"] = "BESTELLUNG_EBAY"
+    abgesichert["aktion_erforderlich"] = True
+    return abgesichert
+
+
 def einkaufszuordnung_absichern(
     ergebnis: dict, mail: dict, katalog: list[dict]
 ) -> dict:
@@ -267,6 +310,9 @@ Spam-Score: {mail.get('spam_score', 'nicht vorhanden')}
                 block.input, mail, katalog
             )
             ergebnis = marktplatz_zuordnung_absichern(ergebnis, mail, katalog)
+            ergebnis = ebay_verkaufszuordnung_absichern(
+                ergebnis, mail, katalog
+            )
             ergebnis = steuer_absender_zuordnung_absichern(
                 ergebnis, mail, katalog
             )
