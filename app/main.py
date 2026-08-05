@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from dropbox.exceptions import ApiError, AuthError
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import selectinload
@@ -36,7 +35,12 @@ from .wissensbasis import (
     relevante_wissensbasis, wissenszuwachs_nach_antwort_pruefen,
 )
 from .shop_import import shop_katalog_laden, shop_katalog_speichern
-from .rechnungen import rechnungsdatei_laden
+from .rechnungen import (
+    DropboxDateiNichtGefunden,
+    DropboxDownloadAuthFehler,
+    DropboxDownloadFehler,
+    rechnungsdatei_laden,
+)
 
 app = FastAPI(title="Krautl API")
 logger = logging.getLogger(__name__)
@@ -656,7 +660,7 @@ async def rechnungsdatei_ansehen(
         dateiname, inhalt = await rechnungsdatei_laden(rechnung)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except AuthError as exc:
+    except DropboxDownloadAuthFehler as exc:
         logger.exception(
             "Dropbox-Anmeldung beim Abruf von Rechnung %s fehlgeschlagen",
             rechnung_id,
@@ -670,7 +674,7 @@ async def rechnungsdatei_ansehen(
                 "mit Krautl verbinden."
             ),
         ) from exc
-    except ApiError as exc:
+    except DropboxDateiNichtGefunden as exc:
         logger.exception(
             "Dropbox-Datei für Rechnung %s nicht gefunden: %s",
             rechnung_id,
@@ -684,6 +688,12 @@ async def rechnungsdatei_ansehen(
                 "umbenannt."
             ),
         ) from exc
+    except DropboxDownloadFehler as exc:
+        logger.exception(
+            "Dropbox-Dateidienst beim Abruf von Rechnung %s fehlgeschlagen",
+            rechnung_id,
+        )
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     except RuntimeError as exc:
         logger.exception(
             "Dropbox-Konfiguration beim Abruf von Rechnung %s fehlt",

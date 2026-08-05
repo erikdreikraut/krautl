@@ -2,7 +2,6 @@ import os
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
-from dropbox.exceptions import ApiError
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_rechnungen.db")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test")
@@ -102,18 +101,27 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
             "/Rechnungen/2026/rechnung.pdf",
             _bevorzugter_rechnungspfad(rechnung),
         )
-        dbx = MagicMock()
-        dbx.files_download.return_value = (
-            type("Metadaten", (), {"name": "rechnung.pdf"})(),
-            type("Antwort", (), {"content": b"%PDF-Test"})(),
+        token_antwort = MagicMock(
+            status_code=200,
+            json=lambda: {"access_token": "kurzlebiges-token"},
         )
-        with patch("app.rechnungen._dropbox_client", return_value=dbx):
+        datei_antwort = MagicMock(
+            status_code=200,
+            headers={"Dropbox-API-Result": '{"name":"rechnung.pdf"}'},
+            content=b"%PDF-Test",
+        )
+        with patch(
+            "app.rechnungen.httpx.post",
+            side_effect=[token_antwort, datei_antwort],
+        ) as post:
             dateiname, inhalt = await rechnungsdatei_laden(rechnung)
 
         self.assertEqual("rechnung.pdf", dateiname)
         self.assertEqual(b"%PDF-Test", inhalt)
-        dbx.files_download.assert_called_once_with(
-            "/Rechnungen/2026/rechnung.pdf"
+        self.assertEqual(2, post.call_count)
+        self.assertEqual(
+            '{"path": "/Rechnungen/2026/rechnung.pdf"}',
+            post.call_args_list[1].kwargs["headers"]["Dropbox-API-Arg"],
         )
 
     async def test_rechnungsansicht_weicht_auf_bilddatei_aus(self):
@@ -125,20 +133,25 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
                 "/Rechnungen/2026/rechnung.jpg",
             ],
         )
-        dbx = MagicMock()
-        dbx.files_download.side_effect = [
-            ApiError("test", object(), None, None),
-            (
-                type("Metadaten", (), {"name": "rechnung.jpg"})(),
-                type("Antwort", (), {"content": b"JPEG-Test"})(),
-            ),
-        ]
-        with patch("app.rechnungen._dropbox_client", return_value=dbx):
+        token_antwort = MagicMock(
+            status_code=200,
+            json=lambda: {"access_token": "kurzlebiges-token"},
+        )
+        nicht_gefunden = MagicMock(status_code=409, headers={}, content=b"")
+        bild_antwort = MagicMock(
+            status_code=200,
+            headers={"Dropbox-API-Result": '{"name":"rechnung.jpg"}'},
+            content=b"JPEG-Test",
+        )
+        with patch(
+            "app.rechnungen.httpx.post",
+            side_effect=[token_antwort, nicht_gefunden, bild_antwort],
+        ) as post:
             dateiname, inhalt = await rechnungsdatei_laden(rechnung)
 
         self.assertEqual("rechnung.jpg", dateiname)
         self.assertEqual(b"JPEG-Test", inhalt)
-        self.assertEqual(2, dbx.files_download.call_count)
+        self.assertEqual(3, post.call_count)
 
     def test_rechnungsansicht_meldet_fehlende_originaldatei(self):
         rechnung = Rechnung(aussteller="Test GmbH", waehrung="EUR")
