@@ -64,6 +64,12 @@ Wichtige Richtlinien-, Compliance-, Konto-, Listing- oder Plattformmeldungen
 von Shop Apotheke/Redcare gehören in SHOPAPOTHEKE_WICHTIG, sofern diese ID im
 Katalog vorhanden ist. Fehlt eine passende Shop-Apotheke-Klasse, ist
 UNGEKLAERT einer sachlich falschen Amazon-Klassifikation vorzuziehen.
+
+VERTRAUENSWÜRDIGE TECHNIK-ABSENDER:
+Nachrichten von einer Absenderadresse der Domain mail.anthropic.com sind kein
+Spam. Sie gehören immer in SYSTEM_TECHNIK, sofern diese ID im Katalog
+vorhanden ist. Betreff, Inhalt oder Spam-Score dürfen diese feste
+Absenderzuordnung nicht überstimmen.
 """
 
 KLASSIFIZIERUNGS_TOOL = {
@@ -121,6 +127,26 @@ def marktplatz_zuordnung_absichern(
     return abgesichert
 
 
+def technik_absender_zuordnung_absichern(
+    ergebnis: dict, mail: dict, katalog: list[dict]
+) -> dict:
+    """Ordnet bekannte technische Absender unabhängig vom Modell sicher zu."""
+    absender = str(mail.get("absender_adresse", "")).strip().casefold()
+    domain = absender.rsplit("@", 1)[-1].rstrip(".") if "@" in absender else ""
+    ist_anthropic_systemmail = (
+        domain == "mail.anthropic.com"
+        or domain.endswith(".mail.anthropic.com")
+    )
+    katalog_ids = {eintrag["klassifikation_id"] for eintrag in katalog}
+    if not ist_anthropic_systemmail or "SYSTEM_TECHNIK" not in katalog_ids:
+        return ergebnis
+
+    abgesichert = dict(ergebnis)
+    abgesichert["klassifikation_id"] = "SYSTEM_TECHNIK"
+    abgesichert["aktion_erforderlich"] = True
+    return abgesichert
+
+
 def klassifiziere(mail: dict, katalog: list[dict], beispiele: list[dict] | None = None) -> dict:
     """
     Klassifiziert eine Mail. `beispiele` sind optionale, bereits korrigierte
@@ -156,5 +182,10 @@ Spam-Score: {mail.get('spam_score', 'nicht vorhanden')}
 
     for block in response.content:
         if block.type == "tool_use":
-            return marktplatz_zuordnung_absichern(block.input, mail, katalog)
+            ergebnis = marktplatz_zuordnung_absichern(
+                block.input, mail, katalog
+            )
+            return technik_absender_zuordnung_absichern(
+                ergebnis, mail, katalog
+            )
     raise RuntimeError("Keine Klassifizierung erhalten.")

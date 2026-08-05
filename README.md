@@ -163,6 +163,13 @@ eingespielt, ohne andere Klassifikationen zu überschreiben:
 docker compose exec app python -m scripts.aktualisiere_shopapotheke_kategorien
 ```
 
+Die feste Absenderregel für Anthropic-Systemmails und ihr Zielordner werden
+gezielt und wiederholbar aktualisiert mit:
+
+```bash
+docker compose exec app python -m scripts.aktualisiere_anthropic_mailregel
+```
+
 ## Produktbezogene Wissensbasis und FAQ
 
 Unter **Wissensdatenbank** werden vier Geltungsbereiche getrennt gepflegt:

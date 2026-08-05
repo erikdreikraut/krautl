@@ -3,7 +3,11 @@ import unittest
 
 os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 
-from app.agent import KLASSIFIZIERUNGS_SYSTEMPROMPT, marktplatz_zuordnung_absichern
+from app.agent import (
+    KLASSIFIZIERUNGS_SYSTEMPROMPT,
+    marktplatz_zuordnung_absichern,
+    technik_absender_zuordnung_absichern,
+)
 
 
 class KlassifizierungsPromptTest(unittest.TestCase):
@@ -53,6 +57,31 @@ class KlassifizierungsPromptTest(unittest.TestCase):
             [{"klassifikation_id": "UNGEKLAERT"}],
         )
         self.assertEqual("UNGEKLAERT", ohne_shopklasse["klassifikation_id"])
+
+    def test_anthropic_systemmail_ist_niemals_spam(self):
+        self.assertIn("mail.anthropic.com", KLASSIFIZIERUNGS_SYSTEMPROMPT)
+        self.assertIn("kein\nSpam", KLASSIFIZIERUNGS_SYSTEMPROMPT)
+        ergebnis = technik_absender_zuordnung_absichern(
+            {
+                "klassifikation_id": "SPAM_WERBUNG",
+                "aktion_erforderlich": False,
+            },
+            {"absender_adresse": "news@mail.anthropic.com"},
+            [
+                {"klassifikation_id": "SPAM_WERBUNG"},
+                {"klassifikation_id": "SYSTEM_TECHNIK"},
+            ],
+        )
+        self.assertEqual("SYSTEM_TECHNIK", ergebnis["klassifikation_id"])
+        self.assertTrue(ergebnis["aktion_erforderlich"])
+
+    def test_nur_echte_anthropic_maildomain_wird_bevorzugt(self):
+        ergebnis = technik_absender_zuordnung_absichern(
+            {"klassifikation_id": "SPAM_WERBUNG"},
+            {"absender_adresse": "news@mail.anthropic.com.example.org"},
+            [{"klassifikation_id": "SYSTEM_TECHNIK"}],
+        )
+        self.assertEqual("SPAM_WERBUNG", ergebnis["klassifikation_id"])
 
 
 if __name__ == "__main__":
