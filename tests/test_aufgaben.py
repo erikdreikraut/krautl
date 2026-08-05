@@ -78,7 +78,7 @@ class AufgabenPipelineTest(unittest.IsolatedAsyncioTestCase):
         })()
         with patch("app.aufgaben.lade_postfaecher", return_value=[fake_config]), \
              patch("app.aufgaben.mail_verschieben") as verschieben:
-            ergebnis = await bestaetigung_erfassen(self.mail_id)
+            ergebnis = await bestaetigung_erfassen(self.mail_id, "Erik Schweitzer")
 
         self.assertEqual("erledigt", ergebnis["status"])
         verschieben.assert_called_once()
@@ -90,10 +90,17 @@ class AufgabenPipelineTest(unittest.IsolatedAsyncioTestCase):
                 select(MailAufgabe).order_by(MailAufgabe.position)
             )).scalars().all()
             self.assertEqual(["erledigt", "erledigt"], [a.status for a in aufgaben])
-            ereignisse = (await session.execute(
-                select(Aktionslog.ereignis).order_by(Aktionslog.id)
+            logeintraege = (await session.execute(
+                select(Aktionslog).order_by(Aktionslog.id)
             )).scalars().all()
-            self.assertEqual(["bestaetigt", "verschoben"], list(ereignisse))
+            self.assertEqual(
+                ["bestaetigt", "verschoben"],
+                [eintrag.ereignis for eintrag in logeintraege],
+            )
+            self.assertEqual(
+                ["Erik Schweitzer", "Erik Schweitzer"],
+                [eintrag.ausgeloest_von for eintrag in logeintraege],
+            )
             self.assertEqual([], await liste_mails(ADMIN_REQUEST, session))
 
     async def test_fehlgeschlagenes_verschieben_wird_protokolliert_und_mail_ausgeblendet(self):

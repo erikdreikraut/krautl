@@ -290,6 +290,9 @@ class Aktionslog(Base):
     mail_id: Mapped[int | None] = mapped_column(ForeignKey("mail.id"), nullable=True)
     # "klassifiziert" | "bestaetigt" | "verschoben" | "verschieben_fehlgeschlagen"
     ereignis: Mapped[str] = mapped_column(String(50))
+    ausgeloest_von: Mapped[str] = mapped_column(
+        String(100), default="Krautl", server_default="Krautl"
+    )
     detail: Mapped[str] = mapped_column(Text)
     erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

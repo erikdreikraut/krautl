@@ -90,6 +90,7 @@ async def bestaetigung_erfassen(mail_id: int, bestaetigt_von: str | None = None)
         session.add(Aktionslog(
             mail_id=mail_id,
             ereignis="bestaetigt",
+            ausgeloest_von=bestaetigt_von or "Krautl",
             detail=(
                 f"Bestätigung erteilt{f' durch {bestaetigt_von}' if bestaetigt_von else ''}; "
                 "aus Krautl-Posteingang entfernt"
@@ -98,10 +99,14 @@ async def bestaetigung_erfassen(mail_id: int, bestaetigt_von: str | None = None)
         await _naechste_freischalten(session, mail_id, aufgabe.position)
         await session.commit()
 
-    return await wartende_aufgaben_ausfuehren(mail_id)
+    return await wartende_aufgaben_ausfuehren(
+        mail_id, ausgeloest_von=bestaetigt_von or "Krautl"
+    )
 
 
-async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
+async def wartende_aufgaben_ausfuehren(
+    mail_id: int, ausgeloest_von: str = "Krautl"
+) -> dict:
     """Führt ausführbare Folgeaufgaben bis zum nächsten Blocker aus."""
     async with SessionLocal() as session:
         result = await session.execute(
@@ -124,7 +129,8 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
                 wartend.status = "fehlgeschlagen"
                 wartend.fehler = str(exc)
                 session.add(Aktionslog(
-                    mail_id=mail.id, ereignis="rechnung_fehlgeschlagen", detail=str(exc),
+                    mail_id=mail.id, ereignis="rechnung_fehlgeschlagen",
+                    ausgeloest_von=ausgeloest_von, detail=str(exc),
                 ))
                 await session.commit()
                 return {"status": "fehlgeschlagen", "detail": str(exc)}
@@ -133,11 +139,12 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
             wartend.fehler = None
             session.add(Aktionslog(
                 mail_id=mail.id, ereignis="rechnung_verarbeitet",
+                ausgeloest_von=ausgeloest_von,
                 detail=f"{len(ergebnis['rechnungen'])} Rechnung(en) ausgewertet und in Dropbox abgelegt",
             ))
             await _naechste_freischalten(session, mail.id, wartend.position)
             await session.commit()
-            return await wartende_aufgaben_ausfuehren(mail_id)
+            return await wartende_aufgaben_ausfuehren(mail_id, ausgeloest_von)
 
         if wartend.aufgabe_typ == ANTWORTVORSCHLAG_ERSTELLEN:
             try:
@@ -149,6 +156,7 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
                 session.add(Aktionslog(
                     mail_id=mail.id,
                     ereignis="antwortvorschlag_fehlgeschlagen",
+                    ausgeloest_von=ausgeloest_von,
                     detail=str(exc),
                 ))
                 await session.commit()
@@ -159,6 +167,7 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
             session.add(Aktionslog(
                 mail_id=mail.id,
                 ereignis="antwortvorschlag_erstellt",
+                ausgeloest_von=ausgeloest_von,
                 detail=(
                     f"Entwurf #{entwurf.id} erstellt"
                     if erzeugt else f"Vorhandenen Entwurf #{entwurf.id} verwendet"
@@ -166,7 +175,7 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
             ))
             await _naechste_freischalten(session, mail.id, wartend.position)
             await session.commit()
-            return await wartende_aufgaben_ausfuehren(mail_id)
+            return await wartende_aufgaben_ausfuehren(mail_id, ausgeloest_von)
 
         if wartend.aufgabe_typ == AUDIO_TRANSKRIBIEREN:
             try:
@@ -178,6 +187,7 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
                 session.add(Aktionslog(
                     mail_id=mail.id,
                     ereignis="audio_transkription_fehlgeschlagen",
+                    ausgeloest_von=ausgeloest_von,
                     detail=str(exc),
                 ))
                 await session.commit()
@@ -188,6 +198,7 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
             session.add(Aktionslog(
                 mail_id=mail.id,
                 ereignis="audio_transkribiert",
+                ausgeloest_von=ausgeloest_von,
                 detail=(
                     f"{ergebnis['audio_dateien']} Audiodatei(en) transkribiert; "
                     f"Mail {'erstellt' if ergebnis['neu_eingestellt'] else 'bereits vorhanden'} "
@@ -196,7 +207,7 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
             ))
             await _naechste_freischalten(session, mail.id, wartend.position)
             await session.commit()
-            return await wartende_aufgaben_ausfuehren(mail_id)
+            return await wartende_aufgaben_ausfuehren(mail_id, ausgeloest_von)
 
         if wartend.aufgabe_typ != MAIL_VERSCHIEBEN:
             return {"status": "wartet", "aufgabe_typ": wartend.aufgabe_typ}
@@ -216,6 +227,7 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
             mail.im_krautl_posteingang = False
             session.add(Aktionslog(
                 mail_id=mail.id, ereignis="verschieben_fehlgeschlagen",
+                ausgeloest_von=ausgeloest_von,
                 detail=f"{fehler}; aus Krautl-Posteingang entfernt",
             ))
             await session.commit()
@@ -239,6 +251,7 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
             mail.im_krautl_posteingang = False
             session.add(Aktionslog(
                 mail_id=mail_id, ereignis="verschieben_fehlgeschlagen",
+                ausgeloest_von=ausgeloest_von,
                 detail=(
                     f"nach {ziel.user}/{zielordner}: {exc}; "
                     "aus Krautl-Posteingang entfernt"
@@ -256,6 +269,7 @@ async def wartende_aufgaben_ausfuehren(mail_id: int) -> dict:
         mail.im_krautl_posteingang = False
         session.add(Aktionslog(
             mail_id=mail_id, ereignis="verschoben",
+            ausgeloest_von=ausgeloest_von,
             detail=f"nach {ziel.user}/{zielordner}; aus Krautl-Posteingang entfernt",
         ))
         await _naechste_freischalten(session, mail_id, position)

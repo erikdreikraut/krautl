@@ -149,6 +149,10 @@ const EREIGNIS_LABEL = {
   audio_transkribiert: "Audio transkribiert",
   audio_transkription_fehlgeschlagen: "Audiotranskription fehlgeschlagen",
   rollenzugriff_geaendert: "Rollenzugriff geändert",
+  klassifikation_geaendert: "Mail-Klassifikation geändert",
+  klassifikation_korrigiert: "Kategorie korrigiert",
+  rechnungsstatus_geaendert: "Rechnungsstatus geändert",
+  antwortvorschlag_verworfen: "Antwortvorschlag verworfen",
   mail_manuell_erledigt: "Manuell erledigt",
   mail_geloescht: "Mail gelöscht",
   mail_loeschen_fehlgeschlagen: "Mail-Löschung fehlgeschlagen",
@@ -1018,16 +1022,17 @@ function AktionslogView({ eintraege }) {
       </p>
 
       <div style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
-        <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1.1fr 1.4fr 1.6fr 2.5fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
-          <div>ZEIT</div><div>EREIGNIS</div><div>MAIL</div><div>DETAIL</div>
+        <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1fr 1.35fr 1.45fr 1.1fr 2.3fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
+          <div>ZEIT</div><div>EREIGNIS</div><div>MAIL</div><div>AUSGELÖST VON</div><div>DETAIL</div>
         </div>
         {eintraege.map((e) => (
-          <div key={e.id} className="grid items-start px-4 py-3" style={{ gridTemplateColumns: "1.1fr 1.4fr 1.6fr 2.5fr", borderBottom: `1px solid ${tokens.line}` }}>
+          <div key={e.id} className="grid items-start px-4 py-3" style={{ gridTemplateColumns: "1fr 1.35fr 1.45fr 1.1fr 2.3fr", borderBottom: `1px solid ${tokens.line}` }}>
             <div style={{ ...fontMono, fontSize: "12px", color: tokens.inkMuted }}>{formatZeitpunkt(e.erstellt_am)}</div>
             <div>
               <Badge label={(EREIGNIS_LABEL[e.ereignis] ?? e.ereignis).toUpperCase()} color={farbeFuerEreignis(e.ereignis)} />
             </div>
             <div style={{ ...fontSerif, fontSize: "13.5px" }}>{e.mailLabel}</div>
+            <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.ink }}>{e.ausgeloest_von || "Krautl"}</div>
             <div style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, wordBreak: "break-word" }}>{e.detail}</div>
           </div>
         ))}

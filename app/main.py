@@ -361,6 +361,7 @@ async def rollen_mailzugriff_speichern(
     session.add(Aktionslog(
         mail_id=None,
         ereignis="rollenzugriff_geaendert",
+        ausgeloest_von=request.state.benutzer["name"],
         detail=(
             f"Sachbearbeiter: {len(ausgewaehlt)} von {len(klassifikation_ids)} "
             f"Mailarten freigegeben; durch {request.state.benutzer['name']}"
@@ -417,6 +418,12 @@ async def klassifikation_aktualisieren(
             bestaetiger_typ="alle",
         ))
 
+    session.add(Aktionslog(
+        mail_id=None,
+        ereignis="klassifikation_geaendert",
+        ausgeloest_von=request.state.benutzer["name"],
+        detail=f"{klassifikation_id}: Ziel und Aufgabenplan aktualisiert",
+    ))
     await session.commit()
     return {"status": "gespeichert"}
 
@@ -470,6 +477,7 @@ async def mail_erledigen(
     session.add(Aktionslog(
         mail_id=mail.id,
         ereignis="mail_manuell_erledigt",
+        ausgeloest_von=request.state.benutzer["name"],
         detail=(
             "Aus Krautl-Posteingang entfernt; Mail im IMAP-Postfach "
             f"unverändert; durch {request.state.benutzer['name']}"
@@ -531,6 +539,7 @@ async def mail_loeschen(
             "mail_geloescht" if imap_fehler is None
             else "mail_loeschen_fehlgeschlagen"
         ),
+        ausgeloest_von=request.state.benutzer["name"],
         detail=(
             f"Dauerhaft aus {postfachname}/INBOX gelöscht; "
             f"durch {request.state.benutzer['name']}"
@@ -580,14 +589,26 @@ async def korrigiere_klassifikation(
         neue_klassifikation_id=neue_klassifikation_id,
         notiz=notiz,
     )
+    alte_klassifikation_id = mail.klassifikation_id
     mail.klassifikation_id = neue_klassifikation_id
     mail.pruefstatus = "geprueft"
     session.add(korrektur)
     await session.execute(delete(MailAufgabe).where(MailAufgabe.mail_id == mail_id))
     await session.flush()
     await aufgaben_fuer_mail_anlegen(session, mail)
+    session.add(Aktionslog(
+        mail_id=mail.id,
+        ereignis="klassifikation_korrigiert",
+        ausgeloest_von=request.state.benutzer["name"],
+        detail=(
+            f"{alte_klassifikation_id or 'UNKLASSIFIZIERT'} → "
+            f"{neue_klassifikation_id}"
+        ),
+    ))
     await session.commit()
-    await wartende_aufgaben_ausfuehren(mail_id)
+    await wartende_aufgaben_ausfuehren(
+        mail_id, ausgeloest_von=request.state.benutzer["name"]
+    )
     return {"status": "ok"}
 
 
@@ -634,6 +655,7 @@ async def rechnungsstatus_aendern(
     session.add(Aktionslog(
         mail_id=rechnung.mail_id,
         ereignis="rechnungsstatus_geaendert",
+        ausgeloest_von=request.state.benutzer["name"],
         detail=(
             f"Rechnung {rechnung.rechnungsnummer or rechnung.id}: {vorher} → "
             f"{aenderung.zahlungsstatus}; durch {request.state.benutzer['name']}"
@@ -737,6 +759,12 @@ async def rechnung_als_bezahlt(
     elif not ist_admin(request.state.benutzer):
         raise HTTPException(status_code=403, detail="Kein Zugriff auf diese Rechnung")
     rechnung.zahlungsstatus = "bezahlt"
+    session.add(Aktionslog(
+        mail_id=rechnung.mail_id,
+        ereignis="rechnungsstatus_geaendert",
+        ausgeloest_von=request.state.benutzer["name"],
+        detail=f"Rechnung {rechnung.rechnungsnummer or rechnung.id}: als bezahlt markiert",
+    ))
     await session.commit()
     return {"status": "ok"}
 
@@ -1137,6 +1165,15 @@ async def mail_antwortentwurf_erzeugen(
             detail=f"Antwortvorschlag konnte nicht erzeugt werden: {exc}",
         ) from exc
 
+    session.add(Aktionslog(
+        mail_id=mail.id,
+        ereignis="antwortvorschlag_erstellt",
+        ausgeloest_von=request.state.benutzer["name"],
+        detail=(
+            f"Entwurf #{entwurf.id} manuell angefordert"
+            if erzeugt else f"Vorhandenen Entwurf #{entwurf.id} aufgerufen"
+        ),
+    ))
     await session.commit()
     return {
         "status": "erzeugt" if erzeugt else "vorhanden",
@@ -1196,6 +1233,7 @@ async def entwurf_freigeben(
             session.add(Aktionslog(
                 mail_id=mail.id,
                 ereignis="antwort_pruefung_noetig",
+                ausgeloest_von=request.state.benutzer["name"],
                 detail=(
                     f"Entwurf #{entwurf.id}: geprüft durch "
                     f"{request.state.benutzer['name']}; "
@@ -1216,6 +1254,7 @@ async def entwurf_freigeben(
         session.add(Aktionslog(
             mail_id=mail.id,
             ereignis="antwort_pruefung_uebersprungen",
+            ausgeloest_von=request.state.benutzer["name"],
             detail=(
                 "Nach zwei KI-Blockierungen auf ausdrücklichen dritten "
                 f"Freigabeversuch durch {request.state.benutzer['name']} verzichtet"
@@ -1230,6 +1269,7 @@ async def entwurf_freigeben(
         session.add(Aktionslog(
             mail_id=mail.id,
             ereignis="antwort_versand_fehlgeschlagen",
+            ausgeloest_von=request.state.benutzer["name"],
             detail=(
                 f"Freigabe durch {request.state.benutzer['name']}; "
                 f"Testversand an {TEST_EMPFAENGER}: {exc}"
@@ -1249,6 +1289,7 @@ async def entwurf_freigeben(
     session.add(Aktionslog(
         mail_id=mail.id,
         ereignis="antwort_versendet_test",
+        ausgeloest_von=request.state.benutzer["name"],
         detail=(
             f"Durch {request.state.benutzer['name']} "
             f"{'ohne weitere KI-Prüfung ' if pruefung_uebersprungen else 'nach KI-Prüfung '}"
@@ -1264,6 +1305,7 @@ async def entwurf_freigeben(
             session.add(Aktionslog(
                 mail_id=mail.id,
                 ereignis="wissensvorschlag_erstellt",
+                ausgeloest_von=request.state.benutzer["name"],
                 detail=(
                     f"Nach Antwortfreigabe Vorschlag #{vorschlag.id} "
                     f"für {vorschlag.ziel} erstellt"
@@ -1275,6 +1317,7 @@ async def entwurf_freigeben(
         session.add(Aktionslog(
             mail_id=mail.id,
             ereignis="wissenspruefung_fehlgeschlagen",
+            ausgeloest_von=request.state.benutzer["name"],
             detail=f"Antwort wurde versendet; Wissensprüfung nicht möglich: {exc}",
         ))
     await session.commit()
@@ -1298,5 +1341,11 @@ async def entwurf_verwerfen(
     mail = await session.get(Mail, entwurf.mail_id)
     await _mailzugriff_erfordern(session, request, mail)
     entwurf.status = "verworfen"
+    session.add(Aktionslog(
+        mail_id=mail.id,
+        ereignis="antwortvorschlag_verworfen",
+        ausgeloest_von=request.state.benutzer["name"],
+        detail=f"Entwurf #{entwurf.id} verworfen",
+    ))
     await session.commit()
     return {"status": "verworfen"}
