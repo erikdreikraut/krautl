@@ -1,6 +1,7 @@
 """Einmalige interaktive Dropbox-Anmeldung für den Krautl-Server.
 
-Voraussetzung: DROPBOX_APP_KEY und DROPBOX_APP_SECRET sind im Container gesetzt.
+Voraussetzung: DROPBOX_APP_KEY und DROPBOX_APP_SECRET sind im Container gesetzt
+und in der Dropbox-App sind files.content.write sowie files.content.read aktiv.
 Das Skript zeigt einen Link, nimmt den einmaligen Dropbox-Code entgegen und
 gibt den dauerhaft nutzbaren Refresh Token aus. Es speichert keine Geheimnisse.
 """
@@ -22,6 +23,10 @@ def anmelden() -> None:
         app_key,
         app_secret,
         token_access_type="offline",
+    )
+    print(
+        "\nVorher in der Dropbox-App unter Permissions prüfen: "
+        "files.content.write und files.content.read müssen aktiviert sein."
     )
     print("\n1. Öffne diesen Link im Browser:\n")
     print(flow.start())

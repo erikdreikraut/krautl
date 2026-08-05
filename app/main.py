@@ -1,9 +1,11 @@
 import asyncio
+import logging
 import mimetypes
 from datetime import datetime, timezone
 from urllib.parse import quote
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from dropbox.exceptions import ApiError, AuthError
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import selectinload
@@ -37,6 +39,7 @@ from .shop_import import shop_katalog_laden, shop_katalog_speichern
 from .rechnungen import rechnungsdatei_laden
 
 app = FastAPI(title="Krautl API")
+logger = logging.getLogger(__name__)
 
 ERLAUBTE_AKTIONEN = {
     "BESTAETIGUNG_EINHOLEN",
@@ -653,10 +656,51 @@ async def rechnungsdatei_ansehen(
         dateiname, inhalt = await rechnungsdatei_laden(rechnung)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AuthError as exc:
+        logger.exception(
+            "Dropbox-Anmeldung beim Abruf von Rechnung %s fehlgeschlagen",
+            rechnung_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Die Dropbox-Anmeldung erlaubt keinen Dateidownload oder "
+                "ist nicht mehr gültig. Bitte in der Dropbox-App "
+                "files.content.read aktivieren und Dropbox danach erneut "
+                "mit Krautl verbinden."
+            ),
+        ) from exc
+    except ApiError as exc:
+        logger.exception(
+            "Dropbox-Datei für Rechnung %s nicht gefunden: %s",
+            rechnung_id,
+            rechnung.dateipfade or rechnung.dateipfad,
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Das Rechnungsoriginal wurde am hinterlegten Dropbox-Pfad "
+                "nicht gefunden. Es wurde möglicherweise verschoben oder "
+                "umbenannt."
+            ),
+        ) from exc
+    except RuntimeError as exc:
+        logger.exception(
+            "Dropbox-Konfiguration beim Abruf von Rechnung %s fehlt",
+            rechnung_id,
+        )
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
+        logger.exception(
+            "Unerwarteter Dropbox-Fehler beim Abruf von Rechnung %s",
+            rechnung_id,
+        )
         raise HTTPException(
             status_code=502,
-            detail="Rechnungsdatei konnte nicht aus Dropbox geladen werden",
+            detail=(
+                "Dropbox konnte die Rechnungsdatei vorübergehend nicht "
+                "bereitstellen. Bitte versuchen Sie es noch einmal."
+            ),
         ) from exc
 
     medientyp = mimetypes.guess_type(dateiname)[0] or "application/octet-stream"

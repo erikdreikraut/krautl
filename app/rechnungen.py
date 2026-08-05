@@ -9,6 +9,7 @@ from pathlib import PurePosixPath
 
 import dropbox
 from anthropic import Anthropic
+from dropbox.exceptions import ApiError
 from dropbox.files import WriteMode
 from sqlalchemy import select
 
@@ -154,8 +155,8 @@ def _dropbox_client():
     return dropbox.Dropbox(token)
 
 
-def _bevorzugter_rechnungspfad(rechnung: Rechnung) -> str:
-    """Wählt für die Ansicht PDF vor Bild und XML, mit Altpfad als Fallback."""
+def _sortierte_rechnungspfade(rechnung: Rechnung) -> list[str]:
+    """Sortiert alle Originale für die Ansicht nach ihrem Darstellungswert."""
     pfade = [
         pfad for pfad in (rechnung.dateipfade or [])
         if isinstance(pfad, str) and pfad.strip()
@@ -174,7 +175,7 @@ def _bevorzugter_rechnungspfad(rechnung: Rechnung) -> str:
         ".gif": 1,
         ".xml": 2,
     }
-    return min(
+    return [eintrag[1] for eintrag in sorted(
         enumerate(pfade),
         key=lambda eintrag: (
             prioritaet.get(
@@ -182,16 +183,33 @@ def _bevorzugter_rechnungspfad(rechnung: Rechnung) -> str:
             ),
             eintrag[0],
         ),
-    )[1]
+    )]
+
+
+def _bevorzugter_rechnungspfad(rechnung: Rechnung) -> str:
+    """Wählt für die Ansicht PDF vor Bild und XML."""
+    return _sortierte_rechnungspfade(rechnung)[0]
 
 
 async def rechnungsdatei_laden(rechnung: Rechnung) -> tuple[str, bytes]:
-    """Lädt das bevorzugte Rechnungsoriginal geschützt aus Dropbox."""
-    pfad = _bevorzugter_rechnungspfad(rechnung)
+    """Lädt ein Rechnungsoriginal mit Fallback auf weitere gespeicherte Formate."""
     dbx = await asyncio.to_thread(_dropbox_client)
-    metadaten, antwort = await asyncio.to_thread(dbx.files_download, pfad)
-    dateiname = getattr(metadaten, "name", None) or PurePosixPath(pfad).name
-    return dateiname, antwort.content
+    letzter_fehler = None
+    for pfad in _sortierte_rechnungspfade(rechnung):
+        try:
+            metadaten, antwort = await asyncio.to_thread(
+                dbx.files_download, pfad
+            )
+            dateiname = (
+                getattr(metadaten, "name", None)
+                or PurePosixPath(pfad).name
+            )
+            return dateiname, antwort.content
+        except ApiError as exc:
+            letzter_fehler = exc
+    if letzter_fehler:
+        raise letzter_fehler
+    raise ValueError("Für diese Rechnung ist keine Originaldatei hinterlegt")
 
 
 def _analysiere(anhang: dict, mail: Mail) -> dict:

@@ -18,6 +18,21 @@ async function anfrage(pfad, optionen) {
   return antwort.json();
 }
 
+async function dateiAnfrage(pfad) {
+  const antwort = await fetch(`${BASIS}${pfad}`);
+  if (!antwort.ok) {
+    let detail = "Datei konnte nicht geöffnet werden.";
+    try {
+      const fehler = await antwort.json();
+      if (fehler.detail) detail = fehler.detail;
+    } catch {
+      // Proxy-Fehler enthalten nicht immer eine lesbare Antwort.
+    }
+    throw new Error(detail);
+  }
+  return antwort.blob();
+}
+
 function postForm(pfad, params) {
   const query = new URLSearchParams(params).toString();
   return anfrage(`${pfad}?${query}`, { method: "POST" });
@@ -70,8 +85,8 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ zahlungsstatus }),
     }),
-  rechnungDateiUrl: (rechnungId) =>
-    `${BASIS}/rechnungen/${rechnungId}/datei`,
+  rechnungDateiLaden: (rechnungId) =>
+    dateiAnfrage(`/rechnungen/${rechnungId}/datei`),
 
   faq: () => anfrage("/faq"),
   wissensbasis: () => anfrage("/wissensbasis"),

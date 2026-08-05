@@ -286,8 +286,10 @@ stattdessen App Key, App Secret und ein dauerhaft wiederverwendbarer Refresh
 Token verwendet.
 
 1. In der Dropbox-App-Konsole bei der für Krautl angelegten App unter
-   **Permissions** mindestens `files.content.write` aktivieren und die Änderung
-   speichern.
+   **Permissions** mindestens `files.content.write` und `files.content.read`
+   aktivieren und die Änderung speichern. Die Schreibberechtigung wird zum
+   Ablegen der Rechnungen benötigt, die Leseberechtigung für die geschützte
+   Rechnungsansicht in Krautl.
 2. **App key** und **App secret** aus den App-Einstellungen als
    `DROPBOX_APP_KEY` und `DROPBOX_APP_SECRET` in Elestio hinterlegen. Diese
    Werte niemals in Chat oder Git kopieren.
@@ -298,6 +300,10 @@ Token verwendet.
    einmaligen Code zurück in das Serverfenster kopieren.
 5. Den danach ausgegebenen Wert in Elestio als `DROPBOX_REFRESH_TOKEN`
    hinterlegen. `DROPBOX_ACCESS_TOKEN` kann anschließend leer bleiben.
+   Wird `files.content.read` erst später ergänzt, muss die Dropbox-Anmeldung
+   erneut durchlaufen und der bisherige Refresh Token durch den neu
+   ausgegebenen Wert ersetzt werden. Bereits gespeicherte Tokens erhalten
+   nachträglich keine zusätzlichen Berechtigungen.
 6. App-Container erneut starten. Danach eine fehlgeschlagene Rechnung gezielt
    wiederholen:
    `docker compose exec app python -m scripts.wiederhole_rechnungen`
