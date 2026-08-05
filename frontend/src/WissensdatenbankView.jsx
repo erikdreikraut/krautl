@@ -62,6 +62,7 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
   const [exportHtml, setExportHtml] = useState(null);
   const [meldung, setMeldung] = useState("");
   const [shopImportLaeuft, setShopImportLaeuft] = useState(false);
+  const [rubrikEditor, setRubrikEditor] = useState(null);
   const formularRef = useRef(null);
   const produkte = basis?.produkte || [];
   const familien = basis?.familien || [];
@@ -96,6 +97,8 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
     if (editor) requestAnimationFrame(() => formularRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }, [editor?.typ, editor?.id]);
 
+  useEffect(() => setRubrikEditor(null), [produktId]);
+
   const neu = (typ) => {
     if (typ === "produkt") return setEditor({ typ, daten: { name: "", artikelnummer: "", familie: "", aliasesText: "", website_url: "", aktiv: true } });
     if (typ === "wissen") return setEditor({ typ, daten: { wissensart: produkt ? "produkt" : familie ? "produktfamilie" : auswahl === "ablauf" ? "ablauf" : "allgemein", titel: "", inhalt: "", produkt_id: produkt?.id || null, produktfamilie_id: familie?.id || produkt?.produktfamilie_id || null, quelle: "", stand: "", status: "entwurf", sensibel: false, schlagwoerter: [] } });
@@ -111,6 +114,21 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
       else await api.faqSpeichern(id, daten);
       setEditor(null); setMeldung("Gespeichert."); await onReload();
     } catch (fehler) { setMeldung(`Speichern fehlgeschlagen: ${fehler.message}`); }
+  };
+  const rubrikSpeichern = async () => {
+    const neuerName = rubrikEditor.neu.trim();
+    if (!neuerName) {
+      setMeldung("Der Rubrikname darf nicht leer sein.");
+      return;
+    }
+    try {
+      const ergebnis = await api.faqRubrikUmbenennen(produkt.id, rubrikEditor.alt, neuerName);
+      setRubrikEditor(null);
+      setMeldung(`Rubrik umbenannt. ${ergebnis.aktualisiert} FAQ-Punkte wurden aktualisiert.`);
+      await onReload();
+    } catch (fehler) {
+      setMeldung(`Rubrik konnte nicht umbenannt werden: ${fehler.message}`);
+    }
   };
   const exportieren = async () => {
     const ergebnis = await api.faqExport(produkt.id);
@@ -144,6 +162,17 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
         <div className="flex gap-2"><div className="flex items-center gap-2 px-2.5 py-1.5" style={{ background: farben.paperRaised, border: `1px solid ${farben.line}`, borderRadius: "6px" }}><Search size={13}/><input value={suche} onChange={(e) => setSuche(e.target.value)} placeholder="Wissen durchsuchen …" style={{ ...ui, fontSize: "12.5px", background: "transparent", outline: "none" }}/></div>{bereich !== "vorschlaege" && <button onClick={() => neu(bereich)} className="flex items-center gap-1.5 px-3 py-2" style={{ ...ui, fontSize: "12px", color: "#fff", background: farben.moss, borderRadius: "6px" }}><Plus size={13}/> {bereich === "faq" ? "FAQ" : "Wissenseintrag"}</button>}</div></div>
       <div className="flex gap-5 mt-4">{tab("wissen", "Wissen")}{tab("faq", "FAQ")}{tab("vorschlaege", `Vorschläge ${vorschlaege.length || ""}`)}</div>
     </div>
+    {bereich === "faq" && produkt && faqGruppen.length > 0 && <div className="flex flex-wrap items-center gap-2 px-6 py-2.5" style={{ background: farben.paperRaised, borderBottom: `1px solid ${farben.line}` }}>
+      <span style={{ ...mono, fontSize: "10px", color: farben.muted }}>RUBRIKEN</span>
+      {faqGruppen.map((g) => rubrikEditor?.alt === g ? <div key={g} className="flex items-center gap-1">
+        <input autoFocus className="px-2 py-1" style={{ ...feld, width: "260px", fontSize: "12px" }} value={rubrikEditor.neu} onChange={(e) => setRubrikEditor({ ...rubrikEditor, neu: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") rubrikSpeichern(); if (e.key === "Escape") setRubrikEditor(null); }}/>
+        <button title="Rubrik speichern" onClick={rubrikSpeichern} className="p-1" style={{ color: farben.mossDeep }}><Check size={14}/></button>
+        <button title="Abbrechen" onClick={() => setRubrikEditor(null)} className="p-1" style={{ color: farben.muted }}><X size={14}/></button>
+      </div> : <div key={g} className="flex items-center gap-1 px-2 py-1" style={{ border: `1px solid ${farben.line}`, borderRadius: "5px" }}>
+        <span style={{ ...ui, fontSize: "11.5px", color: farben.muted }}>{g}</span>
+        <button title="Rubriküberschrift bearbeiten" onClick={() => setRubrikEditor({ alt: g, neu: g })} className="p-0.5" style={{ color: farben.muted }}><Pencil size={11}/></button>
+      </div>)}
+    </div>}
     <div className="flex flex-1 min-h-0"><aside className="w-56 shrink-0 overflow-y-auto p-4" style={{ background: farben.paperRaised, borderRight: `1px solid ${farben.line}` }}>
       {[["alle", "Alle Inhalte"], ["allgemein", "Allgemeines"], ["ablauf", "Abläufe & Fallwissen"]].map(([id, label]) => <button key={id} onClick={() => setAuswahl(id)} className="w-full text-left px-2.5 py-2" style={{ ...ui, fontSize: "12.5px", fontWeight: auswahl === id ? 600 : 400, color: auswahl === id ? farben.mossDeep : farben.muted, background: auswahl === id ? farben.mossPale : "transparent", borderRadius: "5px" }}>{label}</button>)}
       <div className="mt-5 px-2.5" style={{ ...mono, fontSize: "10px", color: farben.muted }}>PRODUKTFAMILIEN</div>{familien.map((f) => <button key={f.id} onClick={() => setAuswahl(`familie:${f.id}`)} className="w-full text-left px-2.5 py-2" style={{ ...ui, fontSize: "12px", fontWeight: familieId === f.id ? 600 : 400, color: familieId === f.id ? farben.mossDeep : farben.muted, background: familieId === f.id ? farben.mossPale : "transparent", borderRadius: "5px" }}>{f.name}</button>)}

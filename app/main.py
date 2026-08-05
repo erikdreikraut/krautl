@@ -114,6 +114,12 @@ class FaqAenderung(BaseModel):
     aktiv: bool = True
 
 
+class FaqRubrikAenderung(BaseModel):
+    produkt_id: int | None = None
+    alte_kategorie: str
+    neue_kategorie: str
+
+
 class VorschlagUebernahme(BaseModel):
     ziel: str
     wissensart: str = "allgemein"
@@ -906,6 +912,33 @@ async def faq_anlegen(aenderung: FaqAenderung, session: AsyncSession = Depends(g
     await session.commit()
     await session.refresh(eintrag)
     return eintrag
+
+
+@app.put("/faq-rubriken")
+async def faq_rubrik_umbenennen(
+    aenderung: FaqRubrikAenderung, session: AsyncSession = Depends(get_session)
+):
+    alte_kategorie = aenderung.alte_kategorie.strip()
+    neue_kategorie = aenderung.neue_kategorie.strip()
+    if not alte_kategorie or not neue_kategorie:
+        raise HTTPException(status_code=422, detail="Alter und neuer Rubrikname sind erforderlich")
+    if aenderung.produkt_id is not None and not await session.get(Produkt, aenderung.produkt_id):
+        raise HTTPException(status_code=422, detail="Produkt nicht gefunden")
+
+    produkt_bedingung = (
+        FaqEintrag.produkt_id == aenderung.produkt_id
+        if aenderung.produkt_id is not None
+        else FaqEintrag.produkt_id.is_(None)
+    )
+    ergebnis = await session.execute(
+        update(FaqEintrag)
+        .where(produkt_bedingung, FaqEintrag.kategorie == alte_kategorie)
+        .values(kategorie=neue_kategorie)
+    )
+    if not ergebnis.rowcount:
+        raise HTTPException(status_code=404, detail="FAQ-Rubrik nicht gefunden")
+    await session.commit()
+    return {"kategorie": neue_kategorie, "aktualisiert": ergebnis.rowcount}
 
 
 @app.put("/faq/{faq_id}")

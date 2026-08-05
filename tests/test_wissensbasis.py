@@ -19,7 +19,7 @@ from app.wissensbasis import (
     faq_als_jtl_html, relevante_wissensbasis,
     wissenszuwachs_nach_antwort_pruefen,
 )
-from app.main import faq_export
+from app.main import FaqRubrikAenderung, faq_export, faq_rubrik_umbenennen
 
 
 class WissensbasisTest(unittest.IsolatedAsyncioTestCase):
@@ -120,6 +120,37 @@ class WissensbasisTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Aktiver Entwurf?", ergebnis["html"])
         self.assertNotIn("Veraltet?", ergebnis["html"])
         self.assertNotIn("Ausgewählt?", ergebnis["html"])
+
+    async def test_faq_rubrik_wird_nur_fuer_ein_produkt_umbenannt(self):
+        async with SessionLocal() as session:
+            zweites_produkt = Produkt(name="Anderes Produkt", artikelnummer="99999")
+            session.add(zweites_produkt)
+            await session.flush()
+            zweites_produkt_id = zweites_produkt.id
+            session.add_all([
+                FaqEintrag(
+                    produkt_id=self.produkt_id, kategorie="Anwendung & Praktisches",
+                    frage="Zweite Frage?", antwort="Zweite Antwort.", status="entwurf",
+                ),
+                FaqEintrag(
+                    produkt_id=zweites_produkt_id, kategorie="Anwendung & Praktisches",
+                    frage="Andere Frage?", antwort="Andere Antwort.", status="entwurf",
+                ),
+            ])
+            await session.commit()
+
+            ergebnis = await faq_rubrik_umbenennen(FaqRubrikAenderung(
+                produkt_id=self.produkt_id,
+                alte_kategorie="Anwendung & Praktisches",
+                neue_kategorie="Einnahme & Verwendung",
+            ), session)
+            eintraege = (await session.execute(select(FaqEintrag))).scalars().all()
+
+        self.assertEqual(2, ergebnis["aktualisiert"])
+        eigene = [e for e in eintraege if e.produkt_id == self.produkt_id]
+        fremde = [e for e in eintraege if e.produkt_id == zweites_produkt_id]
+        self.assertEqual({"Einnahme & Verwendung"}, {e.kategorie for e in eigene})
+        self.assertEqual({"Anwendung & Praktisches"}, {e.kategorie for e in fremde})
 
     async def test_export_unterstuetzt_einfache_formatierung_ohne_rohes_html(self):
         async with SessionLocal() as session:

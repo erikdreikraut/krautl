@@ -110,6 +110,16 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(daten),
     }),
+  faqRubrikUmbenennen: (produktId, alteKategorie, neueKategorie) =>
+    anfrage("/faq-rubriken", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        produkt_id: produktId,
+        alte_kategorie: alteKategorie,
+        neue_kategorie: neueKategorie,
+      }),
+    }),
   faqExport: (produktId) => anfrage(`/produkte/${produktId}/faq-export`),
   wissensvorschlaege: () => anfrage("/wissensvorschlaege"),
   wissensvorschlagUebernehmen: (id, daten) =>
