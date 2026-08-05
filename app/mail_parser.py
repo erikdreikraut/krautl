@@ -3,7 +3,6 @@ Parst rohe EML-Bytes (wie von imap_client.neue_mails_abrufen geliefert) in die
 Felder, die Mail-Modell und agent.klassifiziere() erwarten.
 """
 import re
-import uuid
 import hashlib
 from pathlib import Path
 from html.parser import HTMLParser
@@ -81,6 +80,28 @@ def _spam_score(msg) -> float | None:
     return None
 
 
+def _stabile_ersatz_message_id(msg, inhalt: str) -> str:
+    """Erzeugt für Mails ohne Message-ID eine reproduzierbare Kennung.
+
+    Eine Zufalls-ID würde dieselbe auf dem Server verbliebene Mail bei jedem
+    Abruf wie eine neue Nachricht aussehen lassen. Verwendet werden nur
+    inhaltlich stabile Kopfzeilen, der lesbare Text und Anhänge. IMAP-Flags
+    oder vom Server ergänzte Transportkopfzeilen beeinflussen die Kennung
+    damit nicht.
+    """
+    hasher = hashlib.sha256()
+    for header in ("From", "To", "Cc", "Date", "Subject"):
+        hasher.update(str(msg.get(header, "")).strip().encode("utf-8", "replace"))
+        hasher.update(b"\0")
+    hasher.update(inhalt.encode("utf-8", "replace"))
+    for teil in msg.iter_attachments():
+        hasher.update(str(teil.get_filename() or "").encode("utf-8", "replace"))
+        hasher.update(b"\0")
+        hasher.update(teil.get_payload(decode=True) or b"")
+        hasher.update(b"\0")
+    return f"<generiert-{hasher.hexdigest()}@krautl.local>"
+
+
 def parse_eml(raw: bytes) -> dict:
     msg = message_from_bytes(raw, policy=policy.default)
 
@@ -100,7 +121,13 @@ def parse_eml(raw: bytes) -> dict:
 
     message_id = (msg.get("Message-ID") or "").strip()
     if not message_id:
-        message_id = f"<generiert-{uuid.uuid4()}@krautl.local>"
+        message_id = _stabile_ersatz_message_id(msg, inhalt)
+
+    krautl_generiert = (
+        str(msg.get("X-Krautl-Generated", "")).strip().casefold()
+        == "audio-transcription"
+        or message_id.casefold().startswith("<krautl-audio-")
+    )
 
     return {
         "message_id": message_id,
@@ -110,6 +137,7 @@ def parse_eml(raw: bytes) -> dict:
         "text_auszug": inhalt[:TEXT_AUSZUG_MAX_LAENGE],
         "empfangen_am": empfangen_am,
         "spam_score": _spam_score(msg),
+        "krautl_generiert": krautl_generiert,
     }
 
 

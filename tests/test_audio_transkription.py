@@ -45,6 +45,7 @@ class AudioTranskriptionTest(unittest.IsolatedAsyncioTestCase):
         )
         ausgang = BytesParser(policy=policy.default).parsebytes(raw)
         self.assertEqual("<krautl-audio-17@dreikraut.de>", message_id)
+        self.assertEqual("audio-transcription", ausgang["X-Krautl-Generated"])
         self.assertEqual("service@dreikraut.de", ausgang["To"])
         self.assertEqual("Anruf transkribiert: Frau Müller", ausgang["Subject"])
         self.assertIn(

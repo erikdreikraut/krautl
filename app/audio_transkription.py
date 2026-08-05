@@ -183,6 +183,7 @@ def _ausgabemail(
     betreff_basis = (mail.betreff or "Anruf").strip()
     nachricht = EmailMessage()
     nachricht["Message-ID"] = message_id
+    nachricht["X-Krautl-Generated"] = "audio-transcription"
     nachricht["From"] = "Krautl <service@dreikraut.de>"
     nachricht["To"] = "service@dreikraut.de"
     nachricht["Subject"] = f"Anruf transkribiert: {anrufer}"

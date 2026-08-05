@@ -115,6 +115,25 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
             if await _mail_existiert(session, geparst["message_id"]):
                 continue
 
+            # Interne Ausgabemails müssen als UID-Marke gespeichert werden,
+            # dürfen aber niemals erneut klassifiziert oder ausgeführt werden.
+            # Die Transkriptionsmail enthält absichtlich das Originalaudio und
+            # würde sonst eine endlose Kette weiterer Transkriptionen auslösen.
+            if geparst.get("krautl_generiert"):
+                session.add(Mail(
+                    message_id=geparst["message_id"],
+                    imap_uid=roh["uid"],
+                    postfach_id=postfach.id,
+                    absender_name=geparst["absender_name"],
+                    absender_adresse=geparst["absender_adresse"],
+                    betreff=geparst["betreff"],
+                    text_auszug=geparst["text_auszug"],
+                    empfangen_am=geparst["empfangen_am"],
+                    spam_score=geparst["spam_score"],
+                    im_krautl_posteingang=False,
+                ))
+                continue
+
             klass: dict = {}
             if katalog:
                 try:
