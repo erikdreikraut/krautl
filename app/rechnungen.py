@@ -5,6 +5,7 @@ import hashlib
 import os
 import re
 from datetime import datetime, timezone
+from pathlib import PurePosixPath
 
 import dropbox
 from anthropic import Anthropic
@@ -151,6 +152,46 @@ def _dropbox_client():
     if not token:
         raise RuntimeError("Dropbox-Zugang ist nicht konfiguriert")
     return dropbox.Dropbox(token)
+
+
+def _bevorzugter_rechnungspfad(rechnung: Rechnung) -> str:
+    """Wählt für die Ansicht PDF vor Bild und XML, mit Altpfad als Fallback."""
+    pfade = [
+        pfad for pfad in (rechnung.dateipfade or [])
+        if isinstance(pfad, str) and pfad.strip()
+    ]
+    if rechnung.dateipfad and rechnung.dateipfad not in pfade:
+        pfade.append(rechnung.dateipfad)
+    if not pfade:
+        raise ValueError("Für diese Rechnung ist keine Originaldatei hinterlegt")
+
+    prioritaet = {
+        ".pdf": 0,
+        ".png": 1,
+        ".jpg": 1,
+        ".jpeg": 1,
+        ".webp": 1,
+        ".gif": 1,
+        ".xml": 2,
+    }
+    return min(
+        enumerate(pfade),
+        key=lambda eintrag: (
+            prioritaet.get(
+                PurePosixPath(eintrag[1]).suffix.casefold(), 3
+            ),
+            eintrag[0],
+        ),
+    )[1]
+
+
+async def rechnungsdatei_laden(rechnung: Rechnung) -> tuple[str, bytes]:
+    """Lädt das bevorzugte Rechnungsoriginal geschützt aus Dropbox."""
+    pfad = _bevorzugter_rechnungspfad(rechnung)
+    dbx = await asyncio.to_thread(_dropbox_client)
+    metadaten, antwort = await asyncio.to_thread(dbx.files_download, pfad)
+    dateiname = getattr(metadaten, "name", None) or PurePosixPath(pfad).name
+    return dateiname, antwort.content
 
 
 def _analysiere(anhang: dict, mail: Mail) -> dict:

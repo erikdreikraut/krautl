@@ -70,6 +70,8 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ zahlungsstatus }),
     }),
+  rechnungDateiUrl: (rechnungId) =>
+    `${BASIS}/rechnungen/${rechnungId}/datei`,
 
   faq: () => anfrage("/faq"),
   wissensbasis: () => anfrage("/wissensbasis"),

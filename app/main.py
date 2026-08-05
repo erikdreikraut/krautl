@@ -1,5 +1,7 @@
 import asyncio
+import mimetypes
 from datetime import datetime, timezone
+from urllib.parse import quote
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -32,6 +34,7 @@ from .wissensbasis import (
     relevante_wissensbasis, wissenszuwachs_nach_antwort_pruefen,
 )
 from .shop_import import shop_katalog_laden, shop_katalog_speichern
+from .rechnungen import rechnungsdatei_laden
 
 app = FastAPI(title="Krautl API")
 
@@ -628,6 +631,46 @@ async def rechnungsstatus_aendern(
     ))
     await session.commit()
     return rechnung
+
+
+@app.get("/rechnungen/{rechnung_id}/datei")
+async def rechnungsdatei_ansehen(
+    rechnung_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    rechnung = await session.get(Rechnung, rechnung_id)
+    if rechnung is None:
+        raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
+    if rechnung.mail_id:
+        await _mailzugriff_erfordern(
+            session, request, await session.get(Mail, rechnung.mail_id)
+        )
+    elif not ist_admin(request.state.benutzer):
+        raise HTTPException(status_code=403, detail="Kein Zugriff auf diese Rechnung")
+
+    try:
+        dateiname, inhalt = await rechnungsdatei_laden(rechnung)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Rechnungsdatei konnte nicht aus Dropbox geladen werden",
+        ) from exc
+
+    medientyp = mimetypes.guess_type(dateiname)[0] or "application/octet-stream"
+    return Response(
+        content=inhalt,
+        media_type=medientyp,
+        headers={
+            "Content-Disposition": (
+                "inline; filename*=UTF-8''" + quote(dateiname, safe="")
+            ),
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @app.post("/rechnungen/{rechnung_id}/als-bezahlt")

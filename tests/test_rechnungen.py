@@ -12,7 +12,12 @@ from sqlalchemy import select
 from app.db import SessionLocal, engine
 from app.mail_parser import rechnungsanhaenge
 from app.models import Base, Mail, Postfach, Rechnung
-from app.rechnungen import _zahlungsstatus_absichern, rechnung_verarbeiten
+from app.rechnungen import (
+    _bevorzugter_rechnungspfad,
+    _zahlungsstatus_absichern,
+    rechnungsdatei_laden,
+    rechnung_verarbeiten,
+)
 
 
 EML = b"""From: Lieferant <rechnung@example.test>\r
@@ -80,6 +85,40 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
             "zahlungshinweis": "Der Betrag wird nicht automatisch abgebucht. Bitte überweisen.",
         })
         self.assertEqual("offen", daten["zahlungsstatus"])
+
+    async def test_rechnungsansicht_bevorzugt_pdf_und_laed_original(self):
+        rechnung = Rechnung(
+            aussteller="Test GmbH",
+            waehrung="EUR",
+            dateipfad="/Rechnungen/2026/rechnung.xml",
+            dateipfade=[
+                "/Rechnungen/2026/rechnung.xml",
+                "/Rechnungen/2026/rechnung.jpg",
+                "/Rechnungen/2026/rechnung.pdf",
+            ],
+        )
+        self.assertEqual(
+            "/Rechnungen/2026/rechnung.pdf",
+            _bevorzugter_rechnungspfad(rechnung),
+        )
+        dbx = MagicMock()
+        dbx.files_download.return_value = (
+            type("Metadaten", (), {"name": "rechnung.pdf"})(),
+            type("Antwort", (), {"content": b"%PDF-Test"})(),
+        )
+        with patch("app.rechnungen._dropbox_client", return_value=dbx):
+            dateiname, inhalt = await rechnungsdatei_laden(rechnung)
+
+        self.assertEqual("rechnung.pdf", dateiname)
+        self.assertEqual(b"%PDF-Test", inhalt)
+        dbx.files_download.assert_called_once_with(
+            "/Rechnungen/2026/rechnung.pdf"
+        )
+
+    def test_rechnungsansicht_meldet_fehlende_originaldatei(self):
+        rechnung = Rechnung(aussteller="Test GmbH", waehrung="EUR")
+        with self.assertRaisesRegex(ValueError, "keine Originaldatei"):
+            _bevorzugter_rechnungspfad(rechnung)
 
     async def test_rechnung_wird_abgelegt_und_dedupliziert(self):
         config = type("Config", (), {"user": "einkauf@dreikraut.de"})()
