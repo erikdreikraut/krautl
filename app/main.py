@@ -36,10 +36,8 @@ from .wissensbasis import (
 )
 from .shop_import import shop_katalog_laden, shop_katalog_speichern
 from .rechnungen import (
-    DropboxDateiNichtGefunden,
-    DropboxDownloadAuthFehler,
-    DropboxDownloadFehler,
-    rechnungsdatei_laden,
+    RechnungsdateiNichtVerfuegbar,
+    rechnungsdatei_mit_mail_fallback,
 )
 
 app = FastAPI(title="Krautl API")
@@ -655,67 +653,55 @@ async def rechnungsdatei_ansehen(
     rechnung = await session.get(Rechnung, rechnung_id)
     if rechnung is None:
         raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
-    if rechnung.mail_id:
-        await _mailzugriff_erfordern(
-            session, request, await session.get(Mail, rechnung.mail_id)
-        )
+    mail = await session.get(Mail, rechnung.mail_id) if rechnung.mail_id else None
+    if mail:
+        await _mailzugriff_erfordern(session, request, mail)
     elif not ist_admin(request.state.benutzer):
         raise HTTPException(status_code=403, detail="Kein Zugriff auf diese Rechnung")
+    quellpostfach = await session.get(Postfach, mail.postfach_id) if mail else None
+    klassifikation = (
+        await session.get(Klassifikation, mail.klassifikation_id)
+        if mail and mail.klassifikation_id else None
+    )
+    verschiebe_aufgabe = (await session.execute(
+        select(MailAufgabe).where(
+            MailAufgabe.mail_id == mail.id,
+            MailAufgabe.aufgabe_typ == "MAIL_VERSCHIEBEN",
+        ).order_by(MailAufgabe.position.desc())
+    )).scalars().first() if mail else None
+    verschiebe_parameter = verschiebe_aufgabe.parameter if verschiebe_aufgabe else {}
+    verschiebe_parameter = verschiebe_parameter or {}
+    zielpostfach = (
+        verschiebe_parameter.get("zielpostfach")
+        or (klassifikation.zielpostfach if klassifikation else None)
+    )
+    zielordner = (
+        verschiebe_parameter.get("zielordner")
+        or (klassifikation.zielordner if klassifikation else None)
+    )
 
     try:
-        dateiname, inhalt = await rechnungsdatei_laden(rechnung)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except DropboxDownloadAuthFehler as exc:
-        logger.exception(
-            "Dropbox-Anmeldung beim Abruf von Rechnung %s fehlgeschlagen",
-            rechnung_id,
+        dateiname, inhalt = await rechnungsdatei_mit_mail_fallback(
+            rechnung,
+            mail,
+            quellpostfach.adresse if quellpostfach else None,
+            zielpostfach,
+            zielordner,
         )
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Die Dropbox-Anmeldung erlaubt keinen Dateidownload oder "
-                "ist nicht mehr gültig. Bitte in der Dropbox-App "
-                "files.content.read aktivieren und Dropbox danach erneut "
-                "mit Krautl verbinden."
-            ),
-        ) from exc
-    except DropboxDateiNichtGefunden as exc:
+    except RechnungsdateiNichtVerfuegbar as exc:
         logger.exception(
-            "Dropbox-Datei für Rechnung %s nicht gefunden: %s",
+            "Rechnungsdatei %s weder aus Dropbox noch IMAP abrufbar. "
+            "Dropbox: %s. IMAP: %s",
             rechnung_id,
-            rechnung.dateipfade or rechnung.dateipfad,
+            exc.dropbox_fehler,
+            exc.mail_fehler,
         )
         raise HTTPException(
             status_code=404,
             detail=(
-                "Das Rechnungsoriginal wurde am hinterlegten Dropbox-Pfad "
-                "nicht gefunden. Es wurde möglicherweise verschoben oder "
-                "umbenannt."
-            ),
-        ) from exc
-    except DropboxDownloadFehler as exc:
-        logger.exception(
-            "Dropbox-Dateidienst beim Abruf von Rechnung %s fehlgeschlagen",
-            rechnung_id,
-        )
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        logger.exception(
-            "Dropbox-Konfiguration beim Abruf von Rechnung %s fehlt",
-            rechnung_id,
-        )
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception(
-            "Unerwarteter Dropbox-Fehler beim Abruf von Rechnung %s",
-            rechnung_id,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "Dropbox konnte die Rechnungsdatei vorübergehend nicht "
-                "bereitstellen. Bitte versuchen Sie es noch einmal."
+                "Die Rechnungsdatei konnte weder aus Dropbox noch aus der "
+                "zugehörigen Mail geladen werden. Die Mail wurde möglicherweise "
+                "inzwischen verschoben oder gelöscht."
             ),
         ) from exc
 

@@ -2,7 +2,8 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from app.imap_client import (
-    PostfachConfig, mail_loeschen, mail_verschieben, neue_mails_abrufen,
+    PostfachConfig, mail_loeschen, mail_rohdaten_nach_message_id_laden,
+    mail_verschieben, neue_mails_abrufen,
 )
 
 
@@ -65,6 +66,21 @@ class ImapVerschiebenTest(unittest.TestCase):
             mail_loeschen(self.quelle, 7, "<test@example.test>")
         client.delete_messages.assert_called_once_with([7])
         client.expunge.assert_called_once_with()
+
+    def test_verschobene_mail_wird_per_message_id_im_zielordner_gefunden(self):
+        client = MagicMock()
+        client.search.return_value = [42]
+        client.fetch.return_value = {42: {b"RFC822": self.eml}}
+        with patch("app.imap_client.IMAPClient", new=_ClientKontext([client])):
+            ergebnis = mail_rohdaten_nach_message_id_laden(
+                self.ziel, "<test@example.test>", "Rechnungen"
+            )
+
+        self.assertEqual(self.eml, ergebnis)
+        client.select_folder.assert_called_once_with("Rechnungen", readonly=True)
+        client.search.assert_called_once_with([
+            "HEADER", "Message-ID", "<test@example.test>"
+        ])
 
     def test_falsche_message_id_verhindert_das_loeschen(self):
         client = MagicMock()

@@ -88,6 +88,30 @@ def mail_rohdaten_laden(config: PostfachConfig, uid: int, ordner: str = "INBOX")
         return daten[uid][b"RFC822"]
 
 
+def mail_rohdaten_nach_message_id_laden(
+    config: PostfachConfig, message_id: str, ordner: str = "INBOX"
+) -> bytes:
+    """Findet eine verschobene Mail über ihre unveränderliche Message-ID."""
+    erwartete_id = message_id.strip()
+    with IMAPClient(config.host, ssl=True, timeout=60) as client:
+        client.login(config.user, config.password)
+        client.select_folder(ordner, readonly=True)
+        uids = client.search(["HEADER", "Message-ID", erwartete_id])
+        for uid in reversed(uids):
+            daten = client.fetch([uid], ["RFC822"])
+            eml = daten.get(uid, {}).get(b"RFC822")
+            if not eml:
+                continue
+            gefundene_id = message_from_bytes(
+                eml, policy=policy.default
+            ).get("Message-ID")
+            if gefundene_id and gefundene_id.strip() == erwartete_id:
+                return eml
+    raise RuntimeError(
+        f"Mail {erwartete_id} wurde in {config.user}/{ordner} nicht gefunden"
+    )
+
+
 def mail_einstellen(
     ziel: PostfachConfig,
     eml: bytes,

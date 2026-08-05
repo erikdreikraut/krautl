@@ -14,7 +14,11 @@ from anthropic import Anthropic
 from dropbox.files import WriteMode
 from sqlalchemy import select
 
-from .imap_client import lade_postfaecher, mail_rohdaten_laden
+from .imap_client import (
+    lade_postfaecher,
+    mail_rohdaten_laden,
+    mail_rohdaten_nach_message_id_laden,
+)
 from .mail_parser import rechnungsanhaenge
 from .models import Mail, Postfach, Rechnung
 
@@ -168,6 +172,15 @@ class DropboxDownloadFehler(RuntimeError):
     """Dropbox konnte eine Datei aus einem anderen Grund nicht liefern."""
 
 
+class RechnungsdateiNichtVerfuegbar(RuntimeError):
+    """Weder Dropbox noch die ursprüngliche Mail konnten das Original liefern."""
+
+    def __init__(self, dropbox_fehler: Exception, mail_fehler: Exception):
+        super().__init__("Rechnungsdatei ist in Dropbox und IMAP nicht verfügbar")
+        self.dropbox_fehler = dropbox_fehler
+        self.mail_fehler = mail_fehler
+
+
 def _dropbox_access_token_laden() -> str:
     """Erzeugt aus dem Refresh Token ein kurzlebiges Dropbox-Zugriffstoken."""
     refresh = os.getenv("DROPBOX_REFRESH_TOKEN")
@@ -297,6 +310,103 @@ async def rechnungsdatei_laden(rechnung: Rechnung) -> tuple[str, bytes]:
     if letzter_fehler:
         raise letzter_fehler
     raise ValueError("Für diese Rechnung ist keine Originaldatei hinterlegt")
+
+
+def _rechnungsanhang_auswaehlen(
+    rechnung: Rechnung, anhaenge: list[dict]
+) -> tuple[str, bytes]:
+    if not anhaenge:
+        raise RuntimeError("Die zugehörige Mail enthält keinen Rechnungsanhang")
+
+    try:
+        endungen = [
+            PurePosixPath(pfad).suffix.casefold()
+            for pfad in _sortierte_rechnungspfade(rechnung)
+        ]
+    except ValueError:
+        endungen = [".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".xml"]
+    endungen = list(dict.fromkeys(endungen))
+    rechnungsnummer = re.sub(
+        r"[^a-z0-9]", "", (rechnung.rechnungsnummer or "").casefold()
+    )
+
+    for endung in endungen:
+        kandidaten = [a for a in anhaenge if a["endung"].casefold() == endung]
+        if rechnungsnummer:
+            passender_name = next((
+                a for a in kandidaten
+                if rechnungsnummer in re.sub(
+                    r"[^a-z0-9]", "", a["dateiname"].casefold()
+                )
+            ), None)
+            if passender_name:
+                return passender_name["dateiname"], passender_name["inhalt"]
+        if kandidaten:
+            return kandidaten[0]["dateiname"], kandidaten[0]["inhalt"]
+    return anhaenge[0]["dateiname"], anhaenge[0]["inhalt"]
+
+
+async def rechnungsdatei_aus_mail_laden(
+    rechnung: Rechnung,
+    mail: Mail,
+    quellpostfach: str | None,
+    zielpostfach: str | None,
+    zielordner: str | None,
+) -> tuple[str, bytes]:
+    """Lädt das Original aus der verschobenen oder noch vorhandenen Mail."""
+    configs = {config.user.casefold(): config for config in lade_postfaecher()}
+    orte: list[tuple[str, str]] = []
+    if zielpostfach:
+        orte.append((zielpostfach, zielordner or "INBOX"))
+    if quellpostfach:
+        quellort = (quellpostfach, "INBOX")
+        if quellort not in orte:
+            orte.append(quellort)
+
+    fehler: list[str] = []
+    for adresse, ordner in orte:
+        config = configs.get(adresse.casefold())
+        if config is None:
+            fehler.append(f"{adresse}/{ordner}: Postfach nicht konfiguriert")
+            continue
+        try:
+            eml = await asyncio.to_thread(
+                mail_rohdaten_nach_message_id_laden,
+                config,
+                mail.message_id,
+                ordner,
+            )
+            anhaenge = await asyncio.to_thread(rechnungsanhaenge, eml)
+            return _rechnungsanhang_auswaehlen(rechnung, anhaenge)
+        except Exception as exc:
+            fehler.append(f"{adresse}/{ordner}: {exc}")
+    raise RuntimeError(" | ".join(fehler) or "Kein IMAP-Ablageort bekannt")
+
+
+async def rechnungsdatei_mit_mail_fallback(
+    rechnung: Rechnung,
+    mail: Mail | None,
+    quellpostfach: str | None,
+    zielpostfach: str | None,
+    zielordner: str | None,
+) -> tuple[str, bytes]:
+    """Nutzt Dropbox bevorzugt und weicht bei jedem Abruffehler auf IMAP aus."""
+    try:
+        return await rechnungsdatei_laden(rechnung)
+    except (RuntimeError, ValueError) as dropbox_fehler:
+        if mail is None:
+            raise RechnungsdateiNichtVerfuegbar(
+                dropbox_fehler,
+                RuntimeError("Zu dieser Rechnung ist keine Ursprungsmail hinterlegt"),
+            ) from dropbox_fehler
+        try:
+            return await rechnungsdatei_aus_mail_laden(
+                rechnung, mail, quellpostfach, zielpostfach, zielordner
+            )
+        except Exception as mail_fehler:
+            raise RechnungsdateiNichtVerfuegbar(
+                dropbox_fehler, mail_fehler
+            ) from mail_fehler
 
 
 def _analysiere(anhang: dict, mail: Mail) -> dict:
