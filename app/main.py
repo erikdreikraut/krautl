@@ -36,8 +36,7 @@ from .wissensbasis import (
 )
 from .shop_import import shop_katalog_laden, shop_katalog_speichern
 from .rechnungen import (
-    RechnungsdateiNichtVerfuegbar,
-    rechnungsdatei_mit_mail_fallback,
+    rechnungsdatei_aus_mail_laden,
 )
 
 app = FastAPI(title="Krautl API")
@@ -658,6 +657,11 @@ async def rechnungsdatei_ansehen(
         await _mailzugriff_erfordern(session, request, mail)
     elif not ist_admin(request.state.benutzer):
         raise HTTPException(status_code=403, detail="Kein Zugriff auf diese Rechnung")
+    if mail is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Zu dieser Rechnung ist keine Ursprungsmail mehr hinterlegt",
+        )
     quellpostfach = await session.get(Postfach, mail.postfach_id) if mail else None
     klassifikation = (
         await session.get(Klassifikation, mail.klassifikation_id)
@@ -681,27 +685,25 @@ async def rechnungsdatei_ansehen(
     )
 
     try:
-        dateiname, inhalt = await rechnungsdatei_mit_mail_fallback(
+        dateiname, inhalt = await rechnungsdatei_aus_mail_laden(
             rechnung,
             mail,
             quellpostfach.adresse if quellpostfach else None,
             zielpostfach,
             zielordner,
         )
-    except RechnungsdateiNichtVerfuegbar as exc:
+    except RuntimeError as exc:
         logger.exception(
-            "Rechnungsdatei %s weder aus Dropbox noch IMAP abrufbar. "
-            "Dropbox: %s. IMAP: %s",
+            "Rechnungsdatei %s nicht aus der zugehörigen Mail abrufbar: %s",
             rechnung_id,
-            exc.dropbox_fehler,
-            exc.mail_fehler,
+            exc,
         )
         raise HTTPException(
             status_code=404,
             detail=(
-                "Die Rechnungsdatei konnte weder aus Dropbox noch aus der "
-                "zugehörigen Mail geladen werden. Die Mail wurde möglicherweise "
-                "inzwischen verschoben oder gelöscht."
+                "Die Rechnungsdatei konnte nicht aus der zugehörigen Mail "
+                "geladen werden. Die Mail wurde möglicherweise inzwischen "
+                "verschoben oder gelöscht."
             ),
         ) from exc
 

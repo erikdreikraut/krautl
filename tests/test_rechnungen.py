@@ -6,9 +6,6 @@ from unittest.mock import MagicMock, patch
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_rechnungen.db")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 os.environ.setdefault("DROPBOX_ACCESS_TOKEN", "test")
-os.environ.setdefault("DROPBOX_REFRESH_TOKEN", "test-refresh")
-os.environ.setdefault("DROPBOX_APP_KEY", "test-key")
-os.environ.setdefault("DROPBOX_APP_SECRET", "test-secret")
 
 from sqlalchemy import select
 
@@ -16,12 +13,8 @@ from app.db import SessionLocal, engine
 from app.mail_parser import rechnungsanhaenge
 from app.models import Base, Mail, Postfach, Rechnung
 from app.rechnungen import (
-    DropboxDownloadAuthFehler,
-    _bevorzugter_rechnungspfad,
     _zahlungsstatus_absichern,
     rechnungsdatei_aus_mail_laden,
-    rechnungsdatei_laden,
-    rechnungsdatei_mit_mail_fallback,
     rechnung_verarbeiten,
 )
 
@@ -92,73 +85,6 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
         })
         self.assertEqual("offen", daten["zahlungsstatus"])
 
-    async def test_rechnungsansicht_bevorzugt_pdf_und_laed_original(self):
-        rechnung = Rechnung(
-            aussteller="Test GmbH",
-            waehrung="EUR",
-            dateipfad="/Rechnungen/2026/rechnung.xml",
-            dateipfade=[
-                "/Rechnungen/2026/rechnung.xml",
-                "/Rechnungen/2026/rechnung.jpg",
-                "/Rechnungen/2026/rechnung.pdf",
-            ],
-        )
-        self.assertEqual(
-            "/Rechnungen/2026/rechnung.pdf",
-            _bevorzugter_rechnungspfad(rechnung),
-        )
-        token_antwort = MagicMock(
-            status_code=200,
-            json=lambda: {"access_token": "kurzlebiges-token"},
-        )
-        datei_antwort = MagicMock(
-            status_code=200,
-            headers={"Dropbox-API-Result": '{"name":"rechnung.pdf"}'},
-            content=b"%PDF-Test",
-        )
-        with patch(
-            "app.rechnungen.httpx.post",
-            side_effect=[token_antwort, datei_antwort],
-        ) as post:
-            dateiname, inhalt = await rechnungsdatei_laden(rechnung)
-
-        self.assertEqual("rechnung.pdf", dateiname)
-        self.assertEqual(b"%PDF-Test", inhalt)
-        self.assertEqual(2, post.call_count)
-        self.assertEqual(
-            '{"path": "/Rechnungen/2026/rechnung.pdf"}',
-            post.call_args_list[1].kwargs["headers"]["Dropbox-API-Arg"],
-        )
-
-    async def test_rechnungsansicht_weicht_auf_bilddatei_aus(self):
-        rechnung = Rechnung(
-            aussteller="Test GmbH",
-            waehrung="EUR",
-            dateipfade=[
-                "/Rechnungen/2026/rechnung.pdf",
-                "/Rechnungen/2026/rechnung.jpg",
-            ],
-        )
-        token_antwort = MagicMock(
-            status_code=200,
-            json=lambda: {"access_token": "kurzlebiges-token"},
-        )
-        nicht_gefunden = MagicMock(status_code=409, headers={}, content=b"")
-        bild_antwort = MagicMock(
-            status_code=200,
-            headers={"Dropbox-API-Result": '{"name":"rechnung.jpg"}'},
-            content=b"JPEG-Test",
-        )
-        with patch(
-            "app.rechnungen.httpx.post",
-            side_effect=[token_antwort, nicht_gefunden, bild_antwort],
-        ) as post:
-            dateiname, inhalt = await rechnungsdatei_laden(rechnung)
-
-        self.assertEqual("rechnung.jpg", dateiname)
-        self.assertEqual(b"JPEG-Test", inhalt)
-        self.assertEqual(3, post.call_count)
-
     async def test_rechnungsansicht_laed_original_aus_verschobener_mail(self):
         async with SessionLocal() as session:
             mail = await session.get(Mail, self.mail_id)
@@ -187,33 +113,6 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
         laden.assert_called_once_with(
             ziel, "<rechnung@example.test>", "Rechnungen"
         )
-
-    async def test_dropbox_authfehler_weicht_auf_mail_aus(self):
-        async with SessionLocal() as session:
-            mail = await session.get(Mail, self.mail_id)
-        rechnung = Rechnung(aussteller="Test GmbH", waehrung="EUR")
-        with patch(
-            "app.rechnungen.rechnungsdatei_laden",
-            side_effect=DropboxDownloadAuthFehler("HTTP 403"),
-        ), patch(
-            "app.rechnungen.rechnungsdatei_aus_mail_laden",
-            return_value=("rechnung.pdf", b"PDF"),
-        ) as mail_laden:
-            ergebnis = await rechnungsdatei_mit_mail_fallback(
-                rechnung,
-                mail,
-                "einkauf@dreikraut.de",
-                "erik@dreikraut.de",
-                "Rechnungen",
-            )
-
-        self.assertEqual(("rechnung.pdf", b"PDF"), ergebnis)
-        mail_laden.assert_awaited_once()
-
-    def test_rechnungsansicht_meldet_fehlende_originaldatei(self):
-        rechnung = Rechnung(aussteller="Test GmbH", waehrung="EUR")
-        with self.assertRaisesRegex(ValueError, "keine Originaldatei"):
-            _bevorzugter_rechnungspfad(rechnung)
 
     async def test_rechnung_wird_abgelegt_und_dedupliziert(self):
         config = type("Config", (), {"user": "einkauf@dreikraut.de"})()

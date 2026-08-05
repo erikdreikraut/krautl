@@ -2,14 +2,12 @@
 import asyncio
 import base64
 import hashlib
-import json
 import os
 import re
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 
 import dropbox
-import httpx
 from anthropic import Anthropic
 from dropbox.files import WriteMode
 from sqlalchemy import select
@@ -160,108 +158,8 @@ def _dropbox_client():
     return dropbox.Dropbox(token)
 
 
-class DropboxDownloadAuthFehler(RuntimeError):
-    """Dropbox lehnt die Anmeldung oder die Leseberechtigung ab."""
-
-
-class DropboxDateiNichtGefunden(RuntimeError):
-    """Keiner der gespeicherten Dropbox-Pfade existiert mehr."""
-
-
-class DropboxDownloadFehler(RuntimeError):
-    """Dropbox konnte eine Datei aus einem anderen Grund nicht liefern."""
-
-
-class RechnungsdateiNichtVerfuegbar(RuntimeError):
-    """Weder Dropbox noch die ursprüngliche Mail konnten das Original liefern."""
-
-    def __init__(self, dropbox_fehler: Exception, mail_fehler: Exception):
-        super().__init__("Rechnungsdatei ist in Dropbox und IMAP nicht verfügbar")
-        self.dropbox_fehler = dropbox_fehler
-        self.mail_fehler = mail_fehler
-
-
-def _dropbox_access_token_laden() -> str:
-    """Erzeugt aus dem Refresh Token ein kurzlebiges Dropbox-Zugriffstoken."""
-    refresh = os.getenv("DROPBOX_REFRESH_TOKEN")
-    if not refresh:
-        token = os.getenv("DROPBOX_ACCESS_TOKEN")
-        if not token:
-            raise RuntimeError("Dropbox-Zugang ist nicht konfiguriert")
-        return token
-
-    app_key = os.getenv("DROPBOX_APP_KEY")
-    app_secret = os.getenv("DROPBOX_APP_SECRET")
-    if not app_key or not app_secret:
-        raise RuntimeError(
-            "Dropbox App Key oder App Secret ist nicht konfiguriert"
-        )
-    try:
-        antwort = httpx.post(
-            "https://api.dropboxapi.com/oauth2/token",
-            data={
-                "grant_type": "refresh_token",
-                "refresh_token": refresh,
-                "client_id": app_key,
-                "client_secret": app_secret,
-            },
-            timeout=30.0,
-        )
-    except httpx.HTTPError as exc:
-        raise DropboxDownloadFehler(
-            "Dropbox-Anmeldung ist derzeit nicht erreichbar"
-        ) from exc
-    if antwort.status_code != 200:
-        raise DropboxDownloadAuthFehler(
-            f"Dropbox-Token abgelehnt, HTTP {antwort.status_code}"
-        )
-    token = antwort.json().get("access_token")
-    if not token:
-        raise DropboxDownloadAuthFehler(
-            "Dropbox hat kein Zugriffstoken geliefert"
-        )
-    return token
-
-
-def _dropbox_datei_direkt_laden(
-    zugriffstoken: str, pfad: str
-) -> tuple[str, bytes]:
-    """Lädt eine Datei ohne den fehlerhaften AuthError-Decoder des SDK."""
-    try:
-        antwort = httpx.post(
-            "https://content.dropboxapi.com/2/files/download",
-            headers={
-                "Authorization": f"Bearer {zugriffstoken}",
-                "Dropbox-API-Arg": json.dumps({"path": pfad}),
-            },
-            timeout=60.0,
-        )
-    except httpx.HTTPError as exc:
-        raise DropboxDownloadFehler(
-            "Dropbox-Dateidienst ist derzeit nicht erreichbar"
-        ) from exc
-
-    if antwort.status_code == 200:
-        ergebnis_header = antwort.headers.get("Dropbox-API-Result", "{}")
-        try:
-            metadaten = json.loads(ergebnis_header)
-        except json.JSONDecodeError:
-            metadaten = {}
-        dateiname = metadaten.get("name") or PurePosixPath(pfad).name
-        return dateiname, antwort.content
-    if antwort.status_code in {401, 403}:
-        raise DropboxDownloadAuthFehler(
-            f"Dropbox-Dateizugriff abgelehnt, HTTP {antwort.status_code}"
-        )
-    if antwort.status_code == 409:
-        raise DropboxDateiNichtGefunden(pfad)
-    raise DropboxDownloadFehler(
-        f"Dropbox-Dateidienst antwortet mit HTTP {antwort.status_code}"
-    )
-
-
 def _sortierte_rechnungspfade(rechnung: Rechnung) -> list[str]:
-    """Sortiert alle Originale für die Ansicht nach ihrem Darstellungswert."""
+    """Sortiert hinterlegte Formate für die Auswahl des passenden Mail-Anhangs."""
     pfade = [
         pfad for pfad in (rechnung.dateipfade or [])
         if isinstance(pfad, str) and pfad.strip()
@@ -289,27 +187,6 @@ def _sortierte_rechnungspfade(rechnung: Rechnung) -> list[str]:
             eintrag[0],
         ),
     )]
-
-
-def _bevorzugter_rechnungspfad(rechnung: Rechnung) -> str:
-    """Wählt für die Ansicht PDF vor Bild und XML."""
-    return _sortierte_rechnungspfade(rechnung)[0]
-
-
-async def rechnungsdatei_laden(rechnung: Rechnung) -> tuple[str, bytes]:
-    """Lädt ein Rechnungsoriginal mit Fallback auf weitere gespeicherte Formate."""
-    zugriffstoken = await asyncio.to_thread(_dropbox_access_token_laden)
-    letzter_fehler: DropboxDateiNichtGefunden | None = None
-    for pfad in _sortierte_rechnungspfade(rechnung):
-        try:
-            return await asyncio.to_thread(
-                _dropbox_datei_direkt_laden, zugriffstoken, pfad
-            )
-        except DropboxDateiNichtGefunden as exc:
-            letzter_fehler = exc
-    if letzter_fehler:
-        raise letzter_fehler
-    raise ValueError("Für diese Rechnung ist keine Originaldatei hinterlegt")
 
 
 def _rechnungsanhang_auswaehlen(
@@ -381,32 +258,6 @@ async def rechnungsdatei_aus_mail_laden(
         except Exception as exc:
             fehler.append(f"{adresse}/{ordner}: {exc}")
     raise RuntimeError(" | ".join(fehler) or "Kein IMAP-Ablageort bekannt")
-
-
-async def rechnungsdatei_mit_mail_fallback(
-    rechnung: Rechnung,
-    mail: Mail | None,
-    quellpostfach: str | None,
-    zielpostfach: str | None,
-    zielordner: str | None,
-) -> tuple[str, bytes]:
-    """Nutzt Dropbox bevorzugt und weicht bei jedem Abruffehler auf IMAP aus."""
-    try:
-        return await rechnungsdatei_laden(rechnung)
-    except (RuntimeError, ValueError) as dropbox_fehler:
-        if mail is None:
-            raise RechnungsdateiNichtVerfuegbar(
-                dropbox_fehler,
-                RuntimeError("Zu dieser Rechnung ist keine Ursprungsmail hinterlegt"),
-            ) from dropbox_fehler
-        try:
-            return await rechnungsdatei_aus_mail_laden(
-                rechnung, mail, quellpostfach, zielpostfach, zielordner
-            )
-        except Exception as mail_fehler:
-            raise RechnungsdateiNichtVerfuegbar(
-                dropbox_fehler, mail_fehler
-            ) from mail_fehler
 
 
 def _analysiere(anhang: dict, mail: Mail) -> dict:
