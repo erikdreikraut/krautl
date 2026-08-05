@@ -1,6 +1,7 @@
 import os
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_rechnungen.db")
@@ -11,6 +12,7 @@ from sqlalchemy import select
 
 from app.db import SessionLocal, engine
 from app.mail_parser import rechnungsanhaenge
+from app.main import liste_rechnungen
 from app.models import Base, Mail, Postfach, Rechnung
 from app.rechnungen import (
     _zahlungsstatus_absichern,
@@ -145,6 +147,60 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
             rechnungen = (await session.execute(select(Rechnung))).scalars().all()
             self.assertEqual(1, len(rechnungen))
             self.assertEqual("offen", rechnungen[0].zahlungsstatus)
+
+    async def test_komplettliste_sortiert_nach_mail_eingang_und_liefert_zeitpunkt(self):
+        neuer_eingang = datetime(2026, 8, 5, 15, 0, tzinfo=timezone.utc)
+        alter_eingang = neuer_eingang - timedelta(days=4)
+        async with SessionLocal() as session:
+            neue_mail = await session.get(Mail, self.mail_id)
+            neue_mail.empfangen_am = neuer_eingang
+            postfach = await session.get(Postfach, neue_mail.postfach_id)
+            alte_mail = Mail(
+                message_id="<alte-rechnung@example.test>",
+                imap_uid=6,
+                postfach_id=postfach.id,
+                absender_name="Alter Lieferant",
+                absender_adresse="alt@example.test",
+                betreff="Alte Rechnung",
+                text_auszug="Alte Rechnung",
+                empfangen_am=alter_eingang,
+            )
+            session.add(alte_mail)
+            await session.flush()
+            neue_rechnung = Rechnung(
+                mail_id=neue_mail.id,
+                aussteller="Neuer Lieferant",
+                rechnungsnummer="NEU",
+                rechnungsdatum=neuer_eingang,
+                faellig_am=neuer_eingang + timedelta(days=30),
+                waehrung="EUR",
+                zahlungsstatus="automatisch",
+            )
+            alte_rechnung = Rechnung(
+                mail_id=alte_mail.id,
+                aussteller="Alter Lieferant",
+                rechnungsnummer="ALT",
+                rechnungsdatum=alter_eingang,
+                # Die alte Rechnung ist früher fällig. Das darf die
+                # chronologische Eingangssortierung nicht mehr überstimmen.
+                faellig_am=alter_eingang + timedelta(days=1),
+                waehrung="EUR",
+                zahlungsstatus="automatisch",
+            )
+            session.add_all([neue_rechnung, alte_rechnung])
+            await session.commit()
+
+        request = SimpleNamespace(state=SimpleNamespace(
+            benutzer={"rolle": "admin", "name": "Test Admin"}
+        ))
+        async with SessionLocal() as session:
+            liste = await liste_rechnungen(request, session)
+
+        self.assertEqual(["NEU", "ALT"], [r["rechnungsnummer"] for r in liste])
+        self.assertEqual(
+            neuer_eingang.replace(tzinfo=None),
+            liste[0]["eingegangen_am"].replace(tzinfo=None),
+        )
 
 
 if __name__ == "__main__":

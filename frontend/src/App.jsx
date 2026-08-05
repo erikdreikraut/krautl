@@ -100,6 +100,14 @@ function formatZeitpunkt(iso) {
   return new Date(iso).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: ZEITZONE });
 }
 
+function formatRechnungseingang(iso) {
+  if (!iso) return "–";
+  return new Date(iso).toLocaleString("de-DE", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", timeZone: ZEITZONE,
+  });
+}
+
 function formatBetrag(wert, waehrung = "EUR") {
   if (wert == null) return "";
   return wert.toLocaleString("de-DE", { style: "currency", currency: waehrung || "EUR" });
@@ -628,11 +636,12 @@ function RechnungenView({ rechnungen, onReload }) {
       </div>
 
       <div style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
-        <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1.6fr 1fr 1fr 1fr 1.5fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
-          <div>AUSSTELLER</div><div>RECHNUNG-NR.</div><div>BETRAG</div><div>FÄLLIG AM</div><div>ZAHLUNGSSTATUS</div>
+        <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1fr 1.4fr .9fr .8fr .8fr 1.45fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
+          <div>EINGEGANGEN</div><div>AUSSTELLER</div><div>RECHNUNG-NR.</div><div>BETRAG</div><div>FÄLLIG AM</div><div>ZAHLUNGSSTATUS</div>
         </div>
         {offen.map((r) => (
-          <div key={r.id} className="grid items-center px-4 py-3" style={{ gridTemplateColumns: "1.6fr 1fr 1fr 1fr 1.5fr", borderBottom: `1px solid ${tokens.line}` }}>
+          <div key={r.id} className="grid items-center px-4 py-3" style={{ gridTemplateColumns: "1fr 1.4fr .9fr .8fr .8fr 1.45fr", borderBottom: `1px solid ${tokens.line}` }}>
+            <div style={{ ...fontMono, fontSize: "11.5px", color: tokens.inkMuted }}>{formatRechnungseingang(r.eingegangen_am)}</div>
             <div>
               <div style={{ ...fontSerif, fontSize: "14.5px", fontWeight: 600 }}>{r.aussteller}</div>
               <span title={r.zahlungshinweis || "Kein Zahlungshinweis erkannt"} style={{ ...fontUI, fontSize: "11px", color: r.zahlungsstatus === "unklar" ? tokens.rust : tokens.inkMuted }}>{r.zahlungshinweis || "Kein Zahlungshinweis erkannt"}</span>
@@ -652,13 +661,16 @@ function RechnungenView({ rechnungen, onReload }) {
       </div>
 
       <h3 className="mt-7 mb-3" style={{ ...fontDisplay, fontSize: "15px", color: tokens.inkMuted }}>Erledigt / kein manueller Zahlungsvorgang</h3>
-      <div className="flex flex-col gap-1.5">
+      <div style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
+        <div className="grid px-3 py-2.5" style={{ gridTemplateColumns: "1fr 1.8fr .9fr .8fr 1.55fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
+          <div>EINGEGANGEN</div><div>RECHNUNG</div><div>STATUS</div><div>BETRAG</div><div>ZAHLUNGSSTATUS</div>
+        </div>
         {erledigt.map((r) => (
-          <div key={r.id} className="flex items-center gap-3 px-3 py-2" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
-            <CheckCircle2 size={14} style={{ color: tokens.moss }} />
-            <span>{r.aussteller} · {r.rechnungsnummer}</span>
+          <div key={r.id} className="grid items-center px-3 py-2" style={{ gridTemplateColumns: "1fr 1.8fr .9fr .8fr 1.55fr", ...fontUI, fontSize: "13px", color: tokens.inkMuted, borderBottom: `1px solid ${tokens.line}` }}>
+            <span style={{ ...fontMono, fontSize: "11.5px" }}>{formatRechnungseingang(r.eingegangen_am)}</span>
+            <span className="flex items-center gap-2"><CheckCircle2 size={14} style={{ color: tokens.moss }} />{r.aussteller} · {r.rechnungsnummer}</span>
             <span title={r.zahlungshinweis || ""} style={{ fontSize: "11px" }}>{statusTexte[r.zahlungsstatus] || r.zahlungsstatus}</span>
-            <span style={{ ...fontMono, fontSize: "12px", marginLeft: "auto" }}>{formatBetrag(r.bruttobetrag, r.waehrung)}</span>
+            <span style={{ ...fontMono, fontSize: "12px" }}>{formatBetrag(r.bruttobetrag, r.waehrung)}</span>
             <div className="flex items-center gap-2">
               {statusAuswahl(r)}
               {ansichtButton(r)}

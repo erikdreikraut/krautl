@@ -617,8 +617,12 @@ async def liste_rechnungen(request: Request, session: AsyncSession = Depends(get
     verweigert = await verweigerte_klassifikationen(session, request.state.benutzer)
     if "*" in verweigert:
         return []
-    abfrage = select(Rechnung).outerjoin(Mail, Rechnung.mail_id == Mail.id).order_by(
-        Rechnung.faellig_am.nulls_last(), Rechnung.rechnungsdatum.desc()
+    abfrage = select(
+        Rechnung,
+        Mail.empfangen_am.label("eingegangen_am"),
+    ).outerjoin(Mail, Rechnung.mail_id == Mail.id).order_by(
+        Mail.empfangen_am.desc().nulls_last(),
+        Rechnung.id.desc(),
     )
     if not ist_admin(request.state.benutzer):
         abfrage = abfrage.where(Rechnung.mail_id.is_not(None))
@@ -628,7 +632,16 @@ async def liste_rechnungen(request: Request, session: AsyncSession = Depends(get
             ~Mail.klassifikation_id.in_(verweigert),
         ))
     result = await session.execute(abfrage)
-    return result.scalars().all()
+    return [
+        {
+            **{
+                spalte.name: getattr(rechnung, spalte.name)
+                for spalte in Rechnung.__table__.columns
+            },
+            "eingegangen_am": eingegangen_am,
+        }
+        for rechnung, eingegangen_am in result.all()
+    ]
 
 
 @app.put("/rechnungen/{rechnung_id}/zahlungsstatus")
