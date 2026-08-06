@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
-  Search, ChevronRight, ChevronDown, CheckCircle2, PenLine, Paperclip, X,
+  Search, ChevronDown, CheckCircle2, PenLine, Paperclip, X,
   Inbox as InboxIcon, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
   LogOut, ShieldCheck, Trash2, UserRound, Eye,
 } from "lucide-react";
@@ -210,48 +210,99 @@ function NavTab({ icon: Icon, label, count, active, onClick, accent }) {
   );
 }
 
-function KategorieKorrektur({ mail, katalog, onKorrigiert }) {
+const AUSWAHL_BUTTON_STIL = {
+  ...fontUI,
+  fontSize: "11.5px",
+  color: tokens.inkMuted,
+  border: `1px solid ${tokens.line}`,
+  borderRadius: "6px",
+  background: tokens.paperRaised,
+};
+
+function AuswahlMenue({ label, title, icon: Icon, wert, optionen, onWaehlen, deaktiviert, breite = "280px" }) {
   const [offen, setOffen] = useState(false);
+  const container = useRef(null);
+
+  useEffect(() => {
+    if (!offen) return undefined;
+    const ausserhalbSchliessen = (ereignis) => {
+      if (!container.current?.contains(ereignis.target)) setOffen(false);
+    };
+    document.addEventListener("pointerdown", ausserhalbSchliessen);
+    return () => document.removeEventListener("pointerdown", ausserhalbSchliessen);
+  }, [offen]);
+
+  return (
+    <div ref={container} className="relative">
+      <button
+        type="button"
+        onClick={() => setOffen((alt) => !alt)}
+        disabled={deaktiviert}
+        title={title}
+        aria-haspopup="menu"
+        aria-expanded={offen}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 disabled:opacity-50"
+        style={AUSWAHL_BUTTON_STIL}
+      >
+        {Icon && <Icon size={12} />}
+        {label}
+        <ChevronDown size={12} />
+      </button>
+      {offen && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full mt-1 py-1 overflow-y-auto"
+          style={{ width: breite, maxHeight: "320px", zIndex: 50, background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "7px", boxShadow: "0 8px 22px rgba(36, 42, 31, 0.14)" }}
+        >
+          {optionen.map((option) => (
+            <button
+              type="button"
+              role="menuitem"
+              key={option.value}
+              onClick={() => {
+                setOffen(false);
+                if (option.value !== wert) onWaehlen(option.value);
+              }}
+              className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-[#E8F0C8]"
+              style={{ ...fontUI, fontSize: "12px", color: tokens.ink }}
+            >
+              <span>{option.label}</span>
+              {option.value === wert && <Check size={13} style={{ color: tokens.moss }} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KategorieKorrektur({ mail, katalog, onKorrigiert }) {
   const [wird_gesendet, setWirdGesendet] = useState(false);
 
   async function korrigieren(neueId) {
-    if (!neueId || neueId === mail.klassifikation_id) { setOffen(false); return; }
+    if (!neueId || neueId === mail.klassifikation_id) return;
     setWirdGesendet(true);
     try {
       await api.korrigiereKlassifikation(mail.id, neueId);
       await onKorrigiert();
     } finally {
       setWirdGesendet(false);
-      setOffen(false);
     }
   }
 
-  if (!offen) {
-    return (
-      <button onClick={() => setOffen(true)} className="flex items-center gap-1.5 px-2.5 py-1"
-        style={{ ...fontUI, fontSize: "12px", color: tokens.inkMuted, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
-        Kategorie korrigieren <ChevronRight size={12} />
-      </button>
-    );
-  }
-
   return (
-    <select
-      autoFocus
-      disabled={wird_gesendet}
-      defaultValue={mail.klassifikation_id ?? ""}
-      onChange={(e) => korrigieren(e.target.value)}
-      onBlur={() => setOffen(false)}
-      className="px-2 py-1"
-      style={{ ...fontMono, fontSize: "11.5px", border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised }}
-    >
-      <option value="" disabled>Klassifikation wählen …</option>
-      {katalog.map((k) => (
-        <option key={k.klassifikation_id} value={k.klassifikation_id}>
-          {k.klassifikation_id} — {k.hauptkategorie} / {k.unterkategorie}
-        </option>
-      ))}
-    </select>
+    <AuswahlMenue
+      label={wird_gesendet ? "Wird geändert …" : "Kategorie ändern"}
+      title="Mail einer anderen Kategorie zuordnen"
+      wert={mail.klassifikation_id ?? ""}
+      deaktiviert={wird_gesendet}
+      breite="390px"
+      optionen={katalog.map((k) => ({
+        value: k.klassifikation_id,
+        label: `${k.klassifikation_id} — ${k.hauptkategorie} / ${k.unterkategorie}`,
+      }))}
+      onWaehlen={korrigieren}
+    />
   );
 }
 
@@ -316,18 +367,18 @@ function MailLoeschenButton({ mail, onGeloescht }) {
       <button
         onClick={loeschen}
         disabled={laeuft}
-        title="Mail dauerhaft aus dem Postfach löschen"
-        className="flex items-center gap-1 px-2 py-1.5 disabled:opacity-50"
-        style={{ ...fontUI, fontSize: "11.5px", color: tokens.inkMuted, border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised }}
+        title={laeuft ? "Mail wird gelöscht …" : "Mail dauerhaft aus dem Postfach löschen"}
+        aria-label="Mail löschen"
+        className="flex items-center justify-center w-8 h-8 disabled:opacity-50"
+        style={{ color: tokens.rust, border: `1px solid ${tokens.rust}`, borderRadius: "6px", background: tokens.rustPale }}
       >
-        <Trash2 size={12} /> {laeuft ? "Löscht …" : "Mail löschen"}
+        <Trash2 size={13} />
       </button>
     </div>
   );
 }
 
 function ZuweisenButton({ mail, onZugewiesen }) {
-  const [offen, setOffen] = useState(false);
   const [laeuft, setLaeuft] = useState(false);
   const [fehler, setFehler] = useState("");
 
@@ -342,43 +393,32 @@ function ZuweisenButton({ mail, onZugewiesen }) {
       setFehler(e.message);
     } finally {
       setLaeuft(false);
-      setOffen(false);
     }
-  }
-
-  if (!offen) {
-    return (
-      <div className="flex items-center gap-1.5">
-        {fehler && <span title={fehler} style={{ ...fontUI, fontSize: "11px", color: tokens.rust }}>Zuweisung fehlgeschlagen</span>}
-        <button
-          onClick={() => setOffen(true)}
-          title={`Derzeit zuständig: ${mail.zustaendigkeitLabel}`}
-          className="flex items-center gap-1 px-2 py-1.5"
-          style={{ ...fontUI, fontSize: "11.5px", color: tokens.inkMuted, border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised }}
-        >
-          <UserRound size={12} /> Zuweisen
-        </button>
-      </div>
-    );
   }
 
   const aktuelleRolle = mail.zustaendigAdmin !== mail.zustaendigSachbearbeiter
     ? (mail.zustaendigAdmin ? "admin" : "sachbearbeiter")
     : "";
   return (
-    <select
-      autoFocus
-      disabled={laeuft}
-      value={aktuelleRolle}
-      onChange={(e) => zuweisen(e.target.value)}
-      onBlur={() => setOffen(false)}
-      className="px-2 py-1.5"
-      style={{ ...fontUI, fontSize: "11.5px", border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised }}
-    >
-      {!aktuelleRolle && <option value="" disabled>Zuweisen an …</option>}
-      {mail.zuweisbareRollen.includes("admin") && <option value="admin">Erik (Admin)</option>}
-      {mail.zuweisbareRollen.includes("sachbearbeiter") && <option value="sachbearbeiter">Guri, Ludwig (Sachbearbeiter)</option>}
-    </select>
+    <div className="flex items-center gap-1.5">
+      {fehler && <span title={fehler} style={{ ...fontUI, fontSize: "11px", color: tokens.rust }}>Zuweisung fehlgeschlagen</span>}
+      <AuswahlMenue
+        label={laeuft ? "Wird zugewiesen …" : "Zuweisen"}
+        title={`Derzeit zuständig: ${mail.zustaendigkeitLabel}`}
+        icon={UserRound}
+        wert={aktuelleRolle}
+        deaktiviert={laeuft}
+        optionen={[
+          ...(mail.zuweisbareRollen.includes("admin")
+            ? [{ value: "admin", label: "Erik (Admin)" }]
+            : []),
+          ...(mail.zuweisbareRollen.includes("sachbearbeiter")
+            ? [{ value: "sachbearbeiter", label: "Guri, Ludwig (Sachbearbeiter)" }]
+            : []),
+        ]}
+        onWaehlen={zuweisen}
+      />
+    </div>
   );
 }
 
@@ -407,7 +447,7 @@ function AntwortvorschlagButton({ mail, onErzeugt }) {
         disabled={laeuft || Boolean(mail.entwurf)}
         title={mail.entwurf ? "Für diese Mail ist bereits ein offener Entwurf vorhanden" : "Antwortvorschlag mit dem dreikraut-Stilprofil erstellen"}
         className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-50"
-        style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: tokens.mossDeep, border: `1px solid ${tokens.moss}`, borderRadius: "6px" }}
+        style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}
       >
         <PenLine size={14} /> {laeuft ? "Wird erstellt …" : "Antwortvorschlag"}
       </button>
@@ -501,7 +541,6 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  <AntwortvorschlagButton mail={selected} onErzeugt={onReload} />
                   <BestaetigenButton mail={selected} onBestaetigt={onReload} />
                   <ZuweisenButton mail={selected} onZugewiesen={onReload} />
                   <KategorieKorrektur mail={selected} katalog={katalog} onKorrigiert={onReload} />
@@ -545,8 +584,9 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
                 </div>
               </div>
             ) : (
-              <div className="px-6 py-8 flex-1 flex items-center justify-center" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
-                Noch kein Antwortvorschlag vorhanden.
+              <div className="px-6 py-8 flex-1 flex flex-col items-center justify-center gap-3" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
+                <span>Noch kein Antwortvorschlag vorhanden.</span>
+                <AntwortvorschlagButton mail={selected} onErzeugt={onReload} />
               </div>
             )}
           </>
