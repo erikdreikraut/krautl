@@ -14,6 +14,7 @@ AUFTRAGSNUMMERN_PFAD = (
     Path(__file__).resolve().parent.parent / "data" / "auftragsnummern-vertriebskanaele.md"
 )
 HAGEBUTTEN_FAQ_PFAD = Path(__file__).resolve().parent.parent / "data" / "hagebutten-faq.json"
+RUECKSENDUNGEN_PFAD = Path(__file__).resolve().parent.parent / "data" / "ruecksendungen.md"
 HAGEBUTTEN_URL = "https://dreikraut.de/Bio-Hagebuttenpulver-aus-EU-Wildsammlung"
 
 
@@ -99,6 +100,27 @@ async def migriere() -> None:
                     "Temu", "Shop Apotheke", "Vertriebskanal",
                 ],
             ))
+        ruecksendungen = (await session.execute(
+            select(Wissenseintrag).where(
+                Wissenseintrag.quelle == "data/ruecksendungen.md"
+            )
+        )).scalar_one_or_none()
+        if RUECKSENDUNGEN_PFAD.exists():
+            if ruecksendungen is None:
+                ruecksendungen = Wissenseintrag(
+                    quelle="data/ruecksendungen.md"
+                )
+                session.add(ruecksendungen)
+            ruecksendungen.wissensart = "ablauf"
+            ruecksendungen.titel = "Rücksendungen ohne Qualitätsmangel"
+            ruecksendungen.inhalt = RUECKSENDUNGEN_PFAD.read_text(encoding="utf-8")
+            ruecksendungen.stand = "2026-08-06"
+            ruecksendungen.status = "freigegeben"
+            ruecksendungen.sensibel = False
+            ruecksendungen.schlagwoerter = [
+                "Rücksendung", "Retoure", "Widerruf", "Erstattung",
+                "Rücksendeadresse", "Rücksendekosten",
+            ]
         if HAGEBUTTEN_FAQ_PFAD.exists():
             vorhandene_fragen = {
                 eintrag.frage

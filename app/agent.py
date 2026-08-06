@@ -65,6 +65,18 @@ von Shop Apotheke/Redcare gehören in SHOPAPOTHEKE_WICHTIG, sofern diese ID im
 Katalog vorhanden ist. Fehlt eine passende Shop-Apotheke-Klasse, ist
 UNGEKLAERT einer sachlich falschen Amazon-Klassifikation vorzuziehen.
 
+AMAZON-ABSENDER:
+Nachrichten, die eindeutig direkt von Amazon oder Amazon Seller Central
+stammen, sollen grundsätzlich in einer vorhandenen Amazon-Kategorie bleiben.
+Normale Hinweise zum laufenden Geschäft, zu einzelnen Bestellungen,
+Auszahlungen, Dokumenten oder im Seller Central bereitstehenden Rechnungen
+gehören in AMAZON_STATUS. Ein bloßes Wort wie "Rechnung", "Invoice" oder
+"Factura" macht eine solche Hinweismail nicht zu RECHNUNG_EINGANG. Nur wenn
+die Rechnung tatsächlich als auswertbarer Anhang mitgesendet wurde, darf eine
+Amazon-Mail stattdessen RECHNUNG_EINGANG sein. Kritische Warnungen, Fristen,
+Kontoprobleme, Richtlinienverstöße oder Listing-Sperren gehören weiterhin
+in AMAZON_WICHTIG.
+
 EBAY-VERKAUFSBESTÄTIGUNGEN:
 Automatische Nachrichten von eBay, die einen Verkauf durch dreikraut melden,
 gehören in BESTELLUNG_EBAY, sofern diese ID im Katalog vorhanden ist. Typische
@@ -173,6 +185,53 @@ def technik_absender_zuordnung_absichern(
 
     abgesichert = dict(ergebnis)
     abgesichert["klassifikation_id"] = "SYSTEM_TECHNIK"
+    abgesichert["aktion_erforderlich"] = True
+    return abgesichert
+
+
+def amazon_absender_zuordnung_absichern(
+    ergebnis: dict, mail: dict, katalog: list[dict]
+) -> dict:
+    """Hält direkte Amazon-Nachrichten in einer Amazon-Kategorie.
+
+    Eine echte angehängte Rechnung bleibt bewusst in RECHNUNG_EINGANG, damit
+    die Rechnungsverarbeitung weiterhin ausgeführt wird. Ein bloß im Seller
+    Central bereitstehendes Dokument ist dagegen nur eine Statusmeldung.
+    """
+    absender_name = str(mail.get("absender_name", "")).strip().casefold()
+    absender_adresse = str(mail.get("absender_adresse", "")).strip().casefold()
+    domain = (
+        absender_adresse.rsplit("@", 1)[-1].rstrip(".")
+        if "@" in absender_adresse
+        else ""
+    )
+    ist_amazon_absender = (
+        absender_name.startswith("amazon")
+        or domain.startswith("amazon.")
+        or ".amazon." in domain
+    )
+    katalog_ids = {eintrag["klassifikation_id"] for eintrag in katalog}
+    aktuelle_id = str(ergebnis.get("klassifikation_id", ""))
+    if (
+        not ist_amazon_absender
+        or "AMAZON_STATUS" not in katalog_ids
+        or aktuelle_id.startswith("AMAZON_")
+    ):
+        return ergebnis
+
+    anhaenge = [
+        str(name).casefold()
+        for name in mail.get("anhang_dateinamen", [])
+    ]
+    hat_auswertbaren_rechnungsanhang = any(
+        name.endswith((".pdf", ".xml", ".jpg", ".jpeg", ".png", ".gif", ".webp"))
+        for name in anhaenge
+    )
+    if aktuelle_id == "RECHNUNG_EINGANG" and hat_auswertbaren_rechnungsanhang:
+        return ergebnis
+
+    abgesichert = dict(ergebnis)
+    abgesichert["klassifikation_id"] = "AMAZON_STATUS"
     abgesichert["aktion_erforderlich"] = True
     return abgesichert
 
@@ -291,6 +350,7 @@ def klassifiziere(mail: dict, katalog: list[dict], beispiele: list[dict] | None 
 Absender: {mail['absender_name']} <{mail['absender_adresse']}>
 Betreff: {mail['betreff']}
 Text: {mail['text_auszug']}
+Anhaenge: {json.dumps(mail.get('anhang_dateinamen', []), ensure_ascii=False)}
 Spam-Score: {mail.get('spam_score', 'nicht vorhanden')}
 === ENDE DER E-MAIL ===
 """
@@ -316,7 +376,10 @@ Spam-Score: {mail.get('spam_score', 'nicht vorhanden')}
             ergebnis = steuer_absender_zuordnung_absichern(
                 ergebnis, mail, katalog
             )
-            return technik_absender_zuordnung_absichern(
+            ergebnis = technik_absender_zuordnung_absichern(
+                ergebnis, mail, katalog
+            )
+            return amazon_absender_zuordnung_absichern(
                 ergebnis, mail, katalog
             )
     raise RuntimeError("Keine Klassifizierung erhalten.")

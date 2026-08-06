@@ -129,6 +129,11 @@ def parse_eml(raw: bytes) -> dict:
         or message_id.casefold().startswith("<krautl-audio-")
     )
 
+    anhang_dateinamen = [
+        teil.get_filename() or "anhang"
+        for teil in msg.iter_attachments()
+    ]
+
     return {
         "message_id": message_id,
         "absender_name": absender_name or absender_adresse,
@@ -137,6 +142,7 @@ def parse_eml(raw: bytes) -> dict:
         "text_auszug": inhalt[:TEXT_AUSZUG_MAX_LAENGE],
         "empfangen_am": empfangen_am,
         "spam_score": _spam_score(msg),
+        "anhang_dateinamen": anhang_dateinamen,
         "krautl_generiert": krautl_generiert,
     }
 

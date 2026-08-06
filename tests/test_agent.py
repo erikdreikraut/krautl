@@ -5,6 +5,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 
 from app.agent import (
     KLASSIFIZIERUNGS_SYSTEMPROMPT,
+    amazon_absender_zuordnung_absichern,
     ebay_verkaufszuordnung_absichern,
     einkaufszuordnung_absichern,
     marktplatz_zuordnung_absichern,
@@ -14,6 +15,58 @@ from app.agent import (
 
 
 class KlassifizierungsPromptTest(unittest.TestCase):
+    def test_amazon_rechnungshinweis_ohne_anhang_ist_status(self):
+        self.assertIn("AMAZON-ABSENDER", KLASSIFIZIERUNGS_SYSTEMPROMPT)
+        ergebnis = amazon_absender_zuordnung_absichern(
+            {
+                "klassifikation_id": "RECHNUNG_EINGANG",
+                "aktion_erforderlich": False,
+            },
+            {
+                "absender_name": "Amazon Seller Central",
+                "absender_adresse": "sellercentral@amazon.es",
+                "betreff": "Your Amazon.es Factura Vendedor for 7/2026",
+                "text_auszug": (
+                    "Tu Factura Vendedor ya esta disponible en tu cuenta "
+                    "de Seller Central. Alli podras descargar tu factura."
+                ),
+                "anhang_dateinamen": [],
+            },
+            [
+                {"klassifikation_id": "RECHNUNG_EINGANG"},
+                {"klassifikation_id": "AMAZON_STATUS"},
+            ],
+        )
+        self.assertEqual("AMAZON_STATUS", ergebnis["klassifikation_id"])
+        self.assertTrue(ergebnis["aktion_erforderlich"])
+
+    def test_amazon_rechnung_mit_anhang_bleibt_rechnung(self):
+        ergebnis = amazon_absender_zuordnung_absichern(
+            {"klassifikation_id": "RECHNUNG_EINGANG"},
+            {
+                "absender_name": "Amazon Seller Central",
+                "absender_adresse": "sellercentral@amazon.de",
+                "anhang_dateinamen": ["Rechnung-2026-07.pdf"],
+            },
+            [
+                {"klassifikation_id": "RECHNUNG_EINGANG"},
+                {"klassifikation_id": "AMAZON_STATUS"},
+            ],
+        )
+        self.assertEqual("RECHNUNG_EINGANG", ergebnis["klassifikation_id"])
+
+    def test_blasse_amazon_erwaehnung_aendert_kundenmail_nicht(self):
+        ergebnis = amazon_absender_zuordnung_absichern(
+            {"klassifikation_id": "KUNDE_REZENSION_FEEDBACK"},
+            {
+                "absender_name": "Tobias Riess",
+                "absender_adresse": "tobias@example.test",
+                "text_auszug": "Ich habe Sie bei Amazon bewertet.",
+            },
+            [{"klassifikation_id": "AMAZON_STATUS"}],
+        )
+        self.assertEqual("KUNDE_REZENSION_FEEDBACK", ergebnis["klassifikation_id"])
+
     def test_formular_spam_ueberstimmt_serioesen_standardtext(self):
         prompt = KLASSIFIZIERUNGS_SYSTEMPROMPT
         self.assertIn("FORMULAR-SPAM", prompt)

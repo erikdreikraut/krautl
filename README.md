@@ -179,6 +179,23 @@ gezielt und wiederholbar aktualisiert mit:
 docker compose exec app python -m scripts.aktualisiere_anthropic_mailregel
 ```
 
+Amazon-Mails bleiben grundsätzlich in den Amazon-Kategorien. Hinweise auf
+eine nur im Seller Central bereitstehende Rechnung sind `AMAZON_STATUS`, eine
+tatsächlich angehängte Rechnung bleibt in der Rechnungsverarbeitung. Nach dem
+Deployment wird die Regel und die noch offene Beispielmail einmalig mit diesem
+Befehl aktualisiert:
+
+```bash
+docker compose exec app python -m scripts.aktualisiere_amazon_regeln
+```
+
+Das verbindliche Ablaufwissen für normale Rücksendungen ohne Qualitätsmangel
+wird gezielt und wiederholbar eingespielt mit:
+
+```bash
+docker compose exec app python -m scripts.aktualisiere_ruecksende_wissen
+```
+
 ## Produktbezogene Wissensbasis und FAQ
 
 Unter **Wissensdatenbank** werden vier Geltungsbereiche getrennt gepflegt:

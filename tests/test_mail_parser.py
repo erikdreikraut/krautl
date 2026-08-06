@@ -60,6 +60,23 @@ class MailParserTest(unittest.TestCase):
 
         self.assertTrue(parse_eml(mail.as_bytes())["krautl_generiert"])
 
+    def test_anhang_dateinamen_werden_fuer_klassifikation_bereitgestellt(self):
+        mail = EmailMessage()
+        mail["From"] = "Amazon Seller Central <sellercentral@amazon.de>"
+        mail["Subject"] = "Rechnung"
+        mail.set_content("Ihre Rechnung ist angehängt.")
+        mail.add_attachment(
+            b"PDF",
+            maintype="application",
+            subtype="pdf",
+            filename="rechnung.pdf",
+        )
+
+        self.assertEqual(
+            ["rechnung.pdf"],
+            parse_eml(mail.as_bytes())["anhang_dateinamen"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
