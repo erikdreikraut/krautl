@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   Search, ChevronDown, CheckCircle2, PenLine, Paperclip, X,
   Inbox as InboxIcon, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
-  LogOut, ShieldCheck, Trash2, UserRound, Eye,
+  LogOut, ShieldCheck, Trash2, UserRound, Eye, ArrowLeft,
 } from "lucide-react";
 import { api } from "./api.js";
 import logo from "./assets/krautl-logo.png";
@@ -195,12 +195,13 @@ function Konfidenz({ value }) {
   );
 }
 
-function NavTab({ icon: Icon, label, count, active, onClick, accent }) {
+function NavTab({ icon: Icon, label, mobileLabel = label, count, active, onClick, accent }) {
   return (
     <button onClick={onClick} className="flex items-center gap-2 px-3.5 py-2.5 relative"
       style={{ ...fontUI, fontSize: "13.5px", fontWeight: active ? 600 : 500, color: active ? tokens.mossDeep : tokens.inkMuted }}>
       <Icon size={15} />
-      {label}
+      <span className="nav-label-desktop">{label}</span>
+      <span className="nav-label-mobile">{mobileLabel}</span>
       {count != null && (
         <span className="px-1.5 rounded-full" style={{ ...fontMono, fontSize: "10.5px", background: accent ? tokens.amberPale : tokens.mossPale, color: accent ? tokens.amber : tokens.mossDeep }}>
           {count}
@@ -252,8 +253,8 @@ function AuswahlMenue({ label, title, icon: Icon, wert, optionen, onWaehlen, dea
       {offen && (
         <div
           role="menu"
-          className="absolute right-0 top-full mt-1 py-1 overflow-y-auto"
-          style={{ width: breite, maxHeight: "320px", zIndex: 50, background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "7px", boxShadow: "0 8px 22px rgba(36, 42, 31, 0.14)" }}
+          className="absolute right-0 top-full mt-1 py-1 overflow-y-auto auswahl-menue"
+          style={{ width: breite, maxWidth: "calc(100vw - 24px)", maxHeight: "320px", zIndex: 50, background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "7px", boxShadow: "0 8px 22px rgba(36, 42, 31, 0.14)" }}
         >
           {optionen.map((option) => (
             <button
@@ -460,6 +461,7 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
   const [filter, setFilter] = useState(null);
   const [selectedId, setSelectedId] = useState(mails[0]?.id ?? null);
   const [versandbestaetigungen, setVersandbestaetigungen] = useState({});
+  const [mobileDetailOffen, setMobileDetailOffen] = useState(false);
 
   const kategorien = useMemo(() => [...new Set(mails.map((m) => m.kat))], [mails]);
   const sichtbar = filter ? mails.filter((m) => m.kat === filter) : mails;
@@ -469,9 +471,23 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
     if (filter && !kategorien.includes(filter)) setFilter(null);
   }, [filter, kategorien]);
 
+  useEffect(() => {
+    if (!selected) setMobileDetailOffen(false);
+  }, [selected]);
+
+  function mailOeffnen(id) {
+    setSelectedId(id);
+    setMobileDetailOffen(true);
+  }
+
+  async function aktionAbschliessen() {
+    setMobileDetailOffen(false);
+    await onReload();
+  }
+
   return (
-    <div className="flex flex-1 min-h-0">
-      <div className="flex flex-col" style={{ width: "380px", borderRight: `1px solid ${tokens.line}` }}>
+    <div className="flex flex-1 min-h-0 mail-layout">
+      <div className={`flex flex-col mail-list-panel ${mobileDetailOffen ? "mobile-hidden" : ""}`} style={{ width: "380px", borderRight: `1px solid ${tokens.line}` }}>
         <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: `1px solid ${tokens.line}` }}>
           <Search size={14} style={{ color: tokens.inkMuted }} />
           <span className="flex-1" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>Mails durchsuchen …</span>
@@ -504,7 +520,7 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
         </div>
         <div className="flex-1 overflow-y-auto">
           {sichtbar.map((m) => (
-            <button key={m.id} onClick={() => setSelectedId(m.id)} className="w-full text-left px-4 py-3 flex flex-col gap-1.5"
+            <button key={m.id} onClick={() => mailOeffnen(m.id)} className="w-full text-left px-4 py-3 flex flex-col gap-1.5"
               style={{ borderBottom: `1px solid ${tokens.line}`, background: selected?.id === m.id ? tokens.mossPale : "transparent" }}>
               <div className="flex items-center justify-between gap-2">
                 <Badge label={m.katId} color={farbeFuerKategorie(m.kat)} />
@@ -527,12 +543,15 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col overflow-y-auto">
+      <div className={`flex-1 flex flex-col overflow-y-auto mail-detail-panel ${mobileDetailOffen ? "mobile-visible" : ""}`}>
         {selected && (
           <>
-            <div className="px-6 pt-5 pb-4" style={{ borderBottom: `1px solid ${tokens.line}` }}>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
+            <div className="px-6 pt-5 pb-4 mail-detail-header" style={{ borderBottom: `1px solid ${tokens.line}` }}>
+              <button type="button" onClick={() => setMobileDetailOffen(false)} className="mobile-back-button items-center gap-1.5 mb-3 px-2.5 py-1.5" style={AUSWAHL_BUTTON_STIL}>
+                <ArrowLeft size={14} /> Zur Mail-Liste
+              </button>
+              <div className="flex items-center justify-between gap-3 mail-detail-toolbar">
+                <div className="flex items-center gap-3 mail-detail-meta">
                   <Badge label={selected.katId} color={farbeFuerKategorie(selected.kat)} />
                   <span style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
                     {selected.zielhinweis}
@@ -541,19 +560,19 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
                     <UserRound size={12} /> {selected.zustaendigkeitLabel}
                   </span>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <BestaetigenButton mail={selected} onBestaetigt={onReload} />
-                  <ZuweisenButton mail={selected} onZugewiesen={onReload} />
+                <div className="flex flex-wrap items-center justify-end gap-2 mail-detail-actions">
+                  <BestaetigenButton mail={selected} onBestaetigt={aktionAbschliessen} />
+                  <ZuweisenButton mail={selected} onZugewiesen={aktionAbschliessen} />
                   <KategorieKorrektur mail={selected} katalog={katalog} onKorrigiert={onReload} />
-                  <MailLoeschenButton mail={selected} onGeloescht={onReload} />
+                  <MailLoeschenButton mail={selected} onGeloescht={aktionAbschliessen} />
                 </div>
               </div>
               <h2 style={{ ...fontDisplay, fontSize: "19px", marginTop: "12px" }}>{selected.betreff}</h2>
               <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, marginTop: "4px" }}>{selected.absender} · {selected.zeit}</div>
             </div>
-            <div className="px-6 py-4" style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere", borderBottom: `1px solid ${tokens.line}` }}>{selected.snippet}</div>
+            <div className="px-6 py-4 mail-body" style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere", borderBottom: `1px solid ${tokens.line}` }}>{selected.snippet}</div>
             {Object.keys(selected.felder).length > 0 && (
-              <div className="px-6 py-4 grid grid-cols-2 gap-3" style={{ borderBottom: `1px solid ${tokens.line}` }}>
+              <div className="px-6 py-4 grid grid-cols-2 gap-3 mail-fields" style={{ borderBottom: `1px solid ${tokens.line}` }}>
                 {Object.entries(selected.felder).map(([k, v]) => (
                   <div key={k}>
                     <div style={{ ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em" }}>{k.toUpperCase()}</div>
@@ -647,7 +666,7 @@ function EntwurfPanel({ entwurf, onErledigt, onVersendet }) {
   }
 
   return (
-    <div className="px-6 py-4 flex-1 flex flex-col">
+    <div className="px-6 py-4 flex-1 flex flex-col entwurf-panel">
       <div style={{ ...fontMono, fontSize: "10.5px", color: tokens.amber, letterSpacing: "0.05em" }}>ANTWORTENTWURF · WARTET AUF FREIGABE</div>
       <textarea value={text} onChange={(e) => setText(e.target.value)} className="mt-2 flex-1 p-3 resize-none"
         style={{ ...fontSerif, fontSize: "14.5px", background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px", minHeight: "320px" }} />
@@ -758,20 +777,20 @@ function RechnungenView({ rechnungen, onReload }) {
   </button>;
 
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-6">
+    <div className="flex-1 overflow-y-auto px-8 py-6 content-view rechnungen-view">
       <h2 style={{ ...fontDisplay, fontSize: "20px", color: tokens.mossDeep, marginBottom: "4px" }}>Offene Rechnungen</h2>
       <div className="flex items-center gap-1.5 mb-5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
         <FolderCog size={13} />
         Rechnungsoriginale werden automatisch abgelegt unter <span style={{ ...fontMono, fontSize: "11.5px" }}>/Rechnungen/{"{Jahr}"}/</span>. Automatisch bezahlte Rechnungen und Gutschriften erscheinen hier nicht.
       </div>
 
-      <div style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
-        <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1fr 1.4fr .9fr .8fr .8fr 1.45fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
+      <div className="invoice-table" style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
+        <div className="grid px-4 py-2.5 invoice-table-head" style={{ gridTemplateColumns: "1fr 1.4fr .9fr .8fr .8fr 1.45fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
           <div>EINGEGANGEN</div><div>AUSSTELLER</div><div>RECHNUNG-NR.</div><div>BETRAG</div><div>FÄLLIG AM</div><div>ZAHLUNGSSTATUS</div>
         </div>
         {offen.map((r) => (
-          <div key={r.id} className="grid items-center px-4 py-3" style={{ gridTemplateColumns: "1fr 1.4fr .9fr .8fr .8fr 1.45fr", borderBottom: `1px solid ${tokens.line}` }}>
-            <div style={{ ...fontMono, fontSize: "11.5px", color: tokens.inkMuted }}>{formatRechnungseingang(r.eingegangen_am)}</div>
+          <div key={r.id} className="grid items-center px-4 py-3 invoice-row" style={{ gridTemplateColumns: "1fr 1.4fr .9fr .8fr .8fr 1.45fr", borderBottom: `1px solid ${tokens.line}` }}>
+            <div className="invoice-date" style={{ ...fontMono, fontSize: "11.5px", color: tokens.inkMuted }}>{formatRechnungseingang(r.eingegangen_am)}</div>
             <div>
               <div style={{ ...fontSerif, fontSize: "14.5px", fontWeight: 600 }}>{r.aussteller}</div>
               <span title={r.zahlungshinweis || "Kein Zahlungshinweis erkannt"} style={{ ...fontUI, fontSize: "11px", color: r.zahlungsstatus === "unklar" ? tokens.rust : tokens.inkMuted }}>{r.zahlungshinweis || "Kein Zahlungshinweis erkannt"}</span>
@@ -779,7 +798,7 @@ function RechnungenView({ rechnungen, onReload }) {
             <div style={{ ...fontMono, fontSize: "12.5px", color: tokens.inkMuted }}>{r.rechnungsnummer}</div>
             <div style={{ ...fontMono, fontSize: "13px" }}>{formatBetrag(r.bruttobetrag, r.waehrung)}</div>
             <div style={{ ...fontUI, fontSize: "13px", color: tokens.amber, fontWeight: 600 }}>{formatDatum(r.faellig_am)}</div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 invoice-actions">
               {statusAuswahl(r)}
               {ansichtButton(r)}
             </div>
@@ -791,17 +810,17 @@ function RechnungenView({ rechnungen, onReload }) {
       </div>
 
       <h3 className="mt-7 mb-3" style={{ ...fontDisplay, fontSize: "15px", color: tokens.inkMuted }}>Erledigt / kein manueller Zahlungsvorgang</h3>
-      <div style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
-        <div className="grid px-3 py-2.5" style={{ gridTemplateColumns: "1fr 1.8fr .9fr .8fr 1.55fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
+      <div className="invoice-table" style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
+        <div className="grid px-3 py-2.5 invoice-table-head" style={{ gridTemplateColumns: "1fr 1.8fr .9fr .8fr 1.55fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
           <div>EINGEGANGEN</div><div>RECHNUNG</div><div>STATUS</div><div>BETRAG</div><div>ZAHLUNGSSTATUS</div>
         </div>
         {erledigt.map((r) => (
-          <div key={r.id} className="grid items-center px-3 py-2" style={{ gridTemplateColumns: "1fr 1.8fr .9fr .8fr 1.55fr", ...fontUI, fontSize: "13px", color: tokens.inkMuted, borderBottom: `1px solid ${tokens.line}` }}>
-            <span style={{ ...fontMono, fontSize: "11.5px" }}>{formatRechnungseingang(r.eingegangen_am)}</span>
+          <div key={r.id} className="grid items-center px-3 py-2 invoice-row invoice-row-done" style={{ gridTemplateColumns: "1fr 1.8fr .9fr .8fr 1.55fr", ...fontUI, fontSize: "13px", color: tokens.inkMuted, borderBottom: `1px solid ${tokens.line}` }}>
+            <span className="invoice-date" style={{ ...fontMono, fontSize: "11.5px" }}>{formatRechnungseingang(r.eingegangen_am)}</span>
             <span className="flex items-center gap-2"><CheckCircle2 size={14} style={{ color: tokens.moss }} />{r.aussteller} · {r.rechnungsnummer}</span>
             <span title={r.zahlungshinweis || ""} style={{ fontSize: "11px" }}>{statusTexte[r.zahlungsstatus] || r.zahlungsstatus}</span>
             <span style={{ ...fontMono, fontSize: "12px" }}>{formatBetrag(r.bruttobetrag, r.waehrung)}</span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 invoice-actions">
               {statusAuswahl(r)}
               {ansichtButton(r)}
             </div>
@@ -925,12 +944,12 @@ function RollenMailzugriffView({ konfiguration, onReload }) {
   }
 
   const nutzerNamen = (rolle) => (rolle?.benutzer || []).map((b) => b.name).join(", ");
-  return <div className="flex-1 overflow-y-auto px-8 py-6">
+  return <div className="flex-1 overflow-y-auto px-8 py-6 content-view rollen-view">
     <h2 style={{ ...fontDisplay, fontSize: "20px", color: tokens.mossDeep }}>Rollen & Mailzugriff</h2>
     <p className="mb-5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
       Admins sehen und bearbeiten alle Mailarten. Für Sachbearbeiter legen Sie die sichtbaren Klassifikationen fest.
     </p>
-    <div className="grid grid-cols-2 gap-3 mb-6">
+    <div className="grid grid-cols-2 gap-3 mb-6 rollen-summary">
       <div className="p-4" style={{ background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderLeft: `4px solid ${tokens.moss}`, borderRadius: "7px" }}>
         <div className="flex items-center gap-2"><ShieldCheck size={15} color={tokens.moss}/><b style={fontSerif}>Admin</b></div>
         <div className="mt-1" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{nutzerNamen(admin)} · alle Mailarten</div>
@@ -940,7 +959,7 @@ function RollenMailzugriffView({ konfiguration, onReload }) {
         <div className="mt-1" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{nutzerNamen(sachbearbeiter)} · {auswahl.size} von {konfiguration.klassifikationen.length} Mailarten</div>
       </div>
     </div>
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-2 gap-4 rollen-grid">
       {Object.entries(gruppen).map(([gruppe, klassifikationen]) => {
         const alle = klassifikationen.every((k) => auswahl.has(k.klassifikation_id));
         return <div key={gruppe} className="p-4" style={{ background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "7px" }}>
@@ -975,14 +994,14 @@ function EinstellungenMenu({ active, onWaehlen }) {
   }, []);
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative settings-menu" ref={ref}>
       <button onClick={() => setOffen((o) => !o)} className="flex items-center gap-2 px-3.5 py-2.5 relative"
         style={{ ...fontUI, fontSize: "13.5px", fontWeight: active ? 600 : 500, color: active ? tokens.mossDeep : tokens.inkMuted }}>
-        <Settings size={15} /> Einstellungen <ChevronDown size={12} />
+        <Settings size={15} /> <span className="nav-label-desktop">Einstellungen</span><span className="nav-label-mobile">Mehr</span> <ChevronDown size={12} />
         {active && <span className="absolute left-0 right-0" style={{ bottom: "-1px", height: "2px", background: tokens.mossDeep }} />}
       </button>
       {offen && (
-        <div className="absolute z-10 py-1" style={{ top: "100%", left: 0, minWidth: "200px", background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
+        <div className="absolute z-10 py-1 settings-dropdown" style={{ top: "100%", left: 0, minWidth: "200px", background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
           <button onClick={() => { onWaehlen("klassifikationen"); setOffen(false); }} className="w-full text-left px-3.5 py-2"
             style={{ ...fontUI, fontSize: "13px", color: tokens.ink }}>
             Mail-Klassifikationen
@@ -1044,7 +1063,7 @@ function KlassifikationZeile({ klassifikation: k, onGespeichert }) {
   }
 
   return (
-    <div className="grid items-start px-4 py-3" style={{ gridTemplateColumns: "1.3fr 1.8fr .65fr 1.25fr 2.2fr", borderBottom: `1px solid ${tokens.line}` }}>
+    <div className="grid items-start px-4 py-3 classification-row" style={{ gridTemplateColumns: "1.3fr 1.8fr .65fr 1.25fr 2.2fr", borderBottom: `1px solid ${tokens.line}` }}>
       <div>
         <Badge label={k.klassifikation_id} color={farbeFuerKategorie(k.hauptkategorie)} />
       </div>
@@ -1126,15 +1145,15 @@ function KlassifikationZeile({ klassifikation: k, onGespeichert }) {
 
 function KlassifikationenView({ katalog, onReload }) {
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-6">
+    <div className="flex-1 overflow-y-auto px-8 py-6 content-view classifications-view">
       <h2 style={{ ...fontDisplay, fontSize: "20px", color: tokens.mossDeep, marginBottom: "4px" }}>Mail-Klassifikationen</h2>
       <p className="mb-5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
         Legt fest, wie eingehende Mails eingeordnet werden und was danach automatisch passiert.
         Zielordner und Aufgaben gelten für künftig klassifizierte Mails. {katalog.length} Einträge.
       </p>
 
-      <div style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
-        <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1.3fr 1.8fr .65fr 1.25fr 2.2fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
+      <div className="classification-table" style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
+        <div className="grid px-4 py-2.5 classification-head" style={{ gridTemplateColumns: "1.3fr 1.8fr .65fr 1.25fr 2.2fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
           <div>ID</div><div>BESCHREIBUNG</div><div>PRIO</div><div>POSTFACH / ORDNER</div><div>AKTIONEN IN REIHENFOLGE</div>
         </div>
         {katalog.map((k) => (
@@ -1156,19 +1175,19 @@ function KlassifikationenView({ katalog, onReload }) {
 
 function AktionslogView({ eintraege }) {
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-6">
+    <div className="flex-1 overflow-y-auto px-8 py-6 content-view action-log-view">
       <h2 style={{ ...fontDisplay, fontSize: "20px", color: tokens.mossDeep, marginBottom: "4px" }}>Aktionslog</h2>
       <p className="mb-5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
         Was Krautl tatsächlich getan hat — Klassifizierungen, Bestätigungen und Verschiebe-Versuche,
         neueste zuerst.
       </p>
 
-      <div style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
-        <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1fr 1.35fr 1.45fr 1.1fr 2.3fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
+      <div className="action-log-table" style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
+        <div className="grid px-4 py-2.5 action-log-head" style={{ gridTemplateColumns: "1fr 1.35fr 1.45fr 1.1fr 2.3fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
           <div>ZEIT</div><div>EREIGNIS</div><div>MAIL VON</div><div>AUSGELÖST VON</div><div>DETAIL</div>
         </div>
         {eintraege.map((e) => (
-          <div key={e.id} className="grid items-start px-4 py-3" style={{ gridTemplateColumns: "1fr 1.35fr 1.45fr 1.1fr 2.3fr", borderBottom: `1px solid ${tokens.line}` }}>
+          <div key={e.id} className="grid items-start px-4 py-3 action-log-row" style={{ gridTemplateColumns: "1fr 1.35fr 1.45fr 1.1fr 2.3fr", borderBottom: `1px solid ${tokens.line}` }}>
             <div style={{ ...fontMono, fontSize: "12px", color: tokens.inkMuted }}>{formatZeitpunkt(e.erstellt_am)}</div>
             <div>
               <Badge label={(EREIGNIS_LABEL[e.ereignis] ?? e.ereignis).toUpperCase()} color={farbeFuerEreignis(e.ereignis)} />
@@ -1442,20 +1461,20 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
   const offeneRechnungen = daten.rechnungen.filter((r) => ["offen", "unklar"].includes(r.zahlungsstatus)).length;
 
   return (
-    <div className="w-full h-full flex flex-col" style={{ background: tokens.paper, minHeight: "640px", color: tokens.ink }}>
-      <header className="flex items-center px-5" style={{ borderBottom: `1px solid ${tokens.line}`, background: tokens.paperRaised }}>
-        <div className="flex items-center gap-2.5 pr-5 py-2" style={{ borderRight: `1px solid ${tokens.line}`, marginRight: "8px" }}>
+    <div className="w-full h-full flex flex-col krautl-app" style={{ background: tokens.paper, minHeight: "640px", color: tokens.ink }}>
+      <header className="flex items-center px-5 krautl-header" style={{ borderBottom: `1px solid ${tokens.line}`, background: tokens.paperRaised }}>
+        <div className="flex items-center gap-2.5 pr-5 py-2 krautl-logo" style={{ borderRight: `1px solid ${tokens.line}`, marginRight: "8px" }}>
           <img src={logo} alt="Krautl" style={{ height: "34px", width: "auto" }} />
         </div>
-        <nav className="flex items-center">
-          <NavTab icon={InboxIcon} label="Posteingang" active={tab === "posteingang"} onClick={() => setTab("posteingang")} />
+        <nav className="flex items-center krautl-nav">
+          <NavTab icon={InboxIcon} label="Posteingang" mobileLabel="Postfach" active={tab === "posteingang"} onClick={() => setTab("posteingang")} />
           <NavTab icon={Receipt} label="Rechnungen" count={offeneRechnungen} accent active={tab === "rechnungen"} onClick={() => setTab("rechnungen")} />
-          <NavTab icon={BookOpen} label="Wissensdatenbank" count={daten.wissensvorschlaege.length} accent active={tab === "wissen"} onClick={() => setTab("wissen")} />
+          <NavTab icon={BookOpen} label="Wissensdatenbank" mobileLabel="Wissen" count={daten.wissensvorschlaege.length} accent active={tab === "wissen"} onClick={() => setTab("wissen")} />
           {benutzer.rolle === "admin" && <EinstellungenMenu active={["klassifikationen", "aktionslog", "rollen"].includes(tab)} onWaehlen={setTab} />}
         </nav>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2 krautl-header-meta">
           <span
-            className="flex items-center gap-1.5 pr-3 mr-1"
+            className="flex items-center gap-1.5 pr-3 mr-1 header-worker"
             title={daten.health.mail_worker.detail || ""}
             style={{
               ...fontUI,
@@ -1472,11 +1491,11 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
               ? `Mailabruf aktiv · ${formatZeit(daten.health.mail_worker.letzter_lauf)} Uhr`
               : "Mailabruf nicht aktiv"}
           </span>
-          <PenLine size={13} style={{ color: tokens.amber }} />
-          <span style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{entwuerfeOffen} Entwürfe warten auf Freigabe</span>
-          <div className="flex items-center gap-1.5 pl-3 ml-1" style={{ borderLeft: `1px solid ${tokens.line}` }}>
+          <PenLine className="header-drafts-icon" size={13} style={{ color: tokens.amber }} />
+          <span className="header-drafts-text" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{entwuerfeOffen} Entwürfe warten auf Freigabe</span>
+          <div className="flex items-center gap-1.5 pl-3 ml-1 header-user" style={{ borderLeft: `1px solid ${tokens.line}` }}>
             <UserRound size={13} style={{ color: tokens.mossDeep }} />
-            <span style={{ ...fontUI, fontSize: "12.5px", color: tokens.ink }}>{benutzer.name} · {benutzer.rolle === "admin" ? "Admin" : "Sachbearbeiter"}</span>
+            <span className="header-user-name" style={{ ...fontUI, fontSize: "12.5px", color: tokens.ink }}>{benutzer.name} · {benutzer.rolle === "admin" ? "Admin" : "Sachbearbeiter"}</span>
             <button
               onClick={onAbmelden}
               title="Abmelden"

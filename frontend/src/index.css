@@ -10,3 +10,380 @@ body,
   height: 100%;
   margin: 0;
 }
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+select,
+input,
+textarea {
+  font: inherit;
+}
+
+.mobile-back-button {
+  display: none;
+}
+
+.nav-label-mobile {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-height: 100%;
+    overflow: hidden;
+  }
+
+  button,
+  select,
+  input:not([type="checkbox"]):not([type="radio"]) {
+    min-height: 36px;
+  }
+
+  .krautl-app {
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    overflow: hidden;
+  }
+
+  .krautl-header {
+    z-index: 40;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    padding: 0 10px !important;
+  }
+
+  .krautl-logo {
+    order: 1;
+    padding: 6px 8px 5px 0 !important;
+    margin-right: 0 !important;
+    border-right: 0 !important;
+  }
+
+  .krautl-logo img {
+    height: 30px !important;
+  }
+
+  .krautl-header-meta {
+    order: 2;
+    margin-left: auto;
+    gap: 4px !important;
+  }
+
+  .header-worker {
+    padding-right: 0 !important;
+    margin-right: 2px !important;
+    border-right: 0 !important;
+    font-size: 0 !important;
+  }
+
+  .header-worker > span {
+    width: 9px !important;
+    height: 9px !important;
+  }
+
+  .header-drafts-icon,
+  .header-drafts-text,
+  .header-user-name {
+    display: none;
+  }
+
+  .header-user {
+    padding-left: 5px !important;
+    margin-left: 2px !important;
+    border-left: 0 !important;
+  }
+
+  .krautl-nav {
+    order: 3;
+    width: calc(100% + 20px);
+    margin: 0 -10px;
+    padding: 0 4px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    border-top: 1px solid #ece9d7;
+  }
+
+  .krautl-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .krautl-nav > button,
+  .krautl-nav > .settings-menu > button {
+    min-height: 42px;
+    padding: 8px 10px !important;
+    white-space: nowrap;
+    font-size: 12px !important;
+  }
+
+  .nav-label-desktop {
+    display: none;
+  }
+
+  .nav-label-mobile {
+    display: inline;
+  }
+
+  .settings-menu {
+    flex: 0 0 auto;
+  }
+
+  .settings-dropdown {
+    position: fixed !important;
+    top: 88px !important;
+    right: 8px !important;
+    left: auto !important;
+    max-width: calc(100vw - 16px);
+  }
+
+  .mail-layout {
+    display: block !important;
+    width: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .mail-list-panel,
+  .mail-detail-panel {
+    width: 100% !important;
+    height: 100%;
+    border-right: 0 !important;
+  }
+
+  .mail-list-panel.mobile-hidden,
+  .mail-detail-panel {
+    display: none !important;
+  }
+
+  .mail-detail-panel.mobile-visible {
+    display: flex !important;
+  }
+
+  .mobile-back-button {
+    display: flex;
+  }
+
+  .mail-detail-header,
+  .mail-body,
+  .mail-fields,
+  .entwurf-panel {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+
+  .mail-detail-toolbar {
+    align-items: flex-start !important;
+    flex-direction: column;
+  }
+
+  .mail-detail-meta {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 7px !important;
+  }
+
+  .mail-detail-actions {
+    width: 100%;
+    justify-content: flex-start !important;
+  }
+
+  .mail-fields {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .entwurf-panel textarea {
+    min-height: 42dvh !important;
+  }
+
+  .auswahl-menue {
+    position: fixed !important;
+    top: auto !important;
+    right: 12px !important;
+    bottom: 12px !important;
+    left: 12px !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: 55dvh !important;
+  }
+
+  .content-view {
+    padding: 18px 12px !important;
+  }
+
+  .rechnungen-view > .flex.items-center {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .invoice-table-head {
+    display: none !important;
+  }
+
+  .invoice-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 10px 12px;
+    padding: 14px 12px !important;
+  }
+
+  .invoice-row > :nth-child(2),
+  .invoice-row > .invoice-actions {
+    grid-column: 1 / -1;
+  }
+
+  .invoice-date {
+    grid-column: 1 / -1;
+  }
+
+  .invoice-row > :nth-child(3)::before,
+  .invoice-row > :nth-child(4)::before,
+  .invoice-row > :nth-child(5)::before {
+    display: block;
+    margin-bottom: 2px;
+    color: #6c6f5f;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px;
+    letter-spacing: .04em;
+  }
+
+  .invoice-row > :nth-child(3)::before { content: "RECHNUNG-NR."; }
+  .invoice-row > :nth-child(4)::before { content: "BETRAG"; }
+  .invoice-row > :nth-child(5)::before { content: "FÄLLIG AM"; }
+  .invoice-row-done > :nth-child(3)::before { content: "STATUS"; }
+  .invoice-row-done > :nth-child(4)::before { content: "BETRAG"; }
+  .invoice-row-done > :nth-child(5)::before { content: "ZAHLUNGSSTATUS"; }
+
+  .invoice-actions {
+    align-items: stretch !important;
+  }
+
+  .invoice-actions select {
+    min-width: 0;
+  }
+
+  .rollen-summary,
+  .rollen-grid,
+  .knowledge-card-grid,
+  .knowledge-form-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .knowledge-form-grid > * {
+    grid-column: 1 !important;
+  }
+
+  .classification-head,
+  .action-log-head {
+    display: none !important;
+  }
+
+  .classification-table,
+  .action-log-table {
+    overflow: visible !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  .classification-row {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 14px 12px !important;
+    border: 1px solid #ddd9c4 !important;
+    border-radius: 8px;
+    background: #fdfcee;
+  }
+
+  .classification-row > :nth-child(3)::before,
+  .classification-row > :nth-child(4)::before,
+  .classification-row > :nth-child(5)::before {
+    display: block;
+    margin-bottom: 5px;
+    color: #6c6f5f;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px;
+    letter-spacing: .04em;
+  }
+
+  .classification-row > :nth-child(3)::before { content: "PRIORITÄT"; }
+  .classification-row > :nth-child(4)::before { content: "POSTFACH / ORDNER"; }
+  .classification-row > :nth-child(5)::before { content: "AKTIONEN"; }
+
+  .classification-row > :nth-child(4) {
+    padding-right: 0 !important;
+  }
+
+  .action-log-row {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 7px;
+    margin-bottom: 10px;
+    padding: 12px !important;
+    border: 1px solid #ddd9c4 !important;
+    border-radius: 8px;
+    background: #fdfcee;
+  }
+
+  .action-log-row > *::before {
+    display: block;
+    margin-bottom: 3px;
+    color: #6c6f5f;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px;
+    letter-spacing: .04em;
+  }
+
+  .action-log-row > :nth-child(1)::before { content: "ZEIT"; }
+  .action-log-row > :nth-child(2)::before { content: "EREIGNIS"; }
+  .action-log-row > :nth-child(3)::before { content: "MAIL VON"; }
+  .action-log-row > :nth-child(4)::before { content: "AUSGELÖST VON"; }
+  .action-log-row > :nth-child(5)::before { content: "DETAIL"; }
+
+  .knowledge-header {
+    padding: 16px 12px 0 !important;
+  }
+
+  .knowledge-header-row,
+  .knowledge-tools {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .knowledge-tools {
+    gap: 7px !important;
+  }
+
+  .knowledge-search,
+  .knowledge-search input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .knowledge-body {
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .knowledge-sidebar {
+    width: 100% !important;
+    max-height: 190px;
+    padding: 10px 12px !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid #ddd9c4;
+  }
+
+  .knowledge-main {
+    width: 100%;
+    padding: 16px 12px !important;
+  }
+
+  .knowledge-main .justify-between {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
