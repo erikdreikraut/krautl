@@ -109,12 +109,12 @@ getrennt und versucht zusätzlich, die Nachricht dauerhaft aus IMAP zu löschen.
   prüft Krautl auf wiederverwendbaren Wissenszuwachs. Höchstens ein kompakter
   Wissens- oder FAQ-Vorschlag entsteht; er bleibt stets ein Entwurf und wird
   nie automatisch veröffentlicht.
-- Der SMTP-Versand befindet sich im sicheren Testbetrieb: Vor jedem Versand
+- Vor jedem SMTP-Versand
   prüft Claude den finalen Text auf Vollständigkeit und offene Prüfhinweise.
   Die Prüfung darf denselben Entwurf höchstens zweimal blockieren; der dritte
   ausdrückliche Freigabeversuch versendet ohne eine weitere KI-Prüfung.
-  Unabhängig von der Kundenadresse wird ausschließlich an
-  `info@erikschweitzer.de` gesendet. Für den Testversand müssen
+  Die Antwort wird an die Absenderadresse der Kundenmail gesendet.
+  `info@erikschweitzer.de` erhält ausschließlich eine BCC-Kontrollkopie. Dafür müssen
   `SMTP_SERVICE_HOST`, `SMTP_SERVICE_PORT`, `SMTP_SERVICE_USER` und
   `SMTP_SERVICE_PASSWORD` gesetzt sein.
 - Alle fachlichen API-Funktionen erfordern eine persönliche Krautl-Anmeldung.
@@ -123,7 +123,7 @@ getrennt und versucht zusätzlich, die Nachricht dauerhaft aus IMAP zu löschen.
   `KRAUTL_PASSWORD_ERIK`, `KRAUTL_PASSWORD_GURSEWAK` und
   `KRAUTL_PASSWORD_LUDWIG`. `KRAUTL_SESSION_SECRET` signiert die
   Anmeldesitzungen und muss ein langes zufälliges Geheimnis sein.
-- Beim Testversand ergänzt Krautl abhängig vom angemeldeten Nutzer automatisch
+- Beim Versand ergänzt Krautl abhängig vom angemeldeten Nutzer automatisch
   Name, gegebenenfalls `Auszubildender` und die gemeinsame
   dreikraut-Geschäftssignatur. Der freigebende Nutzer wird im Aktionslog
   protokolliert.

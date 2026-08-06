@@ -6,3 +6,4 @@ test_*.db
 .venv/
 frontend/node_modules/
 frontend/dist/
+frontend/vite.config.js.timestamp-*.mjs

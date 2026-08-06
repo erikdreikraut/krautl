@@ -36,7 +36,7 @@ class MailVersandTest(unittest.TestCase):
     erik = {"name": "Erik Schweitzer", "titel": None}
     gursewak = {"name": "Gursewak Singh", "titel": "Auszubildender"}
 
-    def test_empfaenger_ist_fest_auf_testadresse_begrenzt(self):
+    def test_antwort_geht_an_kunden_und_kontrolladresse_nur_in_bcc(self):
         mail = Mail(
             message_id="<kunde@example.test>",
             postfach_id=1,
@@ -57,16 +57,40 @@ class MailVersandTest(unittest.TestCase):
             ergebnis = _synchron_senden(mail, "Testantwort", self.erik)
 
         self.assertEqual(
+            "echter-kunde@example.test",
+            _SmtpAttrappe.nachricht["To"],
+        )
+        self.assertEqual(
             "info@erikschweitzer.de",
-            _SmtpAttrappe.nachricht["To"],
+            _SmtpAttrappe.nachricht["Bcc"],
         )
-        self.assertNotEqual(
-            mail.absender_adresse,
-            _SmtpAttrappe.nachricht["To"],
-        )
+        self.assertEqual("Re: Testfrage", _SmtpAttrappe.nachricht["Subject"])
+        self.assertNotIn("TEST", _SmtpAttrappe.nachricht["Subject"])
         self.assertIn("\nErik Schweitzer\n-- \ndreikraut e.K.\n", _SmtpAttrappe.nachricht.get_content())
-        self.assertEqual("info@erikschweitzer.de", ergebnis["empfaenger"])
+        self.assertEqual("echter-kunde@example.test", ergebnis["empfaenger"])
+        self.assertEqual("info@erikschweitzer.de", ergebnis["bcc"])
         self.assertTrue(ergebnis["message_id"].startswith("<"))
+
+    def test_ungueltige_kundenadresse_wird_vor_smtp_blockiert(self):
+        mail = Mail(
+            message_id="<ungueltig@example.test>",
+            postfach_id=1,
+            absender_name="Unbekannt",
+            absender_adresse="keine-adresse",
+            betreff="Frage",
+            text_auszug="Hallo",
+            empfangen_am=datetime.now(timezone.utc),
+        )
+        umgebung = {
+            "SMTP_SERVICE_HOST": "smtp.example.test",
+            "SMTP_SERVICE_PORT": "587",
+            "SMTP_SERVICE_USER": "service@dreikraut.de",
+            "SMTP_SERVICE_PASSWORD": "secret",
+        }
+        with patch.dict(os.environ, umgebung, clear=False), \
+             patch("app.mail_versand.smtplib.SMTP", _SmtpAttrappe):
+            with self.assertRaisesRegex(RuntimeError, "ungültig"):
+                _synchron_senden(mail, "Testantwort", self.erik)
 
     def test_signatur_fuer_auszubildende(self):
         text = antwort_mit_signatur("Mit bestem Gruß", self.gursewak)

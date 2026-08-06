@@ -14,7 +14,7 @@ from .db import get_session, engine
 from .aufgaben import aufgaben_fuer_mail_anlegen, bestaetigung_erfassen, wartende_aufgaben_ausfuehren
 from .antworten import antwort_vor_versand_pruefen, antwortentwurf_speichern
 from .mail_versand import (
-    TEST_EMPFAENGER, antwort_mit_signatur, testantwort_senden,
+    BCC_EMPFAENGER, antwort_mit_signatur, antwort_senden,
 )
 from .imap_client import lade_postfaecher, mail_loeschen as mail_imap_loeschen
 from .auth import (
@@ -1340,7 +1340,8 @@ async def entwurf_freigeben(
     if entwurf.status == "versendet":
         return {
             "status": "bereits_versendet",
-            "empfaenger": TEST_EMPFAENGER,
+            "empfaenger": mail.absender_adresse,
+            "bcc": BCC_EMPFAENGER,
         }
 
     finaler_text = freigabe.finaler_text.strip()
@@ -1402,7 +1403,7 @@ async def entwurf_freigeben(
         ))
 
     try:
-        versandergebnis = await testantwort_senden(
+        versandergebnis = await antwort_senden(
             mail, finaler_text, request.state.benutzer
         )
     except Exception as exc:
@@ -1412,13 +1413,13 @@ async def entwurf_freigeben(
             ausgeloest_von=request.state.benutzer["name"],
             detail=(
                 f"Freigabe durch {request.state.benutzer['name']}; "
-                f"Testversand an {TEST_EMPFAENGER}: {exc}"
+                f"Versand an {mail.absender_adresse}: {exc}"
             ),
         ))
         await session.commit()
         raise HTTPException(
             status_code=502,
-            detail=f"Testversand fehlgeschlagen: {exc}",
+            detail=f"Antwortversand fehlgeschlagen: {exc}",
         ) from exc
 
     entwurf.text_final = antwort_mit_signatur(
@@ -1428,12 +1429,13 @@ async def entwurf_freigeben(
     entwurf.versendet_am = datetime.now(timezone.utc)
     session.add(Aktionslog(
         mail_id=mail.id,
-        ereignis="antwort_versendet_test",
+        ereignis="antwort_versendet",
         ausgeloest_von=request.state.benutzer["name"],
         detail=(
             f"Durch {request.state.benutzer['name']} "
             f"{'ohne weitere KI-Prüfung ' if pruefung_uebersprungen else 'nach KI-Prüfung '}"
-            f"ausschließlich an den Mailserver für {TEST_EMPFAENGER} übergeben; "
+            f"an den Mailserver für {versandergebnis['empfaenger']} übergeben; "
+            f"BCC an {versandergebnis['bcc']}; "
             f"Message-ID {versandergebnis['message_id']}"
         ),
     ))
@@ -1463,7 +1465,8 @@ async def entwurf_freigeben(
     await session.commit()
     return {
         "status": "versendet",
-        "empfaenger": TEST_EMPFAENGER,
+        "empfaenger": versandergebnis["empfaenger"],
+        "bcc": versandergebnis["bcc"],
         "message_id": versandergebnis["message_id"],
         "pruefung_uebersprungen": pruefung_uebersprungen,
     }

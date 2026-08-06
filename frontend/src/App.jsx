@@ -151,6 +151,7 @@ const EREIGNIS_LABEL = {
   antwort_pruefung_noetig: "Antwort noch nicht versandbereit",
   antwort_pruefung_uebersprungen: "KI-Prüfung übersprungen",
   antwort_versendet_test: "Testantwort an Mailserver übergeben",
+  antwort_versendet: "Antwort an Mailserver übergeben",
   antwort_versand_fehlgeschlagen: "Antwortversand fehlgeschlagen",
   wissensvorschlag_erstellt: "Wissensvorschlag erstellt",
   wissenspruefung_fehlgeschlagen: "Wissensprüfung fehlgeschlagen",
@@ -169,7 +170,7 @@ const EREIGNIS_LABEL = {
 function farbeFuerEreignis(ereignis) {
   if (ereignis.endsWith("fehlgeschlagen")) return tokens.rust;
   if (ereignis === "mail_geloescht") return tokens.rust;
-  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt", "antwort_versendet_test", "audio_transkribiert", "wissensvorschlag_erstellt", "mail_manuell_erledigt"].includes(ereignis)) return tokens.moss;
+  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt", "antwort_versendet_test", "antwort_versendet", "audio_transkribiert", "wissensvorschlag_erstellt", "mail_manuell_erledigt"].includes(ereignis)) return tokens.moss;
   return tokens.inkMuted;
 }
 
@@ -575,10 +576,11 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
               <div className="px-6 py-6 flex-1">
                 <div className="px-3 py-2.5" style={{ background: tokens.mossPale, border: `1px solid ${tokens.moss}`, borderRadius: "6px" }}>
                   <div style={{ ...fontUI, fontSize: "12.5px", fontWeight: 600, color: tokens.mossDeep }}>
-                    Testantwort an den Mailserver übergeben
+                    Antwort an den Mailserver übergeben
                   </div>
                   <div style={{ ...fontUI, fontSize: "12px", color: tokens.inkMuted, marginTop: "3px" }}>
                     Empfänger: {versandbestaetigungen[selected.id].empfaenger}<br />
+                    BCC: {versandbestaetigungen[selected.id].bcc}<br />
                     SMTP-Nachrichten-ID: {versandbestaetigungen[selected.id].messageId}
                   </div>
                 </div>
@@ -624,10 +626,12 @@ function EntwurfPanel({ entwurf, onErledigt, onVersendet }) {
       } else {
         setVersanderfolg({
           empfaenger: ergebnis.empfaenger,
+          bcc: ergebnis.bcc,
           messageId: ergebnis.message_id,
         });
         onVersendet({
           empfaenger: ergebnis.empfaenger,
+          bcc: ergebnis.bcc,
           messageId: ergebnis.message_id,
         });
       }
@@ -663,7 +667,7 @@ function EntwurfPanel({ entwurf, onErledigt, onVersendet }) {
             Die Kontroll-KI hat diesen Entwurf zweimal blockiert.
           </div>
           <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, marginTop: "3px" }}>
-            Der nächste Klick versendet die Testantwort ohne eine weitere KI-Prüfung.
+            Der nächste Klick versendet die Antwort ohne eine weitere KI-Prüfung.
           </div>
         </div>
       )}
@@ -673,10 +677,11 @@ function EntwurfPanel({ entwurf, onErledigt, onVersendet }) {
       {versanderfolg && (
         <div className="mt-3 px-3 py-2.5" style={{ background: tokens.mossPale, border: `1px solid ${tokens.moss}`, borderRadius: "6px" }}>
           <div style={{ ...fontUI, fontSize: "12.5px", fontWeight: 600, color: tokens.mossDeep }}>
-            Testantwort an den Mailserver übergeben
+            Antwort an den Mailserver übergeben
           </div>
           <div style={{ ...fontUI, fontSize: "12px", color: tokens.inkMuted, marginTop: "3px" }}>
             Empfänger: {versanderfolg.empfaenger}<br />
+            BCC: {versanderfolg.bcc}<br />
             SMTP-Nachrichten-ID: {versanderfolg.messageId}
           </div>
         </div>
@@ -684,17 +689,17 @@ function EntwurfPanel({ entwurf, onErledigt, onVersendet }) {
       <div className="flex items-center gap-2 mt-3">
         <button onClick={freigeben} disabled={prueft || Boolean(versanderfolg)} className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-60" style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}>
           <Check size={13} /> {prueft
-            ? (naechsterOhnePruefung ? "Testantwort wird versendet …" : "Antwort wird geprüft …")
+            ? (naechsterOhnePruefung ? "Antwort wird versendet …" : "Antwort wird geprüft …")
             : (versanderfolg
               ? "An Mailserver übergeben"
-              : (naechsterOhnePruefung ? "Trotzdem testweise senden" : "Antwort freigeben"))}
+              : (naechsterOhnePruefung ? "Trotzdem senden" : "Antwort freigeben"))}
         </button>
         <button onClick={verwerfen} className="flex items-center gap-1.5 px-3 py-2" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
           <X size={13} /> Verwerfen
         </button>
       </div>
       <div style={{ ...fontUI, fontSize: "11.5px", color: tokens.inkMuted, marginTop: "8px" }}>
-        Vor dem Versand prüft die KI die Antwort auf offene Punkte. Während der Testphase wird ausschließlich an info@erikschweitzer.de gesendet.
+        Vor dem Versand prüft die KI die Antwort auf offene Punkte. Die Antwort geht an den Absender der Kundenmail, eine Kontrollkopie per BCC an info@erikschweitzer.de.
       </div>
     </div>
   );

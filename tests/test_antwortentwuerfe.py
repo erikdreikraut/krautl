@@ -123,7 +123,7 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("wartet", entwurf.status)
             self.assertIn("Entwurf", log.detail)
 
-    async def test_freigabe_prueft_und_sendet_nur_testantwort(self):
+    async def test_freigabe_prueft_und_sendet_an_kunden_mit_bcc(self):
         async with SessionLocal() as session:
             entwurf = Entwurf(
                 mail_id=self.mail_id,
@@ -137,10 +137,11 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         pruefung = AsyncMock(return_value={"freigabefaehig": True, "probleme": []})
         versand = AsyncMock(return_value={
             "message_id": "<test-1@dreikraut.de>",
-            "empfaenger": "info@erikschweitzer.de",
+            "empfaenger": "ada@example.test",
+            "bcc": "info@erikschweitzer.de",
         })
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
-             patch("app.main.testantwort_senden", versand):
+             patch("app.main.antwort_senden", versand):
             async with SessionLocal() as session:
                 ergebnis = await entwurf_freigeben(
                     entwurf_id,
@@ -150,7 +151,8 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
                 )
 
         self.assertEqual("versendet", ergebnis["status"])
-        self.assertEqual("info@erikschweitzer.de", ergebnis["empfaenger"])
+        self.assertEqual("ada@example.test", ergebnis["empfaenger"])
+        self.assertEqual("info@erikschweitzer.de", ergebnis["bcc"])
         versand.assert_awaited_once()
         async with SessionLocal() as session:
             entwurf = await session.get(Entwurf, entwurf_id)
@@ -175,10 +177,11 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         })
         versand = AsyncMock(return_value={
             "message_id": "<test-2@dreikraut.de>",
-            "empfaenger": "info@erikschweitzer.de",
+            "empfaenger": "ada@example.test",
+            "bcc": "info@erikschweitzer.de",
         })
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
-             patch("app.main.testantwort_senden", versand):
+             patch("app.main.antwort_senden", versand):
             async with SessionLocal() as session:
                 ergebnis = await entwurf_freigeben(
                     entwurf_id,
@@ -212,11 +215,12 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         })
         versand = AsyncMock(return_value={
             "message_id": "<test-3@dreikraut.de>",
-            "empfaenger": "info@erikschweitzer.de",
+            "empfaenger": "ada@example.test",
+            "bcc": "info@erikschweitzer.de",
         })
         ergebnisse = []
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
-             patch("app.main.testantwort_senden", versand):
+             patch("app.main.antwort_senden", versand):
             for _ in range(3):
                 async with SessionLocal() as session:
                     ergebnisse.append(await entwurf_freigeben(

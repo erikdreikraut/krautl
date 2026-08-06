@@ -1,15 +1,15 @@
-"""Bewusst begrenzter SMTP-Testversand für freigegebene Antworten."""
+"""SMTP-Versand für manuell geprüfte und freigegebene Kundenantworten."""
 import asyncio
 import os
 import smtplib
 import ssl
 from email.message import EmailMessage
-from email.utils import make_msgid
+from email.utils import make_msgid, parseaddr
 
 from .models import Mail
 
 
-TEST_EMPFAENGER = "info@erikschweitzer.de"
+BCC_EMPFAENGER = "info@erikschweitzer.de"
 GEMEINSAME_SIGNATUR = "-- \n" + """\
 dreikraut e.K.
 Gräfrather Str. 74a
@@ -64,15 +64,41 @@ def antwort_mit_signatur(antworttext: str, benutzer: dict) -> str:
     return f"{text}\n\n{signatur}\n"
 
 
+def _kundenadresse(mail: Mail) -> str:
+    roh = str(mail.absender_adresse or "").strip()
+    _name, adresse = parseaddr(roh)
+    lokalteil, trennzeichen, domain = adresse.rpartition("@")
+    if (
+        not trennzeichen
+        or not lokalteil
+        or not domain
+        or any(zeichen.isspace() for zeichen in adresse)
+        or "\r" in roh
+        or "\n" in roh
+    ):
+        raise RuntimeError(
+            "Die Absenderadresse der Kundenmail ist leer oder ungültig"
+        )
+    return adresse
+
+
+def _antwort_betreff(betreff: str) -> str:
+    betreff = str(betreff or "").strip() or "Ihre Nachricht"
+    if betreff.casefold().startswith(("re:", "aw:")):
+        return betreff
+    return f"Re: {betreff}"
+
+
 def _synchron_senden(mail: Mail, antworttext: str, benutzer: dict) -> dict:
     smtp = _smtp_einstellungen()
+    empfaenger = _kundenadresse(mail)
     nachricht = EmailMessage()
     nachricht["From"] = smtp["user"]
-    nachricht["To"] = TEST_EMPFAENGER
-    nachricht["Subject"] = f"TEST – Re: {mail.betreff}"
+    nachricht["To"] = empfaenger
+    nachricht["Bcc"] = BCC_EMPFAENGER
+    nachricht["Subject"] = _antwort_betreff(mail.betreff)
     absender_domain = smtp["user"].partition("@")[2] or None
     nachricht["Message-ID"] = make_msgid(domain=absender_domain)
-    nachricht["X-Krautl-Original-Recipient"] = mail.absender_adresse
     if mail.message_id:
         nachricht["In-Reply-To"] = mail.message_id
         nachricht["References"] = mail.message_id
@@ -96,9 +122,10 @@ def _synchron_senden(mail: Mail, antworttext: str, benutzer: dict) -> dict:
         raise RuntimeError(f"SMTP hat Empfänger abgelehnt: {abgelehnt}")
     return {
         "message_id": nachricht["Message-ID"],
-        "empfaenger": TEST_EMPFAENGER,
+        "empfaenger": empfaenger,
+        "bcc": BCC_EMPFAENGER,
     }
 
 
-async def testantwort_senden(mail: Mail, antworttext: str, benutzer: dict) -> dict:
+async def antwort_senden(mail: Mail, antworttext: str, benutzer: dict) -> dict:
     return await asyncio.to_thread(_synchron_senden, mail, antworttext, benutzer)
