@@ -12,7 +12,7 @@ from app.berechtigungen import darf_mail_sehen
 from app.db import SessionLocal, engine
 from app.main import (
     MailZuweisung, RollenMailzugriffAenderung, liste_mails,
-    mail_antwortentwurf_erzeugen, mail_zustaendigkeit_aendern,
+    liste_aktionslog, mail_antwortentwurf_erzeugen, mail_zustaendigkeit_aendern,
     rollen_mailzugriff_speichern,
 )
 from app.models import Aktionslog, Base, Klassifikation, Mail, Postfach, RollenMailzugriff
@@ -159,6 +159,21 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
                     session,
                 )
         self.assertEqual(422, fehler.exception.status_code)
+
+    async def test_aktionslog_liefert_den_mail_absender(self):
+        async with SessionLocal() as session:
+            mail = (await session.execute(
+                select(Mail).where(Mail.klassifikation_id == "KUNDE_TEST")
+            )).scalar_one()
+            session.add(Aktionslog(
+                mail_id=mail.id,
+                ereignis="klassifiziert",
+                detail="KUNDE_TEST",
+            ))
+            await session.commit()
+            eintraege = await liste_aktionslog(request_fuer(ADMIN), session)
+
+        self.assertEqual("Test", eintraege[0]["mail_absender"])
 
 
 if __name__ == "__main__":

@@ -1160,7 +1160,7 @@ function AktionslogView({ eintraege }) {
 
       <div style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
         <div className="grid px-4 py-2.5" style={{ gridTemplateColumns: "1fr 1.35fr 1.45fr 1.1fr 2.3fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
-          <div>ZEIT</div><div>EREIGNIS</div><div>MAIL</div><div>AUSGELÖST VON</div><div>DETAIL</div>
+          <div>ZEIT</div><div>EREIGNIS</div><div>MAIL VON</div><div>AUSGELÖST VON</div><div>DETAIL</div>
         </div>
         {eintraege.map((e) => (
           <div key={e.id} className="grid items-start px-4 py-3" style={{ gridTemplateColumns: "1fr 1.35fr 1.45fr 1.1fr 2.3fr", borderBottom: `1px solid ${tokens.line}` }}>
@@ -1168,7 +1168,7 @@ function AktionslogView({ eintraege }) {
             <div>
               <Badge label={(EREIGNIS_LABEL[e.ereignis] ?? e.ereignis).toUpperCase()} color={farbeFuerEreignis(e.ereignis)} />
             </div>
-            <div style={{ ...fontSerif, fontSize: "13.5px" }}>{e.mailLabel}</div>
+            <div style={{ ...fontSerif, fontSize: "13.5px" }}>{e.mailVon}</div>
             <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.ink }}>{e.ausgeloest_von || "Krautl"}</div>
             <div style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, wordBreak: "break-word" }}>{e.detail}</div>
           </div>
@@ -1410,7 +1410,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
       const mail = e.mail_id != null ? mailsNachId[e.mail_id] : null;
       return {
         ...e,
-        mailLabel: mail ? mail.betreff : e.mail_id != null ? `Mail #${e.mail_id}` : "—",
+        mailVon: e.mail_absender || mail?.absender_name || mail?.absender_adresse || "—",
       };
     });
 

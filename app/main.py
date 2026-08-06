@@ -653,9 +653,25 @@ async def mail_loeschen(
 async def liste_aktionslog(request: Request, session: AsyncSession = Depends(get_session)):
     _admin_erfordern(request)
     result = await session.execute(
-        select(Aktionslog).order_by(Aktionslog.erstellt_am.desc()).limit(200)
+        select(
+            Aktionslog,
+            Mail.absender_name,
+            Mail.absender_adresse,
+        )
+        .outerjoin(Mail, Aktionslog.mail_id == Mail.id)
+        .order_by(Aktionslog.erstellt_am.desc())
+        .limit(200)
     )
-    return result.scalars().all()
+    return [
+        {
+            **{
+                spalte.name: getattr(eintrag, spalte.name)
+                for spalte in Aktionslog.__table__.columns
+            },
+            "mail_absender": absender_name or absender_adresse,
+        }
+        for eintrag, absender_name, absender_adresse in result.all()
+    ]
 
 
 @app.post("/mails/{mail_id}/korrektur")
