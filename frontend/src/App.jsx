@@ -164,6 +164,7 @@ const EREIGNIS_LABEL = {
   mail_manuell_erledigt: "Manuell erledigt",
   mail_geloescht: "Mail gelöscht",
   mail_loeschen_fehlgeschlagen: "Mail-Löschung fehlgeschlagen",
+  mail_zugewiesen: "Mail zugewiesen",
 };
 function farbeFuerEreignis(ereignis) {
   if (ereignis.endsWith("fehlgeschlagen")) return tokens.rust;
@@ -325,6 +326,62 @@ function MailLoeschenButton({ mail, onGeloescht }) {
   );
 }
 
+function ZuweisenButton({ mail, onZugewiesen }) {
+  const [offen, setOffen] = useState(false);
+  const [laeuft, setLaeuft] = useState(false);
+  const [fehler, setFehler] = useState("");
+
+  async function zuweisen(rolle) {
+    if (!rolle) return;
+    setLaeuft(true);
+    setFehler("");
+    try {
+      await api.mailZuweisen(mail.id, rolle);
+      await onZugewiesen();
+    } catch (e) {
+      setFehler(e.message);
+    } finally {
+      setLaeuft(false);
+      setOffen(false);
+    }
+  }
+
+  if (!offen) {
+    return (
+      <div className="flex items-center gap-1.5">
+        {fehler && <span title={fehler} style={{ ...fontUI, fontSize: "11px", color: tokens.rust }}>Zuweisung fehlgeschlagen</span>}
+        <button
+          onClick={() => setOffen(true)}
+          title={`Derzeit zuständig: ${mail.zustaendigkeitLabel}`}
+          className="flex items-center gap-1 px-2 py-1.5"
+          style={{ ...fontUI, fontSize: "11.5px", color: tokens.inkMuted, border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised }}
+        >
+          <UserRound size={12} /> Zuweisen
+        </button>
+      </div>
+    );
+  }
+
+  const aktuelleRolle = mail.zustaendigAdmin !== mail.zustaendigSachbearbeiter
+    ? (mail.zustaendigAdmin ? "admin" : "sachbearbeiter")
+    : "";
+  return (
+    <select
+      autoFocus
+      disabled={laeuft}
+      value={aktuelleRolle}
+      onChange={(e) => zuweisen(e.target.value)}
+      onBlur={() => setOffen(false)}
+      className="px-2 py-1.5"
+      style={{ ...fontUI, fontSize: "11.5px", border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised }}
+    >
+      {!aktuelleRolle && <option value="" disabled>Zuweisen an …</option>}
+      {mail.zuweisbareRollen.includes("admin") && <option value="admin">Erik (Admin)</option>}
+      {mail.zuweisbareRollen.includes("sachbearbeiter") && <option value="sachbearbeiter">Guri, Ludwig (Sachbearbeiter)</option>}
+    </select>
+  );
+}
+
 function AntwortvorschlagButton({ mail, onErzeugt }) {
   const [laeuft, setLaeuft] = useState(false);
   const [fehler, setFehler] = useState("");
@@ -358,29 +415,39 @@ function AntwortvorschlagButton({ mail, onErzeugt }) {
   );
 }
 
-function PosteingangView({ mails, katalog, onReload }) {
+function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAendern, onReload }) {
   const [filter, setFilter] = useState(null);
   const [selectedId, setSelectedId] = useState(mails[0]?.id ?? null);
   const [versandbestaetigungen, setVersandbestaetigungen] = useState({});
 
-  const kategorien = [...new Set(mails.map((m) => m.kat))];
+  const kategorien = useMemo(() => [...new Set(mails.map((m) => m.kat))], [mails]);
   const sichtbar = filter ? mails.filter((m) => m.kat === filter) : mails;
   const selected = mails.find((m) => m.id === selectedId) ?? sichtbar[0] ?? null;
 
-  if (mails.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
-        Noch keine Mails abgerufen — der minütliche Postfach-Abruf läuft im Hintergrund.
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (filter && !kategorien.includes(filter)) setFilter(null);
+  }, [filter, kategorien]);
 
   return (
     <div className="flex flex-1 min-h-0">
       <div className="flex flex-col" style={{ width: "380px", borderRight: `1px solid ${tokens.line}` }}>
         <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: `1px solid ${tokens.line}` }}>
           <Search size={14} style={{ color: tokens.inkMuted }} />
-          <span style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>Mails durchsuchen …</span>
+          <span className="flex-1" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>Mails durchsuchen …</span>
+          {benutzer.rolle === "admin" && (
+            <div className="flex items-center rounded-md overflow-hidden" style={{ border: `1px solid ${tokens.line}` }}>
+              <button
+                onClick={() => onAlleMailsAendern(false)}
+                className="px-2 py-1"
+                style={{ ...fontMono, fontSize: "9.5px", background: !alleMails ? tokens.mossDeep : tokens.paperRaised, color: !alleMails ? "#fff" : tokens.inkMuted }}
+              >MEINE</button>
+              <button
+                onClick={() => onAlleMailsAendern(true)}
+                className="px-2 py-1"
+                style={{ ...fontMono, fontSize: "9.5px", background: alleMails ? tokens.mossDeep : tokens.paperRaised, color: alleMails ? "#fff" : tokens.inkMuted, borderLeft: `1px solid ${tokens.line}` }}
+              >ALLE MAILS</button>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1.5 px-4 py-2 overflow-x-auto" style={{ borderBottom: `1px solid ${tokens.line}` }}>
           <button onClick={() => setFilter(null)} className="px-2 py-1 rounded-full shrink-0"
@@ -409,6 +476,13 @@ function PosteingangView({ mails, katalog, onReload }) {
               <Konfidenz value={m.konfidenz} />
             </button>
           ))}
+          {mails.length === 0 && (
+            <div className="px-5 py-10 text-center" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
+              {alleMails
+                ? "Keine Mails im Krautl-Posteingang."
+                : "Der Posteingang für Deine Rolle ist leer."}
+            </div>
+          )}
         </div>
       </div>
 
@@ -422,10 +496,14 @@ function PosteingangView({ mails, katalog, onReload }) {
                   <span style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
                     {selected.zielhinweis}
                   </span>
+                  <span className="flex items-center gap-1" style={{ ...fontUI, fontSize: "11.5px", color: tokens.inkMuted }}>
+                    <UserRound size={12} /> {selected.zustaendigkeitLabel}
+                  </span>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <AntwortvorschlagButton mail={selected} onErzeugt={onReload} />
                   <BestaetigenButton mail={selected} onBestaetigt={onReload} />
+                  <ZuweisenButton mail={selected} onZugewiesen={onReload} />
                   <KategorieKorrektur mail={selected} katalog={katalog} onKorrigiert={onReload} />
                   <MailLoeschenButton mail={selected} onGeloescht={onReload} />
                 </div>
@@ -472,6 +550,13 @@ function PosteingangView({ mails, katalog, onReload }) {
               </div>
             )}
           </>
+        )}
+        {!selected && (
+          <div className="flex-1 flex items-center justify-center" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
+            {alleMails
+              ? "Keine Mails im Krautl-Posteingang."
+              : "Für Deine Rolle wartet gerade keine Mail."}
+          </div>
         )}
       </div>
     </div>
@@ -1058,7 +1143,7 @@ function AktionslogView({ eintraege }) {
   );
 }
 
-function verwendeKrautlDaten(onNichtAngemeldet, benutzer) {
+function verwendeKrautlDaten(onNichtAngemeldet, benutzer, alleMails) {
   const [daten, setDaten] = useState(null);
   const [fehler, setFehler] = useState(null);
   const laedt = useRef(false);
@@ -1069,7 +1154,7 @@ function verwendeKrautlDaten(onNichtAngemeldet, benutzer) {
     try {
       const istAdmin = benutzer?.rolle === "admin";
       const [health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, aktionslog, rollenMailzugriff] = await Promise.all([
-        api.health(), api.mails(), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.wissensbasis(), api.wissensvorschlaege(), api.entwuerfe(),
+        api.health(), api.mails(alleMails), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.wissensbasis(), api.wissensvorschlaege(), api.entwuerfe(alleMails),
         istAdmin ? api.aktionslog() : Promise.resolve([]),
         istAdmin ? api.rollenMailzugriff() : Promise.resolve(null),
       ]);
@@ -1086,7 +1171,7 @@ function verwendeKrautlDaten(onNichtAngemeldet, benutzer) {
     } finally {
       laedt.current = false;
     }
-  }, [onNichtAngemeldet, benutzer]);
+  }, [onNichtAngemeldet, benutzer, alleMails]);
 
   useEffect(() => {
     laden();
@@ -1214,7 +1299,8 @@ export default function KrautlUI() {
 
 function KrautlAnwendung({ benutzer, onAbmelden }) {
   const [tab, setTab] = useState("posteingang");
-  const { daten, fehler, neuLaden } = verwendeKrautlDaten(onAbmelden, benutzer);
+  const [alleMails, setAlleMails] = useState(false);
+  const { daten, fehler, neuLaden } = verwendeKrautlDaten(onAbmelden, benutzer, alleMails);
 
   const abgeleitet = useMemo(() => {
     if (!daten) return null;
@@ -1242,6 +1328,15 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         konfidenz: m.konfidenz,
         aufgaben: m.aufgaben ?? [],
         bestaetigungErforderlich: Boolean(m.bestaetigung_erforderlich),
+        zustaendigAdmin: Boolean(m.zustaendig_admin),
+        zustaendigSachbearbeiter: Boolean(m.zustaendig_sachbearbeiter),
+        zuweisbareRollen: m.zuweisbare_rollen ?? ["admin", "sachbearbeiter"],
+        zustaendigkeitLabel: (() => {
+          if (m.zustaendig_admin && m.zustaendig_sachbearbeiter) return "Erik, Guri und Ludwig";
+          if (m.zustaendig_admin) return "Erik (Admin)";
+          if (m.zustaendig_sachbearbeiter) return "Guri, Ludwig (Sachbearbeiter)";
+          return "nicht zugewiesen";
+        })(),
         zielhinweis: (() => {
           const zielpostfach = klass?.zielpostfach;
           const zielordner = klass?.zielordner;
@@ -1349,7 +1444,14 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         </div>
       </header>
 
-      {tab === "posteingang" && <PosteingangView mails={abgeleitet.mails} katalog={daten.katalog} onReload={neuLaden} />}
+      {tab === "posteingang" && <PosteingangView
+        mails={abgeleitet.mails}
+        katalog={daten.katalog}
+        benutzer={benutzer}
+        alleMails={alleMails}
+        onAlleMailsAendern={setAlleMails}
+        onReload={neuLaden}
+      />}
       {tab === "rechnungen" && <RechnungenView rechnungen={daten.rechnungen} onReload={neuLaden} />}
       {tab === "wissen" && <WissensdatenbankViewNeu basis={daten.wissensbasis} faqEintraege={daten.faq} vorschlaege={daten.wissensvorschlaege} onReload={neuLaden} />}
       {tab === "klassifikationen" && <KlassifikationenView katalog={daten.katalog} onReload={neuLaden} />}

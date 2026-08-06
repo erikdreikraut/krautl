@@ -115,6 +115,11 @@ class Mail(Base):
     # bestätigt oder korrigiert hat.
     pruefstatus: Mapped[str] = mapped_column(String(20), default="offen")
     im_krautl_posteingang: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Die Rollen-Matrix bestimmt die anfängliche Zuständigkeit. Eine
+    # manuelle Zuweisung setzt anschließend genau eine der beiden Rollen.
+    zustaendig_admin: Mapped[bool] = mapped_column(Boolean, default=True)
+    zustaendig_sachbearbeiter: Mapped[bool] = mapped_column(Boolean, default=True)
+    zustaendigkeit_manuell: Mapped[bool] = mapped_column(Boolean, default=False)
 
     postfach: Mapped["Postfach"] = relationship(back_populates="mails")
     korrekturen: Mapped[list["Korrektur"]] = relationship(back_populates="mail")

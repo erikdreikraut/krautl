@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 
 from .agent import klassifiziere
 from .aufgaben import aufgaben_fuer_mail_anlegen, wartende_aufgaben_ausfuehren
+from .berechtigungen import standard_zustaendigkeit
 from .db import SessionLocal
 from .imap_client import PostfachConfig, lade_postfaecher, neue_mails_abrufen
 from .mail_parser import parse_eml
@@ -154,6 +155,10 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
                     )
                 klassifikation_id = None
 
+            zustaendig_admin, zustaendig_sachbearbeiter = await standard_zustaendigkeit(
+                session, klassifikation_id
+            )
+
             mail = Mail(
                 message_id=geparst["message_id"],
                 imap_uid=roh["uid"],
@@ -170,6 +175,8 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
                 kundennummer=klass.get("kundennummer"),
                 bestellnummer=klass.get("bestellnummer"),
                 rechnungsnummer=klass.get("rechnungsnummer"),
+                zustaendig_admin=zustaendig_admin,
+                zustaendig_sachbearbeiter=zustaendig_sachbearbeiter,
             )
             session.add(mail)
             await session.flush()  # weist mail.id zu, fürs Aktionslog gebraucht

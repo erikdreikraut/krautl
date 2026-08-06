@@ -11,10 +11,11 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_berechtigungen
 from app.berechtigungen import darf_mail_sehen
 from app.db import SessionLocal, engine
 from app.main import (
-    RollenMailzugriffAenderung, liste_mails, mail_antwortentwurf_erzeugen,
+    MailZuweisung, RollenMailzugriffAenderung, liste_mails,
+    mail_antwortentwurf_erzeugen, mail_zustaendigkeit_aendern,
     rollen_mailzugriff_speichern,
 )
-from app.models import Base, Klassifikation, Mail, Postfach, RollenMailzugriff
+from app.models import Aktionslog, Base, Klassifikation, Mail, Postfach, RollenMailzugriff
 
 
 ADMIN = {"rolle": "admin", "name": "Erik Schweitzer"}
@@ -101,8 +102,63 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
                 zeile.klassifikation_id: zeile.darf_sehen
                 for zeile in (await session.execute(select(RollenMailzugriff))).scalars().all()
             }
+            mails = {
+                mail.klassifikation_id: mail.zustaendig_sachbearbeiter
+                for mail in (await session.execute(select(Mail))).scalars().all()
+            }
         self.assertEqual(1, ergebnis["freigegeben"])
         self.assertEqual({"KUNDE_TEST": True, "RECHT_TEST": False}, rechte)
+        self.assertEqual({"KUNDE_TEST": True, "RECHT_TEST": False}, mails)
+
+    async def test_manuelle_zuweisung_ist_exklusiv_und_filtert_die_arbeitsliste(self):
+        async with SessionLocal() as session:
+            erlaubte_mail = (await session.execute(
+                select(Mail).where(Mail.klassifikation_id == "KUNDE_TEST")
+            )).scalar_one()
+            ergebnis = await mail_zustaendigkeit_aendern(
+                erlaubte_mail.id,
+                MailZuweisung(rolle="sachbearbeiter"),
+                request_fuer(ADMIN),
+                session,
+            )
+
+        self.assertEqual("sachbearbeiter", ergebnis["rolle"])
+        async with SessionLocal() as session:
+            admin_mails = await liste_mails(request_fuer(ADMIN), session)
+            alle_mails = await liste_mails(request_fuer(ADMIN), session, alle=True)
+            sachbearbeiter_mails = await liste_mails(
+                request_fuer(SACHBEARBEITER), session
+            )
+            mail = (await session.execute(
+                select(Mail).where(Mail.klassifikation_id == "KUNDE_TEST")
+            )).scalar_one()
+            log = (await session.execute(
+                select(Aktionslog).where(Aktionslog.ereignis == "mail_zugewiesen")
+            )).scalar_one()
+
+        self.assertEqual(["Gesperrt"], [mail["betreff"] for mail in admin_mails])
+        self.assertEqual(
+            {"Erlaubt", "Gesperrt"}, {mail["betreff"] for mail in alle_mails}
+        )
+        self.assertEqual(["Erlaubt"], [mail["betreff"] for mail in sachbearbeiter_mails])
+        self.assertFalse(mail.zustaendig_admin)
+        self.assertTrue(mail.zustaendig_sachbearbeiter)
+        self.assertTrue(mail.zustaendigkeit_manuell)
+        self.assertEqual("Erik Schweitzer", log.ausgeloest_von)
+
+    async def test_zuweisung_respektiert_die_rollen_matrix(self):
+        async with SessionLocal() as session:
+            gesperrte_mail = (await session.execute(
+                select(Mail).where(Mail.klassifikation_id == "RECHT_TEST")
+            )).scalar_one()
+            with self.assertRaises(HTTPException) as fehler:
+                await mail_zustaendigkeit_aendern(
+                    gesperrte_mail.id,
+                    MailZuweisung(rolle="sachbearbeiter"),
+                    request_fuer(ADMIN),
+                    session,
+                )
+        self.assertEqual(422, fehler.exception.status_code)
 
 
 if __name__ == "__main__":

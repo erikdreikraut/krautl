@@ -23,7 +23,7 @@ from .auth import (
 )
 from .berechtigungen import (
     ROLLE_SACHBEARBEITER, darf_klassifikation_sehen, darf_mail_sehen,
-    ist_admin, verweigerte_klassifikationen,
+    ist_admin, standard_zustaendigkeit, verweigerte_klassifikationen,
 )
 from .models import (
     Aktionslog, Base, Mail, MailAufgabe, Postfach, Rechnung, FaqEintrag, FaqVorschlag,
@@ -71,6 +71,10 @@ class RechnungsstatusAenderung(BaseModel):
 
 class RollenMailzugriffAenderung(BaseModel):
     klassifikation_ids: list[str]
+
+
+class MailZuweisung(BaseModel):
+    rolle: str
 
 
 class Anmeldung(BaseModel):
@@ -214,7 +218,14 @@ async def health(session: AsyncSession = Depends(get_session)):
 
 
 @app.get("/mails")
-async def liste_mails(request: Request, session: AsyncSession = Depends(get_session)):
+async def liste_mails(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    alle: bool = False,
+):
+    benutzer = request.state.benutzer
+    if alle and not ist_admin(benutzer):
+        raise HTTPException(status_code=403, detail="Die Gesamtübersicht ist nur für Admins")
     verweigert = await verweigerte_klassifikationen(session, request.state.benutzer)
     if "*" in verweigert:
         return []
@@ -230,8 +241,16 @@ async def liste_mails(request: Request, session: AsyncSession = Depends(get_sess
             Mail.klassifikation_id.is_(None),
             ~Mail.klassifikation_id.in_(verweigert),
         ))
+    if not alle:
+        if ist_admin(benutzer):
+            abfrage = abfrage.where(Mail.zustaendig_admin.is_(True))
+        elif benutzer.get("rolle") == ROLLE_SACHBEARBEITER:
+            abfrage = abfrage.where(Mail.zustaendig_sachbearbeiter.is_(True))
     result = await session.execute(abfrage)
     mails = result.scalars().all()
+    fuer_sachbearbeiter_verweigert = await verweigerte_klassifikationen(
+        session, {"rolle": ROLLE_SACHBEARBEITER}
+    )
     return [
         {
             **{spalte.name: getattr(mail, spalte.name) for spalte in Mail.__table__.columns},
@@ -244,9 +263,56 @@ async def liste_mails(request: Request, session: AsyncSession = Depends(get_sess
                 a.aufgabe_typ == "BESTAETIGUNG_EINHOLEN" and a.status == "wartet"
                 for a in mail.aufgaben
             ),
+            "zuweisbare_rollen": [
+                "admin",
+                *(
+                    [ROLLE_SACHBEARBEITER]
+                    if mail.klassifikation_id not in fuer_sachbearbeiter_verweigert
+                    else []
+                ),
+            ],
         }
         for mail in mails
     ]
+
+
+@app.put("/mails/{mail_id}/zustaendigkeit")
+async def mail_zustaendigkeit_aendern(
+    mail_id: int,
+    zuweisung: MailZuweisung,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    mail = (await session.execute(
+        select(Mail).where(Mail.id == mail_id).with_for_update()
+    )).scalar_one_or_none()
+    await _mailzugriff_erfordern(session, request, mail)
+    if zuweisung.rolle not in {"admin", ROLLE_SACHBEARBEITER}:
+        raise HTTPException(status_code=422, detail="Unbekannte Zuständigkeitsrolle")
+    if zuweisung.rolle == ROLLE_SACHBEARBEITER and not await darf_klassifikation_sehen(
+        session, {"rolle": ROLLE_SACHBEARBEITER}, mail.klassifikation_id
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Sachbearbeiter dürfen diese Mailart laut Rollen-Matrix nicht bearbeiten",
+        )
+
+    mail.zustaendig_admin = zuweisung.rolle == "admin"
+    mail.zustaendig_sachbearbeiter = zuweisung.rolle == ROLLE_SACHBEARBEITER
+    mail.zustaendigkeit_manuell = True
+    ziel = (
+        "Erik (Admin)"
+        if zuweisung.rolle == "admin"
+        else "Guri und Ludwig (Sachbearbeiter)"
+    )
+    session.add(Aktionslog(
+        mail_id=mail.id,
+        ereignis="mail_zugewiesen",
+        ausgeloest_von=request.state.benutzer["name"],
+        detail=f"Zugewiesen an {ziel}",
+    ))
+    await session.commit()
+    return {"status": "zugewiesen", "rolle": zuweisung.rolle, "ziel": ziel}
 
 
 @app.get("/klassifikationen")
@@ -358,6 +424,28 @@ async def rollen_mailzugriff_speichern(
             )
             session.add(zeile)
         zeile.darf_sehen = klassifikation_id in ausgewaehlt
+    # Noch nicht manuell zugewiesene Bestandsmails folgen weiterhin der
+    # Matrix. Persönliche Zuweisungen bleiben davon unberührt.
+    await session.execute(
+        update(Mail)
+        .where(
+            Mail.zustaendigkeit_manuell.is_(False),
+            or_(
+                Mail.klassifikation_id.is_(None),
+                Mail.klassifikation_id.in_(ausgewaehlt),
+            ),
+        )
+        .values(zustaendig_sachbearbeiter=True)
+    )
+    await session.execute(
+        update(Mail)
+        .where(
+            Mail.zustaendigkeit_manuell.is_(False),
+            Mail.klassifikation_id.is_not(None),
+            ~Mail.klassifikation_id.in_(ausgewaehlt),
+        )
+        .values(zustaendig_sachbearbeiter=False)
+    )
     session.add(Aktionslog(
         mail_id=None,
         ereignis="rollenzugriff_geaendert",
@@ -592,6 +680,17 @@ async def korrigiere_klassifikation(
     alte_klassifikation_id = mail.klassifikation_id
     mail.klassifikation_id = neue_klassifikation_id
     mail.pruefstatus = "geprueft"
+    if not mail.zustaendigkeit_manuell:
+        (
+            mail.zustaendig_admin,
+            mail.zustaendig_sachbearbeiter,
+        ) = await standard_zustaendigkeit(session, neue_klassifikation_id)
+    elif mail.zustaendig_sachbearbeiter and not await darf_klassifikation_sehen(
+        session, {"rolle": ROLLE_SACHBEARBEITER}, neue_klassifikation_id
+    ):
+        # Eine manuelle Zuweisung darf nicht die Rollen-Matrix umgehen.
+        mail.zustaendig_sachbearbeiter = False
+        mail.zustaendig_admin = True
     session.add(korrektur)
     await session.execute(delete(MailAufgabe).where(MailAufgabe.mail_id == mail_id))
     await session.flush()
@@ -1144,7 +1243,14 @@ async def faq_vorschlag_verwerfen(
 
 
 @app.get("/entwuerfe")
-async def liste_entwuerfe(request: Request, session: AsyncSession = Depends(get_session)):
+async def liste_entwuerfe(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    alle: bool = False,
+):
+    benutzer = request.state.benutzer
+    if alle and not ist_admin(benutzer):
+        raise HTTPException(status_code=403, detail="Die Gesamtübersicht ist nur für Admins")
     verweigert = await verweigerte_klassifikationen(session, request.state.benutzer)
     if "*" in verweigert:
         return []
@@ -1157,6 +1263,11 @@ async def liste_entwuerfe(request: Request, session: AsyncSession = Depends(get_
             Mail.klassifikation_id.is_(None),
             ~Mail.klassifikation_id.in_(verweigert),
         ))
+    if not alle:
+        if ist_admin(benutzer):
+            abfrage = abfrage.where(Mail.zustaendig_admin.is_(True))
+        elif benutzer.get("rolle") == ROLLE_SACHBEARBEITER:
+            abfrage = abfrage.where(Mail.zustaendig_sachbearbeiter.is_(True))
     result = await session.execute(abfrage)
     return result.scalars().all()
 

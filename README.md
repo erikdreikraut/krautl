@@ -64,7 +64,10 @@
    Vertriebskanälen aus Auftragsnummern als sichtbare, freigegebene Einträge.
    Die Migration ist wiederholbar und ergänzt dabei fehlende Einträge:
    `docker compose exec app python -m scripts.migrate_wissensbasis`
-9. Der `frontend`-Dienst bindet TLS/Domain **nicht** selbst — er lauscht nur
+9. Einmalig die rollenbasierte Mail-Zuständigkeit ergänzen. Bestehende Mails
+   werden aus der aktuellen Rollen-Matrix initialisiert:
+   `docker compose run --rm app python -m scripts.migrate_mail_zustaendigkeit`
+10. Der `frontend`-Dienst bindet TLS/Domain **nicht** selbst — er lauscht nur
    intern auf Host-Port `8081`. Läuft davor bereits ein eigener Reverse Proxy
    (z. B. bei Elestio), muss dessen Domain-Routing auf Port `8081` dieses
    Servers zeigen. Ohne eigenen vorgeschalteten Proxy reicht ein simpler
@@ -142,6 +145,12 @@ getrennt und versucht zusätzlich, die Nachricht dauerhaft aus IMAP zu löschen.
   dürfen. Die Prüfung erfolgt auch im Backend für Posteingang, Bestätigungen,
   Kategoriekorrekturen, Antwortentwürfe, zugehörige Rechnungen und aus Mails
   abgeleitete Wissensvorschläge. Admins haben stets Zugriff auf alle Mailarten.
+- Die Rollen-Matrix bestimmt zugleich die anfängliche Zuständigkeit neuer
+  Mails. Über **Zuweisen** kann eine Mail anschließend exklusiv Erik als Admin
+  oder der gemeinsamen Sachbearbeiter-Gruppe Guri und Ludwig zugeordnet
+  werden. Admins sehen standardmäßig nur ihre eigene Arbeitsliste und können
+  zur Kontrolle auf **Alle Mails** wechseln. Zuweisungen werden im Aktionslog
+  mit dem auslösenden Nutzer festgehalten.
 - Bestätiger-Ziele pro Aufgabe sind weiterhin nicht nach einzelnen Personen
   oder Rollen differenziert; innerhalb einer freigegebenen Mailart darf jeder
   Sachbearbeiter bestätigen.

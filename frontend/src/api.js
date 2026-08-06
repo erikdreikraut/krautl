@@ -48,7 +48,7 @@ export const api = {
     }),
   logout: () => anfrage("/auth/logout", { method: "POST" }),
   health: () => anfrage("/health"),
-  mails: () => anfrage("/mails"),
+  mails: (alle = false) => anfrage(alle ? "/mails?alle=true" : "/mails"),
   klassifikationen: () => anfrage("/klassifikationen"),
   klassifikationSpeichern: (klassifikationId, daten) =>
     anfrage(`/klassifikationen/${klassifikationId}`, {
@@ -70,6 +70,12 @@ export const api = {
     anfrage(`/mails/${mailId}/erledigen`, { method: "POST" }),
   mailLoeschen: (mailId) =>
     anfrage(`/mails/${mailId}`, { method: "DELETE" }),
+  mailZuweisen: (mailId, rolle) =>
+    anfrage(`/mails/${mailId}/zustaendigkeit`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rolle }),
+    }),
   korrigiereKlassifikation: (mailId, neueKlassifikationId, notiz) =>
     postForm(`/mails/${mailId}/korrektur`, {
       neue_klassifikation_id: neueKlassifikationId,
@@ -136,7 +142,7 @@ export const api = {
   faqVorschlagVerwerfen: (id) =>
     anfrage(`/faq/vorschlaege/${id}/verwerfen`, { method: "POST" }),
 
-  entwuerfe: () => anfrage("/entwuerfe"),
+  entwuerfe: (alle = false) => anfrage(alle ? "/entwuerfe?alle=true" : "/entwuerfe"),
   antwortentwurfErzeugen: (mailId) =>
     anfrage(`/mails/${mailId}/antwortentwurf`, { method: "POST" }),
   entwurfFreigeben: (id, finalerText) =>

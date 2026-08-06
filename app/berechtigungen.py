@@ -48,3 +48,15 @@ async def darf_mail_sehen(session, benutzer: dict, mail: Mail | None) -> bool:
     return bool(mail) and await darf_klassifikation_sehen(
         session, benutzer, mail.klassifikation_id
     )
+
+
+async def standard_zustaendigkeit(
+    session, klassifikation_id: str | None
+) -> tuple[bool, bool]:
+    """Leitet die anfängliche Arbeitsverteilung aus der Rollen-Matrix ab."""
+    sachbearbeiter = await darf_klassifikation_sehen(
+        session,
+        {"rolle": ROLLE_SACHBEARBEITER},
+        klassifikation_id,
+    )
+    return True, sachbearbeiter
