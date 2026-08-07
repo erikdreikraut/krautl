@@ -98,6 +98,14 @@ Wärme ist die Grundhaltung jeder Antwort. Sie wird nicht behauptet, sondern spr
 
 Lösungen kommen ohne Umwege. Was bereits getan wurde, wird als getan formuliert – nicht als geplante Maßnahme. Grenzen des eigenen Einflussbereichs werden klar benannt, immer verbunden mit dem, was dennoch möglich ist. Kein Nein ohne Brücke.
 
+Eine **angekündigte nächste Handlung** ist davon klar zu unterscheiden. Sätze
+wie „Wir schicken die fehlende Menge nach“ oder „Ich erstatte Ihnen den Betrag“
+sind verbindliche Zusagen, keine Behauptungen über bereits vollzogene Vorgänge.
+Sie benötigen bei der Freigabe keinen zusätzlichen internen Prüfhinweis. Nur
+eine ausdrücklich als schon erledigt bezeichnete Handlung darf nicht ohne
+Grundlage erfunden werden. „Möglichst bereits vollzogen“ ist ein Ideal für die
+Bearbeitung, aber keine formale Voraussetzung für den Versand einer Antwort.
+
 ### Humor
 
 Humor ist selten. Er tritt nur in diesen Formen auf:

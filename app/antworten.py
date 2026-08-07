@@ -37,6 +37,13 @@ Hinweis für die menschliche Bearbeitung. Solche internen Hinweise folgen immer
 exakt diesem Format:
 [Vor Versand prüfen/ergänzen: konkrete offene Frage oder benötigte Angabe]
 
+Unterscheide dabei sauber zwischen einer angeblich schon erledigten Handlung
+und einer mit der Antwort angekündigten nächsten Handlung. „Wir schicken die
+fehlende Menge nach“ oder „Ich erstatte Ihnen den Betrag“ ist eine Zusage für
+den nächsten Schritt und darf als solche formuliert werden. Dafür ist nicht
+allein deshalb ein interner Prüfhinweis nötig. Problematisch sind unbelegte
+Vergangenheitsbehauptungen wie „Wir haben die Ware bereits verschickt“.
+
 Setze eckige Klammern ausschließlich für solche internen Prüfhinweise ein.
 
 Für die Ansprache gilt besonders: „ihr/euch/euer“ gegenüber dreikraut als
@@ -194,6 +201,41 @@ PRUEFUNGS_TOOL = {
 }
 
 
+PRUEFUNGS_SYSTEMPROMPT = """\
+Du bist die letzte Qualitätskontrolle unmittelbar vor dem Versand einer
+dreikraut-Kundenantwort. Wenn du freigibst, wird die Antwort sofort versendet.
+Der angegebene Freigabezeitpunkt ist deshalb der tatsächliche Versandzeitpunkt.
+
+Blockiere nur bei einem objektiven, wesentlichen Versandhindernis:
+- eine unbeantwortete Kernfrage;
+- ein klarer sachlicher Fehler, insbesondere falsche Mengen oder Zahlen;
+- eine ausdrücklich als bereits erledigt dargestellte, aber unbelegte Handlung;
+- ein interner Hinweis, Platzhalter oder eckige Klammern;
+- eine rechtlich oder gesundheitlich riskante Aussage;
+- ein klarer Widerspruch zu Fallwissen oder FAQ.
+
+Wichtige Abgrenzungen:
+- Eine angekündigte nächste Handlung wie „Wir schicken die fehlende Menge nach“
+  ist keine Behauptung über eine bereits erledigte Handlung. Sie braucht keinen
+  internen Prüfhinweis und ist kein Blockiergrund. Die menschliche Freigabe
+  übernimmt die Verantwortung für diese Zusage.
+- Eine warme förmliche Anrede wie „Liebe Frau Holz“ ist bei Sie-Ansprache
+  ausdrücklich korrekt.
+- Ein Wochenendwunsch am Freitag ist zeitlich korrekt. Beanstande zeitbezogene
+  Formulierungen nur, wenn sie dem angegebenen Freigabetag wirklich
+  widersprechen.
+- Kleine stilistische Abweichungen, Geschmackssachen, Standardformulierungen
+  oder mögliche Verbesserungen sind kein Blockiergrund. Das Stilprofil ist
+  Orientierung und kein Perfektionstest.
+
+Jeder ausgegebene Problempunkt muss für sich allein den Versand rechtfertigen.
+Bündele keine korrekten oder bloß diskutablen Formulierungen in einen echten
+Fehler hinein. Wenn du einen klaren Fehler gefunden hast, erfinde keine
+zusätzlichen Punkte, um die Liste zu verlängern. Nur ein wesentliches Hindernis
+bedeutet freigabefaehig=false.
+"""
+
+
 def _synchron_pruefen(
     mail: Mail,
     entwurfstext: str,
@@ -205,19 +247,7 @@ def _synchron_pruefen(
     antwort = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=700,
-        system=(
-            "Du bist die letzte Qualitätskontrolle vor dem Versand einer "
-            "dreikraut-Kundenantwort. Blockiere nur bei wesentlichen "
-            "Versandhindernissen: unbeantworteten Kernfragen, sachlich "
-            "ungesicherten Behauptungen oder Handlungen, internen Hinweisen, "
-            "Platzhaltern, eckigen Klammern, rechtlich/gesundheitlich riskanten "
-            "Aussagen oder einem klaren Widerspruch zu Fallwissen und FAQ. "
-            "Kleine stilistische Abweichungen, Geschmackssachen, einzelne "
-            "Standardformulierungen oder mögliche sprachliche Verbesserungen "
-            "sind kein Blockiergrund. Das Stilprofil dient der Orientierung, "
-            "nicht als Perfektionstest. Nur ein wesentliches Hindernis bedeutet "
-            "freigabefaehig=false."
-        ),
+        system=PRUEFUNGS_SYSTEMPROMPT,
         tools=[PRUEFUNGS_TOOL],
         tool_choice={"type": "tool", "name": "pruefe_antwort"},
         messages=[{
@@ -226,8 +256,9 @@ def _synchron_pruefen(
                 f"=== STILPROFIL ===\n{stilprofil}\n"
                 f"=== PASSENDE WISSENSBASIS ===\n{wissen_als_text(wissen or [])}\n"
                 f"=== FREIGEGEBENE FAQ ===\n{_faq_text(faq)}\n"
-                f"=== AKTUELLER FREIGABEZEITPUNKT ===\n{_zeitkontext()}\n"
-                "Zeitbezogene Formulierungen müssen jetzt passen.\n"
+                f"=== AKTUELLER FREIGABE- UND VERSANDZEITPUNKT ===\n{_zeitkontext()}\n"
+                "Bei Freigabe wird die Antwort unmittelbar versendet. "
+                "Zeitbezogene Formulierungen sind gegen diesen Zeitpunkt zu prüfen.\n"
                 "=== KUNDENMAIL ===\n"
                 f"Betreff: {mail.betreff}\n{mail.text_auszug}\n"
                 f"=== ZU PRÜFENDE ANTWORT ===\n{entwurfstext}"

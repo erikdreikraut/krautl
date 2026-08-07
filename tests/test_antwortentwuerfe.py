@@ -10,7 +10,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 from sqlalchemy import select
 
 from app.db import SessionLocal, engine
-from app.antworten import pruefergebnis_absichern
+from app.antworten import PRUEFUNGS_SYSTEMPROMPT, pruefergebnis_absichern
 from app.main import (
     EntwurfFreigabe, entwurf_freigeben, liste_entwuerfe,
     mail_antwort_beginnen, mail_antwortentwurf_erzeugen,
@@ -321,6 +321,12 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("versendet", entwurf.status)
 
 class AntwortpruefungTest(unittest.TestCase):
+    def test_pruefauftrag_trennt_zusage_von_erledigter_handlung(self):
+        self.assertIn("angekündigte nächste Handlung", PRUEFUNGS_SYSTEMPROMPT)
+        self.assertIn("internen Prüfhinweis", PRUEFUNGS_SYSTEMPROMPT)
+        self.assertIn("Wochenendwunsch am Freitag", PRUEFUNGS_SYSTEMPROMPT)
+        self.assertIn("zusätzlichen Punkte", PRUEFUNGS_SYSTEMPROMPT)
+
     def test_eckige_klammern_blockieren_auch_bei_ki_fehlurteil(self):
         ergebnis = pruefergebnis_absichern(
             {"freigabefaehig": True, "probleme": []},
