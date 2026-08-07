@@ -147,6 +147,7 @@ const EREIGNIS_LABEL = {
   rechnung_verarbeitet: "Rechnung verarbeitet",
   rechnung_fehlgeschlagen: "Rechnung fehlgeschlagen",
   antwortvorschlag_erstellt: "Antwortvorschlag erstellt",
+  antwortentwurf_erstellt: "Antwort begonnen",
   antwortvorschlag_fehlgeschlagen: "Antwortvorschlag fehlgeschlagen",
   antwort_pruefung_noetig: "Antwort noch nicht versandbereit",
   antwort_pruefung_uebersprungen: "KI-Prüfung übersprungen",
@@ -170,7 +171,7 @@ const EREIGNIS_LABEL = {
 function farbeFuerEreignis(ereignis) {
   if (ereignis.endsWith("fehlgeschlagen")) return tokens.rust;
   if (ereignis === "mail_geloescht") return tokens.rust;
-  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt", "antwort_versendet_test", "antwort_versendet", "audio_transkribiert", "wissensvorschlag_erstellt", "mail_manuell_erledigt"].includes(ereignis)) return tokens.moss;
+  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt", "antwortentwurf_erstellt", "antwort_versendet_test", "antwort_versendet", "audio_transkribiert", "wissensvorschlag_erstellt", "mail_manuell_erledigt"].includes(ereignis)) return tokens.moss;
   return tokens.inkMuted;
 }
 
@@ -424,34 +425,47 @@ function ZuweisenButton({ mail, onZugewiesen }) {
   );
 }
 
-function AntwortvorschlagButton({ mail, onErzeugt }) {
-  const [laeuft, setLaeuft] = useState(false);
+function AntwortAktionen({ mail, onErzeugt }) {
+  const [laufendeAktion, setLaufendeAktion] = useState("");
   const [fehler, setFehler] = useState("");
+  const istKundenservice = String(mail.kat || "").toUpperCase() === "KUNDENSERVICE";
 
-  async function erzeugen() {
-    setLaeuft(true);
+  async function ausfuehren(aktion) {
+    setLaufendeAktion(aktion);
     setFehler("");
     try {
-      await api.antwortentwurfErzeugen(mail.id);
+      if (aktion === "vorschlag") await api.antwortentwurfErzeugen(mail.id);
+      else await api.antwortBeginnen(mail.id);
       await onErzeugt();
     } catch (e) {
       setFehler(e.message);
     } finally {
-      setLaeuft(false);
+      setLaufendeAktion("");
     }
   }
 
   return (
-    <div className="flex items-center gap-2">
-      {fehler && <span title={fehler} style={{ ...fontUI, fontSize: "11px", color: tokens.rust }}>Vorschlag fehlgeschlagen</span>}
+    <div className="flex flex-wrap items-center justify-center gap-2">
+      {fehler && <span title={fehler} style={{ ...fontUI, fontSize: "11px", color: tokens.rust }}>Entwurf konnte nicht geöffnet werden</span>}
+      {istKundenservice && (
+        <button
+          onClick={() => ausfuehren("vorschlag")}
+          disabled={Boolean(laufendeAktion) || Boolean(mail.entwurf)}
+          title="Antwortvorschlag mit dem dreikraut-Stilprofil erstellen"
+          className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-50"
+          style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: tokens.mossDeep, border: `1px solid ${tokens.moss}`, borderRadius: "6px" }}
+        >
+          <Sparkles size={14} /> {laufendeAktion === "vorschlag" ? "Wird erstellt …" : "Vorschlag generieren"}
+        </button>
+      )}
       <button
-        onClick={erzeugen}
-        disabled={laeuft || Boolean(mail.entwurf)}
-        title={mail.entwurf ? "Für diese Mail ist bereits ein offener Entwurf vorhanden" : "Antwortvorschlag mit dem dreikraut-Stilprofil erstellen"}
+        onClick={() => ausfuehren("antwort")}
+        disabled={Boolean(laufendeAktion) || Boolean(mail.entwurf)}
+        title="Leeren Antwortentwurf ohne KI-Vorschlag öffnen"
         className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-50"
         style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}
       >
-        <PenLine size={14} /> {laeuft ? "Wird erstellt …" : "Antwortvorschlag"}
+        <PenLine size={14} /> {laufendeAktion === "antwort" ? "Wird geöffnet …" : "Antworten"}
       </button>
     </div>
   );
@@ -585,6 +599,7 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
               <EntwurfPanel
                 key={selected.entwurf.id}
                 entwurf={selected.entwurf}
+                kiPruefung={String(selected.kat || "").toUpperCase() === "KUNDENSERVICE"}
                 onErledigt={onReload}
                 onVersendet={(ergebnis) => setVersandbestaetigungen((alt) => ({
                   ...alt,
@@ -606,8 +621,8 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
               </div>
             ) : (
               <div className="px-6 py-8 flex-1 flex flex-col items-center justify-center gap-3" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
-                <span>Noch kein Antwortvorschlag vorhanden.</span>
-                <AntwortvorschlagButton mail={selected} onErzeugt={onReload} />
+                <span>Noch keine Antwort begonnen.</span>
+                <AntwortAktionen mail={selected} onErzeugt={onReload} />
               </div>
             )}
           </>
@@ -624,7 +639,7 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
   );
 }
 
-function EntwurfPanel({ entwurf, onErledigt, onVersendet }) {
+function EntwurfPanel({ entwurf, kiPruefung, onErledigt, onVersendet }) {
   const [text, setText] = useState(entwurf.text);
   const [prueft, setPrueft] = useState(false);
   const [probleme, setProbleme] = useState([]);
@@ -708,7 +723,7 @@ function EntwurfPanel({ entwurf, onErledigt, onVersendet }) {
       <div className="flex items-center gap-2 mt-3">
         <button onClick={freigeben} disabled={prueft || Boolean(versanderfolg)} className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-60" style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}>
           <Check size={13} /> {prueft
-            ? (naechsterOhnePruefung ? "Antwort wird versendet …" : "Antwort wird geprüft …")
+            ? (!kiPruefung || naechsterOhnePruefung ? "Antwort wird versendet …" : "Antwort wird geprüft …")
             : (versanderfolg
               ? "An Mailserver übergeben"
               : (naechsterOhnePruefung ? "Trotzdem senden" : "Antwort freigeben"))}
@@ -718,7 +733,9 @@ function EntwurfPanel({ entwurf, onErledigt, onVersendet }) {
         </button>
       </div>
       <div style={{ ...fontUI, fontSize: "11.5px", color: tokens.inkMuted, marginTop: "8px" }}>
-        Vor dem Versand prüft die KI die Antwort auf offene Punkte. Die Antwort geht an den Absender der Kundenmail, eine Kontrollkopie per BCC an info@erikschweitzer.de.
+        {kiPruefung
+          ? "Vor dem Versand prüft die KI die Antwort auf offene Punkte. Die Antwort geht an den Absender der Kundenmail, eine Kontrollkopie per BCC an info@erikschweitzer.de."
+          : "Diese Antwort wird ohne inhaltliche KI-Prüfung an den Absender versendet. Eine Kontrollkopie geht per BCC an info@erikschweitzer.de."}
       </div>
     </div>
   );

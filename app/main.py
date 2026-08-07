@@ -12,7 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import get_session, engine
 from .aufgaben import aufgaben_fuer_mail_anlegen, bestaetigung_erfassen, wartende_aufgaben_ausfuehren
-from .antworten import antwort_vor_versand_pruefen, antwortentwurf_speichern
+from .antworten import (
+    antwort_vor_versand_pruefen, antwortentwurf_speichern,
+    ist_kundenservice_mail, manuellen_antwortentwurf_speichern,
+)
 from .mail_versand import (
     BCC_EMPFAENGER, antwort_mit_signatur, antwort_senden,
 )
@@ -1297,6 +1300,12 @@ async def mail_antwortentwurf_erzeugen(
     mail = await session.get(Mail, mail_id)
     await _mailzugriff_erfordern(session, request, mail)
 
+    if not await ist_kundenservice_mail(session, mail):
+        raise HTTPException(
+            status_code=422,
+            detail="KI-Antwortvorschläge sind nur für Kundendienst-Mails vorgesehen",
+        )
+
     try:
         entwurf, erzeugt = await antwortentwurf_speichern(session, mail)
     except Exception as exc:
@@ -1311,6 +1320,33 @@ async def mail_antwortentwurf_erzeugen(
         ausgeloest_von=request.state.benutzer["name"],
         detail=(
             f"Entwurf #{entwurf.id} manuell angefordert"
+            if erzeugt else f"Vorhandenen Entwurf #{entwurf.id} aufgerufen"
+        ),
+    ))
+    await session.commit()
+    return {
+        "status": "erzeugt" if erzeugt else "vorhanden",
+        "entwurf_id": entwurf.id,
+    }
+
+
+@app.post("/mails/{mail_id}/antwort")
+async def mail_antwort_beginnen(
+    mail_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """Öffnet für jede sichtbare Mail einen leeren Entwurf ohne KI-Aufruf."""
+    mail = await session.get(Mail, mail_id)
+    await _mailzugriff_erfordern(session, request, mail)
+
+    entwurf, erzeugt = await manuellen_antwortentwurf_speichern(session, mail)
+    session.add(Aktionslog(
+        mail_id=mail.id,
+        ereignis="antwortentwurf_erstellt",
+        ausgeloest_von=request.state.benutzer["name"],
+        detail=(
+            f"Leeren Entwurf #{entwurf.id} geöffnet"
             if erzeugt else f"Vorhandenen Entwurf #{entwurf.id} aufgerufen"
         ),
     ))
@@ -1347,18 +1383,22 @@ async def entwurf_freigeben(
     finaler_text = freigabe.finaler_text.strip()
     if not finaler_text:
         raise HTTPException(status_code=422, detail="Die Antwort ist leer")
-    _produkt, _wissen, faq = await relevante_wissensbasis(session, mail)
+    kundenservice = await ist_kundenservice_mail(session, mail)
+    bisherige_blockierungen = 0
+    pruefung_uebersprungen = False
 
-    bisherige_blockierungen = (await session.execute(
-        select(func.count(Aktionslog.id)).where(
-            Aktionslog.mail_id == mail.id,
-            Aktionslog.ereignis == "antwort_pruefung_noetig",
-            Aktionslog.detail.like(f"Entwurf #{entwurf.id}:%"),
-        )
-    )).scalar_one()
-    pruefung_uebersprungen = bisherige_blockierungen >= 2
+    if kundenservice:
+        _produkt, _wissen, faq = await relevante_wissensbasis(session, mail)
+        bisherige_blockierungen = (await session.execute(
+            select(func.count(Aktionslog.id)).where(
+                Aktionslog.mail_id == mail.id,
+                Aktionslog.ereignis == "antwort_pruefung_noetig",
+                Aktionslog.detail.like(f"Entwurf #{entwurf.id}:%"),
+            )
+        )).scalar_one()
+        pruefung_uebersprungen = bisherige_blockierungen >= 2
 
-    if not pruefung_uebersprungen:
+    if kundenservice and not pruefung_uebersprungen:
         try:
             pruefung = await antwort_vor_versand_pruefen(
                 mail, finaler_text, faq, _wissen
@@ -1391,7 +1431,7 @@ async def entwurf_freigeben(
                 "blockierungen": neue_anzahl,
                 "naechster_versuch_ohne_pruefung": neue_anzahl >= 2,
             }
-    else:
+    elif kundenservice:
         session.add(Aktionslog(
             mail_id=mail.id,
             ereignis="antwort_pruefung_uebersprungen",
@@ -1433,35 +1473,42 @@ async def entwurf_freigeben(
         ausgeloest_von=request.state.benutzer["name"],
         detail=(
             f"Durch {request.state.benutzer['name']} "
-            f"{'ohne weitere KI-Prüfung ' if pruefung_uebersprungen else 'nach KI-Prüfung '}"
-            f"an den Mailserver für {versandergebnis['empfaenger']} übergeben; "
+            + (
+                "ohne weitere KI-Prüfung "
+                if pruefung_uebersprungen
+                else "nach KI-Prüfung "
+                if kundenservice
+                else "ohne inhaltliche KI-Prüfung "
+            )
+            + f"an den Mailserver für {versandergebnis['empfaenger']} übergeben; "
             f"BCC an {versandergebnis['bcc']}; "
             f"Message-ID {versandergebnis['message_id']}"
         ),
     ))
-    try:
-        vorschlag = await wissenszuwachs_nach_antwort_pruefen(
-            session, mail, entwurf, finaler_text
-        )
-        if vorschlag is not None:
+    if kundenservice:
+        try:
+            vorschlag = await wissenszuwachs_nach_antwort_pruefen(
+                session, mail, entwurf, finaler_text
+            )
+            if vorschlag is not None:
+                session.add(Aktionslog(
+                    mail_id=mail.id,
+                    ereignis="wissensvorschlag_erstellt",
+                    ausgeloest_von=request.state.benutzer["name"],
+                    detail=(
+                        f"Nach Antwortfreigabe Vorschlag #{vorschlag.id} "
+                        f"für {vorschlag.ziel} erstellt"
+                    ),
+                ))
+        except Exception as exc:
+            # Der Versand ist zu diesem Zeitpunkt bereits erfolgt. Eine optionale
+            # Wissensprüfung darf ihn weder zurücknehmen noch als Fehler darstellen.
             session.add(Aktionslog(
                 mail_id=mail.id,
-                ereignis="wissensvorschlag_erstellt",
+                ereignis="wissenspruefung_fehlgeschlagen",
                 ausgeloest_von=request.state.benutzer["name"],
-                detail=(
-                    f"Nach Antwortfreigabe Vorschlag #{vorschlag.id} "
-                    f"für {vorschlag.ziel} erstellt"
-                ),
+                detail=f"Antwort wurde versendet; Wissensprüfung nicht möglich: {exc}",
             ))
-    except Exception as exc:
-        # Der Versand ist zu diesem Zeitpunkt bereits erfolgt. Eine optionale
-        # Wissensprüfung darf ihn weder zurücknehmen noch als Fehler darstellen.
-        session.add(Aktionslog(
-            mail_id=mail.id,
-            ereignis="wissenspruefung_fehlgeschlagen",
-            ausgeloest_von=request.state.benutzer["name"],
-            detail=f"Antwort wurde versendet; Wissensprüfung nicht möglich: {exc}",
-        ))
     await session.commit()
     return {
         "status": "versendet",
@@ -1469,6 +1516,7 @@ async def entwurf_freigeben(
         "bcc": versandergebnis["bcc"],
         "message_id": versandergebnis["message_id"],
         "pruefung_uebersprungen": pruefung_uebersprungen,
+        "ki_pruefung": kundenservice,
     }
 
 

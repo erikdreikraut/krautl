@@ -13,10 +13,12 @@ from app.db import SessionLocal, engine
 from app.antworten import pruefergebnis_absichern
 from app.main import (
     EntwurfFreigabe, entwurf_freigeben, liste_entwuerfe,
-    mail_antwortentwurf_erzeugen,
+    mail_antwort_beginnen, mail_antwortentwurf_erzeugen,
 )
 from app.aufgaben import wartende_aufgaben_ausfuehren
-from app.models import Aktionslog, Base, Entwurf, Mail, MailAufgabe, Postfach
+from app.models import (
+    Aktionslog, Base, Entwurf, Klassifikation, Mail, MailAufgabe, Postfach,
+)
 
 
 TEST_BENUTZER = {
@@ -37,6 +39,16 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
         async with SessionLocal() as session:
+            session.add(Klassifikation(
+                klassifikation_id="KUNDE_FRAGE",
+                hauptkategorie="KUNDENSERVICE",
+                unterkategorie="Allgemeine Frage",
+                beschreibung="Kundenanfrage",
+                standard_prio="normal",
+                zielpostfach="service@dreikraut.de",
+                zielordner="INBOX",
+                aktion_id="ANTWORTVORSCHLAG_ERSTELLEN",
+            ))
             postfach = Postfach(
                 adresse="service@dreikraut.de",
                 funktion="service",
@@ -53,6 +65,7 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
                 text_auszug="Hallo, könnt Ihr mir helfen?",
                 empfangen_am=datetime.now(timezone.utc),
                 im_krautl_posteingang=True,
+                klassifikation_id="KUNDE_FRAGE",
             )
             session.add(mail)
             await session.commit()
@@ -74,6 +87,67 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(1, len(entwuerfe))
             self.assertEqual("Hallo Ada,\n\nsehr gern.", entwuerfe[0].text_ki)
             self.assertEqual("wartet", entwuerfe[0].status)
+
+    async def test_manuelle_antwort_legt_ohne_ki_einen_leeren_entwurf_an(self):
+        generator = AsyncMock(return_value="Dieser Text darf nicht entstehen")
+        with patch("app.antworten.antwortentwurf_erzeugen", generator):
+            async with SessionLocal() as session:
+                ergebnis = await mail_antwort_beginnen(
+                    self.mail_id, test_request(), session
+                )
+
+        self.assertEqual("erzeugt", ergebnis["status"])
+        generator.assert_not_awaited()
+        async with SessionLocal() as session:
+            entwurf = (await session.execute(select(Entwurf))).scalar_one()
+            self.assertEqual("", entwurf.text_ki)
+
+    async def test_nicht_kundendienst_wird_ohne_ki_pruefung_versendet(self):
+        async with SessionLocal() as session:
+            session.add(Klassifikation(
+                klassifikation_id="LIEFERANT_DIVERSES",
+                hauptkategorie="EINKAUF",
+                unterkategorie="Lieferant Diverses",
+                beschreibung="Laufende Lieferantenkommunikation",
+                standard_prio="normal",
+                zielpostfach="einkauf@dreikraut.de",
+                zielordner="INBOX",
+                aktion_id="BESTAETIGUNG_EINHOLEN",
+            ))
+            mail = await session.get(Mail, self.mail_id)
+            mail.klassifikation_id = "LIEFERANT_DIVERSES"
+            entwurf = Entwurf(
+                mail_id=self.mail_id,
+                text_ki="Guten Tag,\n\nvielen Dank.",
+                status="wartet",
+            )
+            session.add(entwurf)
+            await session.commit()
+            entwurf_id = entwurf.id
+
+        pruefung = AsyncMock(return_value={"freigabefaehig": False, "probleme": ["Nein"]})
+        wissenspruefung = AsyncMock()
+        versand = AsyncMock(return_value={
+            "message_id": "<manuell-1@dreikraut.de>",
+            "empfaenger": "ada@example.test",
+            "bcc": "info@erikschweitzer.de",
+        })
+        with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
+             patch("app.main.wissenszuwachs_nach_antwort_pruefen", wissenspruefung), \
+             patch("app.main.antwort_senden", versand):
+            async with SessionLocal() as session:
+                ergebnis = await entwurf_freigeben(
+                    entwurf_id,
+                    EntwurfFreigabe(finaler_text="Guten Tag,\n\nvielen Dank."),
+                    test_request(),
+                    session,
+                )
+
+        self.assertEqual("versendet", ergebnis["status"])
+        self.assertFalse(ergebnis["ki_pruefung"])
+        pruefung.assert_not_awaited()
+        wissenspruefung.assert_not_awaited()
+        versand.assert_awaited_once()
 
     async def test_entwurf_einer_ausgeblendeten_mail_wird_nicht_mehr_gezaehlt(self):
         async with SessionLocal() as session:
@@ -141,6 +215,7 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             "bcc": "info@erikschweitzer.de",
         })
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
+             patch("app.main.wissenszuwachs_nach_antwort_pruefen", AsyncMock(return_value=None)), \
              patch("app.main.antwort_senden", versand):
             async with SessionLocal() as session:
                 ergebnis = await entwurf_freigeben(
@@ -181,6 +256,7 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             "bcc": "info@erikschweitzer.de",
         })
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
+             patch("app.main.wissenszuwachs_nach_antwort_pruefen", AsyncMock(return_value=None)), \
              patch("app.main.antwort_senden", versand):
             async with SessionLocal() as session:
                 ergebnis = await entwurf_freigeben(
@@ -220,6 +296,7 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         })
         ergebnisse = []
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
+             patch("app.main.wissenszuwachs_nach_antwort_pruefen", AsyncMock(return_value=None)), \
              patch("app.main.antwort_senden", versand):
             for _ in range(3):
                 async with SessionLocal() as session:

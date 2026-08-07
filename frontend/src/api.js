@@ -145,6 +145,8 @@ export const api = {
   entwuerfe: (alle = false) => anfrage(alle ? "/entwuerfe?alle=true" : "/entwuerfe"),
   antwortentwurfErzeugen: (mailId) =>
     anfrage(`/mails/${mailId}/antwortentwurf`, { method: "POST" }),
+  antwortBeginnen: (mailId) =>
+    anfrage(`/mails/${mailId}/antwort`, { method: "POST" }),
   entwurfFreigeben: (id, finalerText) =>
     anfrage(`/entwuerfe/${id}/freigeben`, {
       method: "POST",

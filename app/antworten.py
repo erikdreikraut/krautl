@@ -6,7 +6,7 @@ from pathlib import Path
 from anthropic import Anthropic
 from sqlalchemy import select
 
-from .models import Entwurf, FaqEintrag, Mail, Wissenseintrag
+from .models import Entwurf, FaqEintrag, Klassifikation, Mail, Wissenseintrag
 from .wissensbasis import relevante_wissensbasis, wissen_als_text
 
 
@@ -99,8 +99,22 @@ async def antwortentwurf_erzeugen(
     return await asyncio.to_thread(_synchron_erzeugen, mail, faq, wissen)
 
 
+async def ist_kundenservice_mail(session, mail: Mail) -> bool:
+    """Die Inhalts-KI ist ausschließlich für Kundendienst-Mails vorgesehen."""
+    if not mail.klassifikation_id:
+        return False
+    klassifikation = await session.get(Klassifikation, mail.klassifikation_id)
+    return bool(
+        klassifikation
+        and klassifikation.hauptkategorie.strip().upper() == "KUNDENSERVICE"
+    )
+
+
 async def antwortentwurf_speichern(session, mail: Mail) -> tuple[Entwurf, bool]:
-    """Erzeugt höchstens einen offenen Entwurf je Mail."""
+    """Erzeugt höchstens einen KI-Antwortvorschlag je Kundendienst-Mail."""
+    if not await ist_kundenservice_mail(session, mail):
+        raise ValueError("KI-Antwortvorschläge sind nur für Kundendienst-Mails vorgesehen")
+
     vorhandener = (await session.execute(
         select(Entwurf)
         .where(Entwurf.mail_id == mail.id, Entwurf.status == "wartet")
@@ -113,6 +127,23 @@ async def antwortentwurf_speichern(session, mail: Mail) -> tuple[Entwurf, bool]:
     _produkt, wissen, faq = await relevante_wissensbasis(session, mail)
     text = await antwortentwurf_erzeugen(mail, faq, wissen)
     entwurf = Entwurf(mail_id=mail.id, text_ki=text, status="wartet")
+    session.add(entwurf)
+    await session.flush()
+    return entwurf, True
+
+
+async def manuellen_antwortentwurf_speichern(session, mail: Mail) -> tuple[Entwurf, bool]:
+    """Legt ohne KI-Aufruf einen leeren, manuell zu bearbeitenden Entwurf an."""
+    vorhandener = (await session.execute(
+        select(Entwurf)
+        .where(Entwurf.mail_id == mail.id, Entwurf.status == "wartet")
+        .order_by(Entwurf.id.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    if vorhandener:
+        return vorhandener, False
+
+    entwurf = Entwurf(mail_id=mail.id, text_ki="", status="wartet")
     session.add(entwurf)
     await session.flush()
     return entwurf, True
