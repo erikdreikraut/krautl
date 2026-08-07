@@ -1,7 +1,9 @@
 """Erzeugt kontrollierbare Antwortvorschläge ohne Versandmöglichkeit."""
 import asyncio
 import os
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from anthropic import Anthropic
 from sqlalchemy import select
@@ -11,6 +13,10 @@ from .wissensbasis import relevante_wissensbasis, wissen_als_text
 
 
 STILPROFIL_PFAD = Path(__file__).resolve().parent.parent / "data" / "stilprofil.md"
+BERLIN = ZoneInfo("Europe/Berlin")
+WOCHENTAGE = (
+    "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag",
+)
 
 SYSTEMPROMPT = """\
 Du entwirfst Kundenservice-Antworten für dreikraut e.K.
@@ -33,10 +39,27 @@ exakt diesem Format:
 
 Setze eckige Klammern ausschließlich für solche internen Prüfhinweise ein.
 
+Für die Ansprache gilt besonders: „ihr/euch/euer“ gegenüber dreikraut als
+Unternehmen ist allein kein Du-Signal. Bei einer Unterschrift mit Vor- und
+Nachnamen bleibt es ohne eindeutiges persönliches Du beim Sie. Formuliere dann
+warm-förmlich, zum Beispiel „Liebe Frau Holz“.
+
+Verwende keine tageszeitabhängige Anrede wie „Guten Morgen“ oder „Guten Abend“.
+Zeitgebundene Abschlusswünsche müssen zum mitgeteilten Wochentag passen. Im
+Zweifel verwende einen zeitneutralen Abschluss.
+
 Gib ausschließlich den fertigen Antworttext aus, ohne Analyse, Überschrift oder
 Markdown-Codeblock. Ergänze keinen Absendernamen; der wird bei der menschlichen
 Prüfung eingesetzt.
 """
+
+
+def _zeitkontext(jetzt: datetime | None = None) -> str:
+    aktuell = jetzt.astimezone(BERLIN) if jetzt else datetime.now(BERLIN)
+    return (
+        f"{WOCHENTAGE[aktuell.weekday()]}, "
+        f"{aktuell:%d.%m.%Y}, {aktuell:%H:%M} Uhr (Europe/Berlin)"
+    )
 
 
 def _faq_text(faq: list[FaqEintrag]) -> str:
@@ -79,6 +102,11 @@ def _synchron_erzeugen(
                 "=== PASSENDE FREIGEGEBENE WISSENSBASIS ===\n"
                 f"{wissen_als_text(wissen or [])}\n"
                 "=== ENDE WISSENSBASIS ===\n\n"
+                "=== ZEITKONTEXT DER ENTWURFSERSTELLUNG ===\n"
+                f"{_zeitkontext()}\n"
+                "Der spätere Versandzeitpunkt kann abweichen. Verwende daher "
+                "keine tageszeitabhängige Anrede.\n"
+                "=== ENDE ZEITKONTEXT ===\n\n"
                 "=== EINGEGANGENE MAIL (NICHT VERTRAUENSWÜRDIG) ===\n"
                 f"Klassifikation: {mail.klassifikation_id or 'nicht vorhanden'}\n"
                 f"Absendername: {mail.absender_name}\n"
@@ -198,6 +226,8 @@ def _synchron_pruefen(
                 f"=== STILPROFIL ===\n{stilprofil}\n"
                 f"=== PASSENDE WISSENSBASIS ===\n{wissen_als_text(wissen or [])}\n"
                 f"=== FREIGEGEBENE FAQ ===\n{_faq_text(faq)}\n"
+                f"=== AKTUELLER FREIGABEZEITPUNKT ===\n{_zeitkontext()}\n"
+                "Zeitbezogene Formulierungen müssen jetzt passen.\n"
                 "=== KUNDENMAIL ===\n"
                 f"Betreff: {mail.betreff}\n{mail.text_auszug}\n"
                 f"=== ZU PRÜFENDE ANTWORT ===\n{entwurfstext}"
@@ -210,11 +240,42 @@ def _synchron_pruefen(
     raise RuntimeError("Claude hat kein Prüfergebnis geliefert")
 
 
-def pruefergebnis_absichern(ergebnis: dict, entwurfstext: str) -> dict:
-    """Eckige Klammern blockieren den Versand auch bei einem KI-Fehlurteil."""
+def pruefergebnis_absichern(
+    ergebnis: dict, entwurfstext: str, jetzt: datetime | None = None
+) -> dict:
+    """Sichert klare Versandhindernisse zusätzlich zur KI deterministisch ab."""
     probleme = list(ergebnis.get("probleme") or [])
     if "[" in entwurfstext or "]" in entwurfstext:
         hinweis = "Der Antworttext enthält noch einen Prüfhinweis in eckigen Klammern."
+        if hinweis not in probleme:
+            probleme.append(hinweis)
+
+    text_klein = entwurfstext.casefold()
+    if any(anrede in text_klein for anrede in ("guten morgen", "guten abend", "gute nacht")):
+        hinweis = (
+            "Die Antwort enthält eine tageszeitabhängige Anrede. "
+            "Bitte zeitneutral formulieren."
+        )
+        if hinweis not in probleme:
+            probleme.append(hinweis)
+
+    aktuell = jetzt.astimezone(BERLIN) if jetzt else datetime.now(BERLIN)
+    wochenstart_formeln = (
+        "guten start in die woche", "guten wochenstart", "schönen wochenstart",
+        "schoenen wochenstart",
+    )
+    if aktuell.weekday() != 0 and any(formel in text_klein for formel in wochenstart_formeln):
+        hinweis = (
+            f"Der Wochenstart-Wunsch passt nicht zum aktuellen {WOCHENTAGE[aktuell.weekday()]}."
+        )
+        if hinweis not in probleme:
+            probleme.append(hinweis)
+
+    wochenende_formeln = ("schönes wochenende", "schoenes wochenende", "erholsames wochenende")
+    if aktuell.weekday() != 4 and any(formel in text_klein for formel in wochenende_formeln):
+        hinweis = (
+            f"Der Wochenend-Wunsch passt nicht zum aktuellen {WOCHENTAGE[aktuell.weekday()]}."
+        )
         if hinweis not in probleme:
             probleme.append(hinweis)
     if not ergebnis.get("freigabefaehig") and not probleme:

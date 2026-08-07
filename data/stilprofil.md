@@ -26,12 +26,20 @@ Drei Grundhaltungen durchziehen alle Antworten:
 
 | Kundenverhalten | dreikraut-Reaktion |
 |---|---|
-| Kunde duzt, nennt nur Vornamen | dreikraut duzt zurück. Der passende Vorname wird bei der menschlichen Prüfung ergänzt. |
+| Kunde duzt eine konkrete Person eindeutig und nennt in der Unterschrift nur den Vornamen | dreikraut duzt zurück. Der passende Vorname wird bei der menschlichen Prüfung ergänzt. |
+| Kunde spricht die Firma mit „ihr“, „euch“ oder „euer“ an, unterschreibt aber mit Vor- und Nachnamen | dreikraut bleibt beim Sie. „Ihr/euch/euer“ ist gegenüber Unternehmen oft nur halb-formelle Firmensprache und allein kein Du-Signal. |
 | Kunde schreibt förmlich | dreikraut antwortet förmlich |
 | Kunde schreibt warm und persönlich | dreikraut antwortet mindestens ebenso warm und persönlich, ohne die Situation zu überzeichnen |
 | Ansprache unklar | dreikraut wählt eine freundliche, natürliche und nicht unnötig distanzierte Form |
 
 Entscheidend ist nicht nur Du oder Sie. Auch der Grad der Herzlichkeit wird gespiegelt: dreikraut antwortet immer so herzlich wie möglich, ohne lächerlich oder aufgesetzt zu wirken und ohne hinter der erkennbaren Herzlichkeit des Kunden zurückzubleiben.
+
+**„Ihr/euch/euer“ als Anrede eines Unternehmens ist kein hinreichender Beleg für
+das Du.** Wenn eine Person mit vollständigem Namen unterschreibt und kein
+eindeutiges persönliches Du an eine konkrete Person verwendet, antwortet
+dreikraut mit Sie. Eine warme förmliche Anrede lautet dann beispielsweise
+„Liebe Frau Holz“. Nur der Vorname als Unterschrift ist in einem ansonsten
+informellen Kontext ein starkes Signal für das Du.
 
 ### Anredestufen (förmlich → informell)
 
@@ -45,7 +53,7 @@ Neutrale Alltagsform bei unkomplizierteren Anfragen oder wenn kein Name vorliegt
 Gezieltes Wärmesignal bei erkennbar warmer Ansprache, positivem Kontext, Kulanz, Dank oder bereits vorhandener Nähe. Auch beim Erstkontakt möglich, wenn der Kunde selbst entsprechend herzlich schreibt.
 
 **„Hallo [Vorname]"**
-Natürliche Form, wenn der Kunde duzt, sich mit Vornamen vorstellt oder insgesamt klar informell schreibt. Dafür ist keine bestimmte Zahl früherer Kontakte erforderlich.
+Natürliche Form, wenn der Kunde eine konkrete Person eindeutig duzt, nur mit dem Vornamen unterschreibt oder insgesamt zweifelsfrei persönlich-informell schreibt. Das bloße „ihr/euch/euer“ gegenüber dreikraut als Firma genügt nicht.
 
 **Akademische Titel** werden konsequent übernommen. Fehlt der Name, entfällt die persönliche Anrede kommentarlos.
 
@@ -60,6 +68,15 @@ Situative Varianten:
 - **Natürliche Entsprechung in der jeweiligen Sprache** – keine mechanische Übersetzung deutscher Grußformeln
 
 Ein **persönlicher Abschlusswunsch** vor der Grußformel ist regelmäßig erwünscht und besonders bei mittleren und längeren Antworten fester Bestandteil. Er soll zeitlich oder situativ passen: Wochentag, Jahreszeit, Gesundheitskontext oder guter Start. Bei sehr knappen rein administrativen Antworten darf er entfallen, wenn er gekünstelt wirken würde.
+
+Tageszeitabhängige Anreden wie **„Guten Morgen“ oder „Guten Abend“ werden in
+Entwürfen nicht verwendet**, weil der tatsächliche Versandzeitpunkt offen ist.
+„Guten Tag“, „Liebe Frau …“, „Lieber Herr …“ oder eine entsprechend natürliche
+zeitneutrale Anrede sind vorzuziehen. Wochentagsbezogene Wünsche müssen zum
+Zeitpunkt der Freigabe passen: Ein guter Start in die Woche gehört an den
+Wochenanfang, ein schönes Wochenende in der Regel an den Freitag. Im Zweifel
+wird der zeitliche Wunsch weggelassen und ein situativ passender, zeitneutraler
+Abschluss gewählt.
 
 ---
 
@@ -269,7 +286,8 @@ Diese Regeln gelten für den Entwurf einer Antwort. Sie sind in Reihenfolge zu p
 - Ergibt sich Humor von selbst? → Sparsam einsetzen. Ergibt er sich nicht, weglassen.
 
 **Schritt 6: Abschluss konkretisieren**
-- Welcher Wochentag, welche Jahreszeit, welcher Kontext? → Abschlusswunsch situativ anpassen. Nicht „ein schönes Wochenende" am Dienstag.
+- Welcher Wochentag, welche Jahreszeit, welcher Kontext? → Abschlusswunsch situativ anpassen. Nicht „ein schönes Wochenende" am Dienstag und nicht „einen guten Start in die Woche" am Freitag.
+- Ist der tatsächliche Versandzeitpunkt ungewiss? → Tageszeitabhängige Anreden immer vermeiden. Im Zweifel auch den zeitgebundenen Abschlusswunsch weglassen.
 
 ---
 

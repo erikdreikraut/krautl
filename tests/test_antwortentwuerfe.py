@@ -320,6 +320,7 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             entwurf = await session.get(Entwurf, entwurf_id)
             self.assertEqual("versendet", entwurf.status)
 
+class AntwortpruefungTest(unittest.TestCase):
     def test_eckige_klammern_blockieren_auch_bei_ki_fehlurteil(self):
         ergebnis = pruefergebnis_absichern(
             {"freigabefaehig": True, "probleme": []},
@@ -327,6 +328,33 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertFalse(ergebnis["freigabefaehig"])
         self.assertTrue(ergebnis["probleme"])
+
+    def test_tageszeitabhaengige_anrede_wird_blockiert(self):
+        ergebnis = pruefergebnis_absichern(
+            {"freigabefaehig": True, "probleme": []},
+            "Guten Morgen, liebe Frau Holz,\n\nvielen Dank.",
+            datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc),
+        )
+        self.assertFalse(ergebnis["freigabefaehig"])
+        self.assertIn("tageszeitabhängige Anrede", ergebnis["probleme"][0])
+
+    def test_wochenstart_wird_am_freitag_blockiert(self):
+        ergebnis = pruefergebnis_absichern(
+            {"freigabefaehig": True, "probleme": []},
+            "Ich wünsche Ihnen einen guten Start in die Woche.",
+            datetime(2026, 8, 7, 12, 0, tzinfo=timezone.utc),
+        )
+        self.assertFalse(ergebnis["freigabefaehig"])
+        self.assertIn("Freitag", ergebnis["probleme"][0])
+
+    def test_wochenende_ist_am_freitag_zulaessig(self):
+        ergebnis = pruefergebnis_absichern(
+            {"freigabefaehig": True, "probleme": []},
+            "Ich wünsche Ihnen ein schönes Wochenende.",
+            datetime(2026, 8, 7, 12, 0, tzinfo=timezone.utc),
+        )
+        self.assertTrue(ergebnis["freigabefaehig"])
+        self.assertEqual([], ergebnis["probleme"])
 
 
 if __name__ == "__main__":
