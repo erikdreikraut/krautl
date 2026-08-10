@@ -214,9 +214,11 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             "empfaenger": "ada@example.test",
             "bcc": "info@erikschweitzer.de",
         })
+        abschluss = AsyncMock(return_value={"status": "bestaetigt"})
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
              patch("app.main.wissenszuwachs_nach_antwort_pruefen", AsyncMock(return_value=None)), \
-             patch("app.main.antwort_senden", versand):
+             patch("app.main.antwort_senden", versand), \
+             patch("app.main.bestaetigung_erfassen", abschluss):
             async with SessionLocal() as session:
                 ergebnis = await entwurf_freigeben(
                     entwurf_id,
@@ -228,12 +230,16 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("versendet", ergebnis["status"])
         self.assertEqual("ada@example.test", ergebnis["empfaenger"])
         self.assertEqual("info@erikschweitzer.de", ergebnis["bcc"])
+        self.assertEqual("bestaetigt", ergebnis["abschlussstatus"])
         versand.assert_awaited_once()
+        abschluss.assert_awaited_once_with(self.mail_id, "Erik Schweitzer")
         async with SessionLocal() as session:
             entwurf = await session.get(Entwurf, entwurf_id)
+            mail = await session.get(Mail, self.mail_id)
             self.assertEqual("versendet", entwurf.status)
             self.assertIsNotNone(entwurf.versendet_am)
             self.assertIn("\nErik Schweitzer\n-- \ndreikraut e.K.\n", entwurf.text_final)
+            self.assertFalse(mail.im_krautl_posteingang)
 
     async def test_offene_punkte_blockieren_den_versand(self):
         async with SessionLocal() as session:

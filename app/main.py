@@ -1467,6 +1467,11 @@ async def entwurf_freigeben(
     )
     entwurf.status = "versendet"
     entwurf.versendet_am = datetime.now(timezone.utc)
+    # Eine erfolgreich versendete Antwort schließt die Bearbeitung in Krautl ab.
+    # Das Ausblenden geschieht unabhängig davon, ob die anschließende IMAP-Aktion
+    # erfolgreich ist: Der Versand selbst darf nicht durch einen Verschiebefehler
+    # wieder als offen erscheinen.
+    mail.im_krautl_posteingang = False
     session.add(Aktionslog(
         mail_id=mail.id,
         ereignis="antwort_versendet",
@@ -1510,6 +1515,24 @@ async def entwurf_freigeben(
                 detail=f"Antwort wurde versendet; Wissensprüfung nicht möglich: {exc}",
             ))
     await session.commit()
+
+    # Bei Mailarten mit Bestätigung ist die versendete Antwort zugleich die
+    # Bestätigung. Dadurch wird die nächste Aufgabe (meist MAIL_VERSCHIEBEN)
+    # freigegeben und ausgeführt. Ohne offene Bestätigungsaufgabe bleibt die Mail
+    # trotzdem wie oben festgelegt aus dem Krautl-Posteingang ausgeblendet.
+    abschlussstatus = None
+    try:
+        abschluss = await bestaetigung_erfassen(
+            mail.id, request.state.benutzer["name"]
+        )
+        abschlussstatus = abschluss.get("status")
+    except Exception:
+        # Die Mail wurde unwiderruflich versendet. Ein nachgelagerter Fehler darf
+        # deshalb nicht fälschlich einen Versandfehler an die Oberfläche melden.
+        logger.exception(
+            "Nachbearbeitung nach Antwortversand fehlgeschlagen für Mail %s",
+            mail.id,
+        )
     return {
         "status": "versendet",
         "empfaenger": versandergebnis["empfaenger"],
@@ -1517,6 +1540,7 @@ async def entwurf_freigeben(
         "message_id": versandergebnis["message_id"],
         "pruefung_uebersprungen": pruefung_uebersprungen,
         "ki_pruefung": kundenservice,
+        "abschlussstatus": abschlussstatus,
     }
 
 

@@ -668,6 +668,7 @@ function EntwurfPanel({ entwurf, kiPruefung, onErledigt, onVersendet }) {
           bcc: ergebnis.bcc,
           messageId: ergebnis.message_id,
         });
+        await onErledigt();
       }
     } catch (e) {
       setFehler(e.message);
