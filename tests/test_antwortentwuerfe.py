@@ -321,6 +321,35 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("versendet", entwurf.status)
 
 class AntwortpruefungTest(unittest.TestCase):
+    def test_json_text_wird_als_problemliste_statt_als_einzelzeichen_gelesen(self):
+        ergebnis = pruefergebnis_absichern(
+            {
+                "freigabefaehig": False,
+                "probleme": '["Die Anrede enthält einen Platzhalter.", "Eine Angabe fehlt."]',
+            },
+            "Guten Tag,\n\nvielen Dank.",
+        )
+        self.assertEqual(
+            ["Die Anrede enthält einen Platzhalter.", "Eine Angabe fehlt."],
+            ergebnis["probleme"],
+        )
+
+    def test_einfacher_problemtext_bleibt_ein_einzelner_punkt(self):
+        ergebnis = pruefergebnis_absichern(
+            {"freigabefaehig": "false", "probleme": "Eine wesentliche Angabe fehlt."},
+            "Guten Tag,\n\nvielen Dank.",
+        )
+        self.assertFalse(ergebnis["freigabefaehig"])
+        self.assertEqual(["Eine wesentliche Angabe fehlt."], ergebnis["probleme"])
+
+    def test_auswahlplatzhalter_in_anrede_wird_blockiert(self):
+        ergebnis = pruefergebnis_absichern(
+            {"freigabefaehig": True, "probleme": []},
+            "Liebe/r Frau/Herr Topuzidis,\n\nvielen Dank.",
+        )
+        self.assertFalse(ergebnis["freigabefaehig"])
+        self.assertIn("Auswahl-Platzhalter", ergebnis["probleme"][0])
+
     def test_pruefauftrag_trennt_zusage_von_erledigter_handlung(self):
         self.assertIn("angekündigte nächste Handlung", PRUEFUNGS_SYSTEMPROMPT)
         self.assertIn("internen Prüfhinweis", PRUEFUNGS_SYSTEMPROMPT)

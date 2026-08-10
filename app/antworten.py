@@ -1,5 +1,6 @@
 """Erzeugt kontrollierbare Antwortvorschläge ohne Versandmöglichkeit."""
 import asyncio
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -50,6 +51,10 @@ Für die Ansprache gilt besonders: „ihr/euch/euer“ gegenüber dreikraut als
 Unternehmen ist allein kein Du-Signal. Bei einer Unterschrift mit Vor- und
 Nachnamen bleibt es ohne eindeutiges persönliches Du beim Sie. Formuliere dann
 warm-förmlich, zum Beispiel „Liebe Frau Holz“.
+
+Verwende niemals Auswahl-Platzhalter wie „Liebe/r“, „Frau/Herr“ oder
+„Herr/Frau“. Wenn die passende Anrede aus der Mail nicht sicher hervorgeht,
+verwende schlicht „Guten Tag,“ ohne Namen.
 
 Verwende keine tageszeitabhängige Anrede wie „Guten Morgen“ oder „Guten Abend“.
 Zeitgebundene Abschlusswünsche müssen zum mitgeteilten Wochentag passen. Im
@@ -275,13 +280,36 @@ def pruefergebnis_absichern(
     ergebnis: dict, entwurfstext: str, jetzt: datetime | None = None
 ) -> dict:
     """Sichert klare Versandhindernisse zusätzlich zur KI deterministisch ab."""
-    probleme = list(ergebnis.get("probleme") or [])
+    if isinstance(ergebnis, str):
+        try:
+            ergebnis = json.loads(ergebnis)
+        except json.JSONDecodeError:
+            ergebnis = {"freigabefaehig": False, "probleme": ergebnis}
+    if not isinstance(ergebnis, dict):
+        ergebnis = {"freigabefaehig": False, "probleme": str(ergebnis)}
+
+    probleme = _probleme_normalisieren(ergebnis.get("probleme"))
     if "[" in entwurfstext or "]" in entwurfstext:
         hinweis = "Der Antworttext enthält noch einen Prüfhinweis in eckigen Klammern."
         if hinweis not in probleme:
             probleme.append(hinweis)
 
     text_klein = entwurfstext.casefold()
+    erste_zeile = next(
+        (zeile.strip() for zeile in text_klein.splitlines() if zeile.strip()), ""
+    )
+    if any(
+        platzhalter in erste_zeile
+        for platzhalter in (
+            "liebe/r", "lieber/liebe", "frau/herr", "herr/frau", "geehrte/r",
+        )
+    ):
+        hinweis = (
+            "Die Anrede enthält noch einen Auswahl-Platzhalter. "
+            "Bitte eine eindeutige oder neutrale Anrede verwenden."
+        )
+        if hinweis not in probleme:
+            probleme.append(hinweis)
     if any(anrede in text_klein for anrede in ("guten morgen", "guten abend", "gute nacht")):
         hinweis = (
             "Die Antwort enthält eine tageszeitabhängige Anrede. "
@@ -309,12 +337,53 @@ def pruefergebnis_absichern(
         )
         if hinweis not in probleme:
             probleme.append(hinweis)
-    if not ergebnis.get("freigabefaehig") and not probleme:
+    freigabefaehig = _bool_normalisieren(ergebnis.get("freigabefaehig"))
+    if not freigabefaehig and not probleme:
         probleme.append("Die KI konnte die Antwort noch nicht als vollständig bestätigen.")
     return {
-        "freigabefaehig": bool(ergebnis.get("freigabefaehig")) and not probleme,
+        "freigabefaehig": freigabefaehig and not probleme,
         "probleme": probleme,
     }
+
+
+def _probleme_normalisieren(wert) -> list[str]:
+    """Akzeptiert auch versehentlich als JSON-Text gelieferte Problemlisten."""
+    if wert is None:
+        return []
+    if isinstance(wert, str):
+        text = wert.strip()
+        if not text:
+            return []
+        try:
+            dekodiert = json.loads(text)
+        except json.JSONDecodeError:
+            zeilen = [
+                zeile.strip().lstrip("-•").strip()
+                for zeile in text.splitlines()
+                if zeile.strip().lstrip("-•").strip()
+            ]
+            return zeilen or [text]
+        if dekodiert == wert:
+            return [text]
+        return _probleme_normalisieren(dekodiert)
+    if isinstance(wert, (list, tuple, set)):
+        probleme: list[str] = []
+        for eintrag in wert:
+            probleme.extend(_probleme_normalisieren(eintrag))
+        return list(dict.fromkeys(probleme))
+    if isinstance(wert, dict):
+        for schluessel in ("probleme", "problem", "message", "detail"):
+            if schluessel in wert:
+                return _probleme_normalisieren(wert[schluessel])
+    return [str(wert).strip()]
+
+
+def _bool_normalisieren(wert) -> bool:
+    if isinstance(wert, bool):
+        return wert
+    if isinstance(wert, str):
+        return wert.strip().casefold() in {"true", "wahr", "ja", "1"}
+    return bool(wert)
 
 
 async def antwort_vor_versand_pruefen(

@@ -57,6 +57,11 @@ Natürliche Form, wenn der Kunde eine konkrete Person eindeutig duzt, nur mit de
 
 **Akademische Titel** werden konsequent übernommen. Fehlt der Name, entfällt die persönliche Anrede kommentarlos.
 
+**Auswahl-Platzhalter sind verboten.** Formulierungen wie „Liebe/r“,
+„Frau/Herr“, „Herr/Frau“ oder „Sehr geehrte/r“ dürfen nie in einem Entwurf
+stehen. Wenn Geschlecht oder passende Namensform nicht sicher erkennbar sind,
+lautet die neutrale Anrede schlicht „Guten Tag,“.
+
 ### Schlussformel
 
 **„Mit bestem Gruß"** ist eine starke Konstante und gilt als persönliche Signatur von dreikraut. Der Name wird erst bei der menschlichen Prüfung beziehungsweise beim Versand ergänzt und ist nicht Bestandteil der automatisch zu unterscheidenden Tonalität.
