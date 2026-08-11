@@ -582,7 +582,13 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
                 </div>
               </div>
               <h2 style={{ ...fontDisplay, fontSize: "19px", marginTop: "12px" }}>{selected.betreff}</h2>
-              <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, marginTop: "4px" }}>{selected.absender} · {selected.zeit}</div>
+              <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, marginTop: "4px" }}>
+                {selected.absender}
+                {selected.absenderAdresse && selected.absenderAdresse !== selected.absender
+                  ? ` <${selected.absenderAdresse}>`
+                  : ""}
+                {` · ${selected.zeit}`}
+              </div>
             </div>
             <div className="px-6 py-4 mail-body" style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere", borderBottom: `1px solid ${tokens.line}` }}>{selected.snippet}</div>
             {Object.keys(selected.felder).length > 0 && (
@@ -1404,6 +1410,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         kat: klass?.hauptkategorie ?? "Unklassifiziert",
         katId: m.klassifikation_id ?? "UNKLASSIFIZIERT",
         absender: m.absender_name || m.absender_adresse,
+        absenderAdresse: m.absender_adresse,
         betreff: m.betreff,
         snippet: m.text_auszug,
         zeit: formatMailZeit(m.empfangen_am),
