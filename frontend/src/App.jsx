@@ -480,6 +480,37 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
   const kategorien = useMemo(() => [...new Set(mails.map((m) => m.kat))], [mails]);
   const sichtbar = filter ? mails.filter((m) => m.kat === filter) : mails;
   const selected = mails.find((m) => m.id === selectedId) ?? sichtbar[0] ?? null;
+  const vorherigeMailIds = useRef(mails.map((m) => m.id));
+
+  // Verschwindet die ausgewählte Mail aus der Liste (verschoben, gelöscht,
+  // Zuständigkeit geändert …), auf den Nachfolger an ihrer alten Position
+  // springen statt immer zurück zum ersten Eintrag.
+  useEffect(() => {
+    const vorherige = vorherigeMailIds.current;
+    const nochVorhanden = mails.some((m) => m.id === selectedId);
+
+    if (!nochVorhanden && selectedId != null) {
+      const alterIndex = vorherige.indexOf(selectedId);
+      if (alterIndex !== -1) {
+        const sichtbarIds = new Set(sichtbar.map((m) => m.id));
+        let naechsteAuswahl = null;
+        for (let i = alterIndex + 1; i < vorherige.length; i++) {
+          if (sichtbarIds.has(vorherige[i])) { naechsteAuswahl = vorherige[i]; break; }
+        }
+        if (naechsteAuswahl == null) {
+          for (let i = alterIndex - 1; i >= 0; i--) {
+            if (sichtbarIds.has(vorherige[i])) { naechsteAuswahl = vorherige[i]; break; }
+          }
+        }
+        setSelectedId(naechsteAuswahl);
+      }
+    }
+
+    vorherigeMailIds.current = mails.map((m) => m.id);
+    // sichtbar bewusst nicht in den Deps: soll nur auf echte Mail-Reloads
+    // reagieren, nicht auf lokale Filter-Wechsel.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mails]);
 
   useEffect(() => {
     if (filter && !kategorien.includes(filter)) setFilter(null);
