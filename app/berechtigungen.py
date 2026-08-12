@@ -53,10 +53,17 @@ async def darf_mail_sehen(session, benutzer: dict, mail: Mail | None) -> bool:
 async def standard_zustaendigkeit(
     session, klassifikation_id: str | None
 ) -> tuple[bool, bool]:
-    """Leitet die anfängliche Arbeitsverteilung aus der Rollen-Matrix ab."""
+    """Leitet die anfängliche Arbeitsverteilung aus der Rollen-Matrix ab.
+
+    Admin ist standardmäßig NICHT zuständig — sonst wäre jede Mail von
+    Anfang an "MEINE" für den Admin, und der MEINE/ALLE-Schalter sowie das
+    manuelle Zuweisen könnten nie etwas sichtbar verändern. Admin wird nur
+    durch explizites Zuweisen (oder den Sicherheits-Fallback beim
+    Reklassifizieren, siehe main.py) zuständig.
+    """
     sachbearbeiter = await darf_klassifikation_sehen(
         session,
         {"rolle": ROLLE_SACHBEARBEITER},
         klassifikation_id,
     )
-    return True, sachbearbeiter
+    return False, sachbearbeiter
