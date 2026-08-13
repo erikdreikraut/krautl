@@ -70,6 +70,8 @@ export const api = {
     anfrage(`/mails/${mailId}/erledigen`, { method: "POST" }),
   mailLoeschen: (mailId) =>
     anfrage(`/mails/${mailId}`, { method: "DELETE" }),
+  mailAnhangLaden: (mailId, index) =>
+    dateiAnfrage(`/mails/${mailId}/anhaenge/${index}`),
   mailZuweisen: (mailId, rolle) =>
     anfrage(`/mails/${mailId}/zustaendigkeit`, {
       method: "PUT",

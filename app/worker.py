@@ -131,6 +131,7 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
                     text_auszug=geparst["text_auszug"],
                     empfangen_am=geparst["empfangen_am"],
                     spam_score=geparst["spam_score"],
+                    anhang_dateinamen=geparst.get("anhang_dateinamen") or None,
                     im_krautl_posteingang=False,
                 ))
                 continue
@@ -175,6 +176,7 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
                 kundennummer=klass.get("kundennummer"),
                 bestellnummer=klass.get("bestellnummer"),
                 rechnungsnummer=klass.get("rechnungsnummer"),
+                anhang_dateinamen=geparst.get("anhang_dateinamen") or None,
                 zustaendig_admin=zustaendig_admin,
                 zustaendig_sachbearbeiter=zustaendig_sachbearbeiter,
             )

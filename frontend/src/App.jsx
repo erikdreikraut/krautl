@@ -530,6 +530,24 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
     await onReload();
   }
 
+  async function anhangAnsehen(mailId, index) {
+    const fenster = window.open("about:blank", "_blank");
+    if (fenster) fenster.opener = null;
+    try {
+      const datei = await api.mailAnhangLaden(mailId, index);
+      const url = URL.createObjectURL(datei);
+      if (fenster) {
+        fenster.location.href = url;
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (fehler) {
+      if (fenster) fenster.close();
+      window.alert(fehler.message || "Anhang konnte nicht geöffnet werden.");
+    }
+  }
+
   return (
     <div className="flex flex-1 min-h-0 mail-layout">
       <div className={`flex flex-col mail-list-panel ${mobileDetailOffen ? "mobile-hidden" : ""}`} style={{ width: "380px", borderRight: `1px solid ${tokens.line}` }}>
@@ -573,6 +591,9 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
               </div>
               <div className="flex items-center gap-1.5">
                 <span style={{ ...fontSerif, fontSize: "14px", fontWeight: 600 }}>{m.absender}</span>
+                {m.anhaenge.length > 0 && (
+                  <Paperclip size={11} style={{ color: tokens.inkMuted, flexShrink: 0 }} />
+                )}
               </div>
               <div style={{ ...fontSerif, fontSize: "13.5px" }}>{m.betreff}</div>
               <Konfidenz value={m.konfidenz} />
@@ -629,6 +650,17 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
                     <div style={{ ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em" }}>{k.toUpperCase()}</div>
                     <div style={{ ...fontUI, fontSize: "13.5px", fontWeight: 600, marginTop: "2px" }}>{v}</div>
                   </div>
+                ))}
+              </div>
+            )}
+            {selected.anhaenge.length > 0 && (
+              <div className="px-6 py-4 flex flex-wrap gap-2 mail-anhaenge" style={{ borderBottom: `1px solid ${tokens.line}` }}>
+                {selected.anhaenge.map((dateiname, index) => (
+                  <button key={`${dateiname}-${index}`} onClick={() => anhangAnsehen(selected.id, index)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.ink, background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
+                    <Paperclip size={12} style={{ color: tokens.inkMuted, flexShrink: 0 }} />
+                    {dateiname}
+                  </button>
                 ))}
               </div>
             )}
@@ -1469,6 +1501,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
           return `wird verschoben nach ${zielpostfach}${zielordner ? ` / ${zielordner}` : ""}`;
         })(),
         felder,
+        anhaenge: m.anhang_dateinamen ?? [],
         entwurf: entwurfRoh ? { id: entwurfRoh.id, text: entwurfRoh.text_ki } : null,
       };
     });

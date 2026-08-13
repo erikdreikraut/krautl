@@ -129,10 +129,11 @@ def parse_eml(raw: bytes) -> dict:
         or message_id.casefold().startswith("<krautl-audio-")
     )
 
-    anhang_dateinamen = [
-        teil.get_filename() or "anhang"
-        for teil in msg.iter_attachments()
-    ]
+    # Über alle_anhaenge() statt msg.iter_attachments() direkt, damit die
+    # Reihenfolge/Anzahl exakt zu dem passt, was beim Nachladen eines
+    # einzelnen Anhangs per Index tatsächlich zurückgegeben wird (siehe
+    # app/mail_anhaenge.py) — leere Anhangs-Payloads fallen dort wie hier raus.
+    anhang_dateinamen = [a["dateiname"] for a in alle_anhaenge(raw)]
 
     return {
         "message_id": message_id,
@@ -150,6 +151,26 @@ def parse_eml(raw: bytes) -> dict:
 ERLAUBTE_RECHNUNGSENDUNGEN = {
     ".pdf", ".xml", ".jpg", ".jpeg", ".png", ".gif", ".webp",
 }
+
+
+def alle_anhaenge(raw: bytes) -> list[dict]:
+    """Extrahiert alle tatsächlich angehängten Dateien aus EML, unabhängig vom
+    Dateityp — anders als rechnungsanhaenge() ohne Endungs-Filter. Reihenfolge
+    entspricht der von parse_eml() gelieferten anhang_dateinamen-Liste."""
+    msg = message_from_bytes(raw, policy=policy.default)
+    ergebnis = []
+    for teil in msg.iter_attachments():
+        dateiname = teil.get_filename() or "anhang"
+        inhalt = teil.get_payload(decode=True)
+        if not inhalt:
+            continue
+        ergebnis.append({
+            "dateiname": dateiname,
+            "mime_type": teil.get_content_type(),
+            "inhalt": inhalt,
+            "sha256": hashlib.sha256(inhalt).hexdigest(),
+        })
+    return ergebnis
 
 
 def rechnungsanhaenge(raw: bytes) -> list[dict]:

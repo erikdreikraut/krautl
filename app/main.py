@@ -41,6 +41,7 @@ from .shop_import import shop_katalog_laden, shop_katalog_speichern
 from .rechnungen import (
     rechnungsdatei_aus_mail_laden,
 )
+from .mail_anhaenge import anhang_aus_mail_laden
 
 app = FastAPI(title="Krautl API")
 logger = logging.getLogger(__name__)
@@ -576,6 +577,67 @@ async def mail_erledigen(
     ))
     await session.commit()
     return {"status": "erledigt", "imap_unveraendert": True}
+
+
+@app.get("/mails/{mail_id}/anhaenge/{index}")
+async def mail_anhang_ansehen(
+    mail_id: int,
+    index: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    mail = await session.get(Mail, mail_id)
+    await _mailzugriff_erfordern(session, request, mail)
+
+    quellpostfach = await session.get(Postfach, mail.postfach_id)
+    klassifikation = (
+        await session.get(Klassifikation, mail.klassifikation_id)
+        if mail.klassifikation_id else None
+    )
+    verschiebe_aufgabe = (await session.execute(
+        select(MailAufgabe).where(
+            MailAufgabe.mail_id == mail.id,
+            MailAufgabe.aufgabe_typ == "MAIL_VERSCHIEBEN",
+        ).order_by(MailAufgabe.position.desc())
+    )).scalars().first()
+    verschiebe_parameter = (verschiebe_aufgabe.parameter if verschiebe_aufgabe else {}) or {}
+    zielpostfach = (
+        verschiebe_parameter.get("zielpostfach")
+        or (klassifikation.zielpostfach if klassifikation else None)
+    )
+    zielordner = (
+        verschiebe_parameter.get("zielordner")
+        or (klassifikation.zielordner if klassifikation else None)
+    )
+
+    try:
+        dateiname, inhalt = await anhang_aus_mail_laden(
+            mail, index,
+            quellpostfach.adresse if quellpostfach else None,
+            zielpostfach, zielordner,
+        )
+    except (RuntimeError, IndexError) as exc:
+        logger.exception("Anhang %s von Mail %s nicht abrufbar: %s", index, mail_id, exc)
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Der Anhang konnte nicht aus der zugehörigen Mail geladen werden. "
+                "Die Mail wurde möglicherweise inzwischen verschoben oder gelöscht."
+            ),
+        ) from exc
+
+    medientyp = mimetypes.guess_type(dateiname)[0] or "application/octet-stream"
+    return Response(
+        content=inhalt,
+        media_type=medientyp,
+        headers={
+            "Content-Disposition": (
+                "inline; filename*=UTF-8''" + quote(dateiname, safe="")
+            ),
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @app.delete("/mails/{mail_id}")

@@ -100,6 +100,10 @@ class Mail(Base):
     text_auszug: Mapped[str] = mapped_column(Text)
     empfangen_am: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     spam_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Nur die Dateinamen — der Inhalt wird bei Bedarf erneut per IMAP geladen
+    # (siehe app/mail_anhaenge.py), damit Anhänge nicht doppelt in der
+    # Datenbank liegen.
+    anhang_dateinamen: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     klassifikation_id: Mapped[str | None] = mapped_column(
         ForeignKey("klassifikation.klassifikation_id"), nullable=True
