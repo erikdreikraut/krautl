@@ -106,6 +106,13 @@ def parse_eml(raw: bytes) -> dict:
     msg = message_from_bytes(raw, policy=policy.default)
 
     absender_name, absender_adresse = parseaddr(msg.get("From", ""))
+    # Manche Shop-/Formular-Mails verschicken über eine technische
+    # Absenderadresse, während Antworten laut Reply-To an eine andere Adresse
+    # gehen sollen (z. B. die echte Kundenadresse). Nur übernehmen, wenn sie
+    # sich tatsächlich vom Absender unterscheidet.
+    _antwort_an_name, antwort_an_adresse = parseaddr(msg.get("Reply-To", ""))
+    if antwort_an_adresse and antwort_an_adresse.casefold() == absender_adresse.casefold():
+        antwort_an_adresse = ""
 
     empfangen_am: datetime
     try:
@@ -139,6 +146,7 @@ def parse_eml(raw: bytes) -> dict:
         "message_id": message_id,
         "absender_name": absender_name or absender_adresse,
         "absender_adresse": absender_adresse,
+        "antwort_an_adresse": antwort_an_adresse or None,
         "betreff": msg.get("Subject", "(kein Betreff)"),
         "text_auszug": inhalt[:TEXT_AUSZUG_MAX_LAENGE],
         "empfangen_am": empfangen_am,

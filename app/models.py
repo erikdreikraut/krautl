@@ -96,6 +96,9 @@ class Mail(Base):
 
     absender_name: Mapped[str] = mapped_column(String(255))
     absender_adresse: Mapped[str] = mapped_column(String(255))
+    # Reply-To der Kundenmail, nur gesetzt wenn abweichend vom Absender.
+    # Antworten gehen dorthin statt an die Absenderadresse (siehe mail_versand.py).
+    antwort_an_adresse: Mapped[str | None] = mapped_column(String(255), nullable=True)
     betreff: Mapped[str] = mapped_column(Text)
     text_auszug: Mapped[str] = mapped_column(Text)
     empfangen_am: Mapped[datetime] = mapped_column(DateTime(timezone=True))

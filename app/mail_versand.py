@@ -64,8 +64,10 @@ def antwort_mit_signatur(antworttext: str, benutzer: dict) -> str:
     return f"{text}\n\n{signatur}\n"
 
 
-def _kundenadresse(mail: Mail) -> str:
-    roh = str(mail.absender_adresse or "").strip()
+def _gueltige_adresse(roh: str) -> str | None:
+    roh = str(roh or "").strip()
+    if not roh:
+        return None
     _name, adresse = parseaddr(roh)
     lokalteil, trennzeichen, domain = adresse.rpartition("@")
     if (
@@ -76,10 +78,25 @@ def _kundenadresse(mail: Mail) -> str:
         or "\r" in roh
         or "\n" in roh
     ):
-        raise RuntimeError(
-            "Die Absenderadresse der Kundenmail ist leer oder ungültig"
-        )
+        return None
     return adresse
+
+
+def antwortadresse(mail: Mail) -> str:
+    """Antwortadresse für eine Kundenmail.
+
+    Bevorzugt Reply-To gegenüber der Absenderadresse — manche Shops/Formulare
+    verschicken über eine technische Absenderadresse, während Antworten laut
+    Reply-To an die eigentliche Kundenadresse gehen sollen (siehe
+    mail_parser.parse_eml, das Reply-To nur übernimmt, wenn es abweicht).
+    """
+    for kandidat in (mail.antwort_an_adresse, mail.absender_adresse):
+        adresse = _gueltige_adresse(kandidat)
+        if adresse:
+            return adresse
+    raise RuntimeError(
+        "Weder Reply-To noch Absenderadresse der Kundenmail sind gültig"
+    )
 
 
 def _antwort_betreff(betreff: str) -> str:
@@ -91,7 +108,7 @@ def _antwort_betreff(betreff: str) -> str:
 
 def _synchron_senden(mail: Mail, antworttext: str, benutzer: dict) -> dict:
     smtp = _smtp_einstellungen()
-    empfaenger = _kundenadresse(mail)
+    empfaenger = antwortadresse(mail)
     nachricht = EmailMessage()
     nachricht["From"] = smtp["user"]
     nachricht["To"] = empfaenger

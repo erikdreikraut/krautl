@@ -17,7 +17,7 @@ from .antworten import (
     ist_kundenservice_mail, manuellen_antwortentwurf_speichern,
 )
 from .mail_versand import (
-    BCC_EMPFAENGER, antwort_mit_signatur, antwort_senden,
+    BCC_EMPFAENGER, antwort_mit_signatur, antwort_senden, antwortadresse,
 )
 from .imap_client import lade_postfaecher, mail_loeschen as mail_imap_loeschen
 from .auth import (
@@ -1436,9 +1436,13 @@ async def entwurf_freigeben(
     mail = await session.get(Mail, entwurf.mail_id)
     await _mailzugriff_erfordern(session, request, mail)
     if entwurf.status == "versendet":
+        try:
+            empfaenger = antwortadresse(mail)
+        except RuntimeError:
+            empfaenger = mail.absender_adresse
         return {
             "status": "bereits_versendet",
-            "empfaenger": mail.absender_adresse,
+            "empfaenger": empfaenger,
             "bcc": BCC_EMPFAENGER,
         }
 
@@ -1509,13 +1513,17 @@ async def entwurf_freigeben(
             mail, finaler_text, request.state.benutzer
         )
     except Exception as exc:
+        try:
+            ziel_fuer_log = antwortadresse(mail)
+        except RuntimeError:
+            ziel_fuer_log = mail.absender_adresse
         session.add(Aktionslog(
             mail_id=mail.id,
             ereignis="antwort_versand_fehlgeschlagen",
             ausgeloest_von=request.state.benutzer["name"],
             detail=(
                 f"Freigabe durch {request.state.benutzer['name']}; "
-                f"Versand an {mail.absender_adresse}: {exc}"
+                f"Versand an {ziel_fuer_log}: {exc}"
             ),
         ))
         await session.commit()

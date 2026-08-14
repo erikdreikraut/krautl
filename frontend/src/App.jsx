@@ -641,6 +641,11 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
                   : ""}
                 {` · ${selected.zeit}`}
               </div>
+              {selected.antwortAnAdresse && (
+                <div style={{ ...fontUI, fontSize: "12px", color: tokens.amber, marginTop: "2px", fontWeight: 600 }}>
+                  Antworten gehen an: {selected.antwortAnAdresse} (abweichend vom Absender)
+                </div>
+              )}
             </div>
             <div className="px-6 py-4 mail-body" style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere", borderBottom: `1px solid ${tokens.line}` }}>{selected.snippet}</div>
             {Object.keys(selected.felder).length > 0 && (
@@ -1474,6 +1479,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         katId: m.klassifikation_id ?? "UNKLASSIFIZIERT",
         absender: m.absender_name || m.absender_adresse,
         absenderAdresse: m.absender_adresse,
+        antwortAnAdresse: m.antwort_an_adresse,
         betreff: m.betreff,
         snippet: m.text_auszug,
         zeit: formatMailZeit(m.empfangen_am),
