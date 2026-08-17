@@ -473,12 +473,22 @@ function AntwortAktionen({ mail, onErzeugt }) {
 
 function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAendern, onReload }) {
   const [filter, setFilter] = useState(null);
+  const [suchbegriff, setSuchbegriff] = useState("");
   const [selectedId, setSelectedId] = useState(mails[0]?.id ?? null);
   const [versandbestaetigungen, setVersandbestaetigungen] = useState({});
   const [mobileDetailOffen, setMobileDetailOffen] = useState(false);
 
   const kategorien = useMemo(() => [...new Set(mails.map((m) => m.kat))], [mails]);
-  const sichtbar = filter ? mails.filter((m) => m.kat === filter) : mails;
+  const kategorieGefiltert = filter ? mails.filter((m) => m.kat === filter) : mails;
+  const suchtreffer = suchbegriff.trim().toLowerCase();
+  const sichtbar = suchtreffer
+    ? kategorieGefiltert.filter((m) => {
+        const felderText = Object.values(m.felder || {}).join(" ");
+        const text = [m.betreff, m.absender, m.absenderAdresse, m.snippet, m.katId, felderText]
+          .filter(Boolean).join(" ").toLowerCase();
+        return text.includes(suchtreffer);
+      })
+    : kategorieGefiltert;
   const selected = mails.find((m) => m.id === selectedId) ?? sichtbar[0] ?? null;
   const vorherigeMailIds = useRef(mails.map((m) => m.id));
 
@@ -552,8 +562,20 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
     <div className="flex flex-1 min-h-0 mail-layout">
       <div className={`flex flex-col mail-list-panel ${mobileDetailOffen ? "mobile-hidden" : ""}`} style={{ width: "380px", borderRight: `1px solid ${tokens.line}` }}>
         <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: `1px solid ${tokens.line}` }}>
-          <Search size={14} style={{ color: tokens.inkMuted }} />
-          <span className="flex-1" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>Mails durchsuchen …</span>
+          <Search size={14} style={{ color: tokens.inkMuted, flexShrink: 0 }} />
+          <input
+            type="text"
+            value={suchbegriff}
+            onChange={(e) => setSuchbegriff(e.target.value)}
+            placeholder="Mails durchsuchen …"
+            className="flex-1 min-w-0"
+            style={{ ...fontUI, fontSize: "13px", color: tokens.ink, background: "transparent", border: "none", outline: "none" }}
+          />
+          {suchbegriff && (
+            <button onClick={() => setSuchbegriff("")} aria-label="Suche zurücksetzen" style={{ color: tokens.inkMuted, flexShrink: 0 }}>
+              <X size={13} />
+            </button>
+          )}
           {benutzer.rolle === "admin" && (
             <div className="flex items-center rounded-md overflow-hidden" style={{ border: `1px solid ${tokens.line}` }}>
               <button
