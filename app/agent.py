@@ -77,6 +77,15 @@ Amazon-Mail stattdessen RECHNUNG_EINGANG sein. Kritische Warnungen, Fristen,
 Kontoprobleme, Richtlinienverstöße oder Listing-Sperren gehören weiterhin
 in AMAZON_WICHTIG.
 
+AMAZON-KÄUFERNACHRICHTEN (Buyer-Seller Messaging):
+Nachrichten, die über Amazons anonymisiertes Käufer-Nachrichtensystem eingehen
+(Absenderadresse endet auf marketplace.amazon.<Domain-Endung>, meist mit einer
+langen zufälligen Zeichenfolge vor dem @), sind echte Anfragen einzelner
+Kundinnen und Kunden — keine Amazon-Systemmails. Sie gehören inhaltlich
+eingeordnet wie jede andere Kundenanfrage (zum Beispiel KUNDE_TRACKING,
+KUNDE_PRODUKTFRAGE oder KUNDE_REKLAMATION), niemals in AMAZON_STATUS oder
+AMAZON_WICHTIG. Diese Regel hat Vorrang vor der AMAZON-ABSENDER-Regel unten.
+
 EBAY-VERKAUFSBESTÄTIGUNGEN:
 Automatische Nachrichten von eBay, die einen Verkauf durch dreikraut melden,
 gehören in BESTELLUNG_EBAY, sofern diese ID im Katalog vorhanden ist. Typische
@@ -210,10 +219,16 @@ def amazon_absender_zuordnung_absichern(
         or domain.startswith("amazon.")
         or ".amazon." in domain
     )
+    # marketplace.amazon.<tld> ist Amazons anonymisiertes Käufer-Nachrichten-
+    # Relay — das sind echte Kundenanfragen, keine Amazon-Systemmails, und
+    # dürfen deshalb nicht zwangsweise nach AMAZON_STATUS/AMAZON_WICHTIG
+    # umgebogen werden (siehe AMAZON-KÄUFERNACHRICHTEN im Systemprompt).
+    ist_kaeufernachricht_relay = domain.startswith("marketplace.amazon.")
     katalog_ids = {eintrag["klassifikation_id"] for eintrag in katalog}
     aktuelle_id = str(ergebnis.get("klassifikation_id", ""))
     if (
         not ist_amazon_absender
+        or ist_kaeufernachricht_relay
         or "AMAZON_STATUS" not in katalog_ids
         or aktuelle_id.startswith("AMAZON_")
     ):
