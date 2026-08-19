@@ -76,8 +76,12 @@ def _transkribieren(anhang: dict) -> str:
 
     datei = io.BytesIO(anhang["inhalt"])
     datei.name = anhang["dateiname"]
+    # gpt-4o-transcribe lehnt bei OpenAI seit einiger Zeit auch gültige Audio-
+    # dateien mit "This model does not support the format you provided" ab
+    # (bekanntes OpenAI-Problem, siehe openai/openai-python#2477) — whisper-1
+    # ist mit denselben Dateien zuverlässig, deshalb hier der Standard.
     antwort = OpenAI(api_key=os.environ["OPENAI_API_KEY"], timeout=180.0).audio.transcriptions.create(
-        model=os.getenv("OPENAI_TRANSCRIPTION_MODEL", "gpt-4o-transcribe"),
+        model=os.getenv("OPENAI_TRANSCRIPTION_MODEL", "whisper-1"),
         file=datei,
         prompt=(
             "Dies ist überwiegend ein deutschsprachiger geschäftlicher Telefonanruf. "
