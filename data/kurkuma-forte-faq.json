@@ -1,0 +1,86 @@
+[
+  {
+    "gruppe": "Herkunft & Qualität",
+    "frage": "Woher beziehen wir die Rohstoffe für unser Kurkuma forte?",
+    "antwort": "Unser Bio-Kurkuma stammt aus Indien – der Heimat dieser außergewöhnlichen Pflanze. Dort wird Kurkuma seit mehr als 4.000 Jahren angebaut. Die leuchtend gelbe Wurzel ist fester Bestandteil der ayurvedischen Küche und Naturheilkunde.",
+    "sortierung": 10
+  },
+  {
+    "gruppe": "Herkunft & Qualität",
+    "frage": "Was ist das Besondere an der Rezeptur von Kurkuma forte?",
+    "antwort": "Viele Produkte setzen entweder nur auf Kurkumapulver oder nur auf Curcumin (Kurkuma-Extrakt). Wir kombinieren beides: einen hochwertigen Extrakt mit 95% des entscheidenden Pflanzenstoffs Curcumin und die ganze, gemahlene Kurkumawurzel mit ihrem natürlichen Spektrum an sekundären Pflanzenstoffen. Für bessere Bioverfügbarkeit (also Verwertung im Körper) geben wir Piperin in Form von schwarzem Pfeffer Hinzu. So verbinden wir Konzentration und Natürlichkeit in einer Kapsel.",
+    "sortierung": 20
+  },
+  {
+    "gruppe": "Herkunft & Qualität",
+    "frage": "Ist Kurkuma forte Bio-zertifiziert?",
+    "antwort": "Ja. Alle Rohstoffe unserer Rezeptur (Kurkuma-Extrakt, Kurkumawurzel und schwarzer Pfeffer) stammen aus kontrolliert biologischem Anbau. Die Herstellung wird regelmäßig nach den Vorgaben der europäischen Bio-Verordnung überprüft (Kontrollstelle: DE-ÖKO 039). Höchste Reinheit und Transparenz der Herstellung sind daher absolut sichergestellt.",
+    "sortierung": 30
+  },
+  {
+    "gruppe": "Herkunft & Qualität",
+    "frage": "Enthält Kurkuma forte Allergene?",
+    "antwort": "Nein. Das Pulver selber besteht nur aus Kurkuma, hochreinem Kurkuma-Extrakt und Schwarzem Pfeffer. Kurkuma forte enthält keine Allergene und ist frei von Gluten, Laktose oder Fruktose.",
+    "sortierung": 40
+  },
+  {
+    "gruppe": "Herkunft & Qualität",
+    "frage": "Enthält Kurkuma forte Hilfs- oder Zusatzstoffe?",
+    "antwort": "Nein. Kurkuma forte Bio ist Natur pur. Selbst die vegane Kapselhülle besteht aus reinem Pflanzenzellstoff (HPMC, Hydroxypropylmethylcellulose).",
+    "sortierung": 50
+  },
+  {
+    "gruppe": "Nährstoffe & Wirkung",
+    "frage": "Was ist Curcumin eigentlich?",
+    "antwort": "Curcumin ist der bekannteste natürliche Pflanzenstoff der Kurkumawurzel. Er verleiht ihr die charakteristische goldgelbe Farbe, den Namen - und steht seit vielen Jahren im Mittelpunkt wissenschaftlicher Untersuchungen.",
+    "sortierung": 60
+  },
+  {
+    "gruppe": "Nährstoffe & Wirkung",
+    "frage": "Wie viel Curcumin enthält Kurkuma forte?",
+    "antwort": "Die empfohlene Tagesportion von zwei Kapseln liefert insgesamt 140mg Curcuminoide. Diese Menge steckt größtenteils in dem Kurkuma-Extrakt, der einen Curcumin-Gehalt von 95% besitzt, sowie dem reinen Kurkuma-Pulver, das von Natur aus einen Curcumin-Gehalt von etwa 3% hat.",
+    "sortierung": 70
+  },
+  {
+    "gruppe": "Nährstoffe & Wirkung",
+    "frage": "Warum enthält das Produkt schwarzen Pfeffer?",
+    "antwort": "Curcumin wird vom Körper nur schwer aufgenommen. Es gibt deshalb zwei gängige Wege, die Bioverfügbarkeit um ein Vielfaches zu verbessern: Den natürlichen in Form von Piperin (aus Schwarzpfeffer). Alternativ erfüllt auch die enzymatische Ummantelung (Mizellierung) den gleichen Zweck (siehe unser Alternativprodukt Curcucell: ). Das ist vor allem für alle interessant, deren Magen empfindlich auf Piperin reagiert - was aber nur vereinzelt vorkommt.",
+    "sortierung": 80
+  },
+  {
+    "gruppe": "Nährstoffe & Wirkung",
+    "frage": "Sind die Kapseln vegan?",
+    "antwort": "Ja. Die Kapselhülle ist frei von Gelatine, sondern besteht aus hochreinem Pflanzenzellstoff. Dadurch eignet sich Kurkuma forte sowohl für Vegetarier als auch für Veganer.",
+    "sortierung": 90
+  },
+  {
+    "gruppe": "Nährstoffe & Wirkung",
+    "frage": "Was bedeutet „Bioverfügbarkeit“?",
+    "antwort": "Vereinfacht gesagt beschreibt die Bioverfügbarkeit, wie gut ein Nähr- oder Pflanzenstoff vom Körper aufgenommen und verwertet werden kann. Das heißt: wie schnell und wie viel von einem Stoff kann auch tatsächlich genutzt werden. Bei Curcumin ist dieser Wert zunächst einmal sehr niedrig, nahe Null, weshalb es immer einen Resorptionsfaktor braucht, wie Piperin aus Schwarzpfeffer oder Mizellierung (siehe unser Alternativprodukt Curcucell:)",
+    "sortierung": 100
+  },
+  {
+    "gruppe": "Nährstoffe & Wirkung",
+    "frage": "Wer sollte vor der Einnahme Rücksprache mit einem Arzt halten?",
+    "antwort": "Grundsätzlich wird Kurkuma gut vertragen. Wer regelmäßig Medikamente einnimmt, insbesondere Gerinnungshemmer, schwanger ist, stillt oder unter einer chronischen Erkrankung leidet, sollte die Einnahme vorsichtshalber in der Hausarztpraxis besprechen.",
+    "sortierung": 110
+  },
+  {
+    "gruppe": "Anwendung & Praktisches",
+    "frage": "Wie sollte Kurkuma forte eingenommen werden?",
+    "antwort": "Wir empfehlen täglich zwei Kapseln unzerkaut mit reichlich Flüssigkeit zu einer Mahlzeit einzunehmen. Die Einnahme zu den Mahlzeiten hat sich in der Praxis besonders bewährt und lässt sich unkompliziert in den Alltag integrieren.",
+    "sortierung": 120
+  },
+  {
+    "gruppe": "Anwendung & Praktisches",
+    "frage": "Kann ich Kurkuma forte dauerhaft verwenden?",
+    "antwort": "Ja. Kurkuma forte ist für die regelmäßige Anwendung konzipiert. Die Rezeptur besteht aus hochwertigen pflanzlichen Rohstoffen in Bio-Qualität und enthält keine unnötigen Zusätze. Viele Anwender integrieren Kurkuma daher langfristig in ihren Alltag.",
+    "sortierung": 130
+  },
+  {
+    "gruppe": "Anwendung & Praktisches",
+    "frage": "Warum nicht einfach nur mit Kurkuma würzen?",
+    "antwort": "Gegen eine gute Portion Curry spricht natürlich überhaupt nichts. Allerdings enthält die Gewürzwurzel in ihrer natürlichen Form wesentlich geringere Mengen Curcumin als ein konzentrierter Extrakt. Wer gezielt auf eine standardisierte Menge Curcuminoide Wert legt, findet in Kurkuma forte eine praktische Ergänzung zur täglichen Ernährung.",
+    "sortierung": 140
+  }
+]
