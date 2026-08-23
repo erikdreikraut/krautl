@@ -339,3 +339,26 @@ Bei einer Dropbox-App mit Zugriffstyp **App folder** erscheint Krautls
 `Apps/{Dropbox-App-Name}/Rechnungen/{Jahr}/`. Bei **Full Dropbox** liegt der
 Ordner direkt im Dropbox-Hauptverzeichnis. Für Krautl genügt grundsätzlich
 `App folder`; ein Vollzugriff ist nicht nötig.
+
+### Historische Rechnungen nachholen
+
+Der historische Rechnungslauf durchsucht die vier operativen Postfächer
+`info`, `service`, `einkauf` und `marketing` einschließlich ihrer Unterordner.
+Gesendet-, Entwurfs-, Papierkorb- und Spamordner werden ausgelassen. Die
+gefundenen Nachrichten werden weder verschoben noch gelöscht oder als gelesen
+markiert. Erkannte Rechnungen erscheinen in Krautl, bleiben aber aus der
+Mail-Arbeitsliste ausgeblendet.
+
+Für den vorbereiteten Zeitraum vom 1. Februar bis einschließlich 30. April
+2026 und den Dropbox-App-Pfad `/Rechnungen/Eingang` genügt:
+
+```bash
+docker compose exec app python -m scripts.historische_rechnungen_importieren
+```
+
+Bei der Dropbox-App `krautl Elestio` entspricht das lokal dem synchronisierten
+Ordner `Apps/krautl Elestio/Rechnungen/Eingang`. Der Lauf ist wiederholbar:
+Message-IDs, Rechnungsmerkmale und deterministische Dateinamen verhindern
+zusätzliche Rechnungsdatensätze und Dateikopien. Abweichende Zeiträume und
+Zielordner lassen sich mit `--start`, `--ende-einschliesslich` und
+`--zielordner` angeben.

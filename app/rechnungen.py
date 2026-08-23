@@ -314,14 +314,21 @@ def _analysiere(anhang: dict, mail: Mail) -> dict:
     raise RuntimeError("Keine Rechnungsdaten erhalten")
 
 
-async def rechnung_verarbeiten(session, mail: Mail) -> dict:
-    """Analysiert Anhänge, legt je Rechnung einen Datensatz und Originaldateien ab."""
-    postfach = await session.get(Postfach, mail.postfach_id)
-    configs = {c.user: c for c in lade_postfaecher()}
-    quelle = configs.get(postfach.adresse) if postfach else None
-    if not quelle or mail.imap_uid is None:
-        raise RuntimeError("Quellpostfach oder IMAP-UID nicht konfiguriert")
-    raw = await asyncio.to_thread(mail_rohdaten_laden, quelle, mail.imap_uid)
+async def rechnung_aus_rohdaten_verarbeiten(
+    session,
+    mail: Mail,
+    raw: bytes,
+    *,
+    zielordner: str = "/Rechnungen",
+    jahresordner: bool = True,
+    dubletten_erneut_ablegen: bool = False,
+) -> dict:
+    """Analysiert eine bereits geladene Mail und legt Rechnungsoriginale ab.
+
+    Der normale Live-Ablauf verwendet weiterhin ``/Rechnungen/{Jahr}``.
+    Historische Nachholimporte können einen eigenen Zielordner verwenden,
+    ohne die betreffende IMAP-Mail zu verschieben oder erneut zu laden.
+    """
     anhaenge = await asyncio.to_thread(rechnungsanhaenge, raw)
     if not anhaenge:
         raise RuntimeError("Kein unterstützter Rechnungsanhang gefunden")
@@ -343,27 +350,30 @@ async def rechnung_verarbeiten(session, mail: Mail) -> dict:
 
     for schluessel, gruppe in gruppen.items():
         daten = gruppe["daten"]
-        bestehend = (await session.execute(
-            select(Rechnung).where(Rechnung.dublettenschluessel == schluessel)
-        )).scalar_one_or_none()
-        if bestehend:
-            verarbeitet.append({"id": bestehend.id, "dublette": True})
-            continue
         rechnungsdatum = _datum(daten.get("rechnungsdatum"))
         if not rechnungsdatum:
             raise RuntimeError("Offizielles Rechnungsdatum konnte nicht ermittelt werden")
+        bestehend = (await session.execute(
+            select(Rechnung).where(Rechnung.dublettenschluessel == schluessel)
+        )).scalar_one_or_none()
+        if bestehend and not dubletten_erneut_ablegen:
+            verarbeitet.append({"id": bestehend.id, "dublette": True})
+            continue
         basis = "-".join([
             rechnungsdatum.strftime("%Y-%m-%d"),
             _sicher(daten.get("aussteller"), "Unbekannt"),
             _sicher(daten.get("rechnungsnummer"), "ohne-RgNr"),
         ])
+        wurzel = "/" + zielordner.strip("/")
+        if jahresordner:
+            wurzel += f"/{rechnungsdatum.year}"
         pfade = []
         belegte_endungen = set()
         for anhang in gruppe["anhaenge"]:
             endung = anhang["endung"]
             suffix = "" if endung not in belegte_endungen else f"-{anhang['sha256'][:8]}"
             belegte_endungen.add(endung)
-            pfad = f"/Rechnungen/{rechnungsdatum.year}/{basis}{suffix}{endung}"
+            pfad = f"{wurzel}/{basis}{suffix}{endung}"
             # Deterministischer Pfad: Ein Wiederholungsversuch erzeugt keine
             # zweite Datei, sondern stellt denselben Originalinhalt wieder her.
             await asyncio.to_thread(
@@ -374,6 +384,21 @@ async def rechnung_verarbeiten(session, mail: Mail) -> dict:
                 autorename=False,
             )
             pfade.append(pfad)
+        if bestehend:
+            vorhandene_pfade = list(bestehend.dateipfade or [])
+            for pfad in pfade:
+                if pfad not in vorhandene_pfade:
+                    vorhandene_pfade.append(pfad)
+            bestehend.dateipfade = vorhandene_pfade
+            if not bestehend.dateipfad:
+                bestehend.dateipfad = pfade[0]
+            verarbeitet.append({
+                "id": bestehend.id,
+                "pfade": pfade,
+                "dublette": True,
+                "erneut_abgelegt": True,
+            })
+            continue
         betrag = daten.get("bruttobetrag")
         rechnung = Rechnung(
             mail_id=mail.id, aussteller=daten.get("aussteller") or mail.absender_name,
@@ -389,3 +414,14 @@ async def rechnung_verarbeiten(session, mail: Mail) -> dict:
         await session.flush()
         verarbeitet.append({"id": rechnung.id, "pfade": pfade, "dublette": False})
     return {"rechnungen": verarbeitet}
+
+
+async def rechnung_verarbeiten(session, mail: Mail) -> dict:
+    """Analysiert Anhänge, legt je Rechnung einen Datensatz und Originaldateien ab."""
+    postfach = await session.get(Postfach, mail.postfach_id)
+    configs = {c.user: c for c in lade_postfaecher()}
+    quelle = configs.get(postfach.adresse) if postfach else None
+    if not quelle or mail.imap_uid is None:
+        raise RuntimeError("Quellpostfach oder IMAP-UID nicht konfiguriert")
+    raw = await asyncio.to_thread(mail_rohdaten_laden, quelle, mail.imap_uid)
+    return await rechnung_aus_rohdaten_verarbeiten(session, mail, raw)

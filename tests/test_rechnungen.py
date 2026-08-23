@@ -17,6 +17,7 @@ from app.models import Base, Mail, Postfach, Rechnung
 from app.rechnungen import (
     _zahlungsstatus_absichern,
     rechnungsdatei_aus_mail_laden,
+    rechnung_aus_rohdaten_verarbeiten,
     rechnung_verarbeiten,
 )
 
@@ -147,6 +148,33 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
             rechnungen = (await session.execute(select(Rechnung))).scalars().all()
             self.assertEqual(1, len(rechnungen))
             self.assertEqual("offen", rechnungen[0].zahlungsstatus)
+
+    async def test_historischer_lauf_kann_direkten_eingangsordner_nutzen(self):
+        analyse = {
+            "ist_rechnung": True, "aussteller": "Test GmbH", "rechnungsnummer": "4711",
+            "rechnungsdatum": "2026-02-03", "faellig_am": "2026-02-17",
+            "bruttobetrag": 119.0, "waehrung": "EUR", "zahlungsstatus": "offen",
+            "zahlungshinweis": "Bitte überweisen",
+        }
+        dbx = MagicMock()
+        with patch("app.rechnungen._analysiere", return_value=analyse), \
+             patch("app.rechnungen._dropbox_client", return_value=dbx):
+            async with SessionLocal() as session:
+                mail = await session.get(Mail, self.mail_id)
+                await rechnung_aus_rohdaten_verarbeiten(
+                    session,
+                    mail,
+                    EML,
+                    zielordner="/Rechnungen/Eingang",
+                    jahresordner=False,
+                )
+                await session.commit()
+
+        pfad = dbx.files_upload.call_args.args[1]
+        self.assertEqual(
+            "/Rechnungen/Eingang/2026-02-03-Test-GmbH-4711.pdf",
+            pfad,
+        )
 
     async def test_komplettliste_sortiert_nach_mail_eingang_und_liefert_zeitpunkt(self):
         neuer_eingang = datetime(2026, 8, 5, 15, 0, tzinfo=timezone.utc)
