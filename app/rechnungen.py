@@ -6,6 +6,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
+from zoneinfo import ZoneInfo
 
 import dropbox
 from anthropic import Anthropic
@@ -286,9 +287,7 @@ def _analysiere(anhang: dict, mail: Mail) -> dict:
         dokument = {"type": "document", "source": {"type": "base64", "media_type": "application/pdf",
                     "data": base64.b64encode(anhang["inhalt"]).decode("ascii")}}
     else:
-        mime = anhang["mime_type"]
-        if mime not in {"image/jpeg", "image/png", "image/gif", "image/webp"}:
-            raise RuntimeError(f"Bildformat {mime} wird noch nicht unterstützt")
+        mime = _bild_mime_type(anhang)
         dokument = {"type": "image", "source": {"type": "base64", "media_type": mime,
                     "data": base64.b64encode(anhang["inhalt"]).decode("ascii")}}
 
@@ -314,6 +313,33 @@ def _analysiere(anhang: dict, mail: Mail) -> dict:
     raise RuntimeError("Keine Rechnungsdaten erhalten")
 
 
+def _bild_mime_type(anhang: dict) -> str:
+    """Ermittelt das Bildformat aus dem Inhalt statt aus fehlerhaften Headern.
+
+    Scanner, Shops und Mailprogramme benennen JPEG-Dateien nicht selten als
+    PNG oder liefern sie als application/octet-stream. Die Bildsignatur ist
+    fuer die Anthropic-API massgeblich.
+    """
+    inhalt = anhang.get("inhalt") or b""
+    if inhalt.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if inhalt.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if inhalt.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if (
+        len(inhalt) >= 12
+        and inhalt.startswith(b"RIFF")
+        and inhalt[8:12] == b"WEBP"
+    ):
+        return "image/webp"
+
+    mime = (anhang.get("mime_type") or "").casefold()
+    if mime in {"image/jpeg", "image/png", "image/gif", "image/webp"}:
+        return mime
+    raise RuntimeError(f"Bildformat {mime or 'unbekannt'} wird noch nicht unterstützt")
+
+
 async def rechnung_aus_rohdaten_verarbeiten(
     session,
     mail: Mail,
@@ -336,6 +362,15 @@ async def rechnung_aus_rohdaten_verarbeiten(
     verarbeitet = []
     gruppen: dict[str, dict] = {}
     for anhang in anhaenge:
+        if anhang["endung"] in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+            echtes_mime = _bild_mime_type(anhang)
+            anhang["mime_type"] = echtes_mime
+            anhang["endung"] = {
+                "image/jpeg": ".jpg",
+                "image/png": ".png",
+                "image/gif": ".gif",
+                "image/webp": ".webp",
+            }[echtes_mime]
         daten = await asyncio.to_thread(_analysiere, anhang, mail)
         if not daten.get("ist_rechnung"):
             continue
@@ -356,7 +391,23 @@ async def rechnung_aus_rohdaten_verarbeiten(
         daten = gruppe["daten"]
         rechnungsdatum = _datum(daten.get("rechnungsdatum"))
         if not rechnungsdatum:
-            raise RuntimeError("Offizielles Rechnungsdatum konnte nicht ermittelt werden")
+            # Eine Rechnung ohne sicher lesbares Datum darf beim historischen
+            # Nachholen nicht ganz verloren gehen. Das Eingangsdatum ist ein
+            # nachvollziehbarer, sortierbarer Ersatz und wird im Hinweis klar
+            # als solcher dokumentiert.
+            empfangen = mail.empfangen_am
+            if empfangen.tzinfo is None:
+                empfangen = empfangen.replace(tzinfo=timezone.utc)
+            rechnungsdatum = empfangen.astimezone(
+                ZoneInfo("Europe/Berlin")
+            ).date()
+            ersatzhinweis = (
+                "Rechnungsdatum nicht sicher erkannt; "
+                "Eingangsdatum als Dateidatum verwendet."
+            )
+            daten["zahlungshinweis"] = " ".join(filter(None, [
+                daten.get("zahlungshinweis"), ersatzhinweis,
+            ]))
         bestehend = (await session.execute(
             select(Rechnung).where(Rechnung.dublettenschluessel == schluessel)
         )).scalar_one_or_none()

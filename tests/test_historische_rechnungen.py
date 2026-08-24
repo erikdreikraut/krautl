@@ -18,6 +18,7 @@ from app.models import Base, Mail, Postfach
 from scripts.historische_rechnungen_importieren import (
     HISTORISCH_KEINE_RECHNUNG,
     ROHDATEN_BATCH_GROESSE,
+    _ist_abbruchrelevanter_systemfehler,
     _liegt_im_zeitraum,
     importieren,
 )
@@ -128,6 +129,18 @@ class HistorischeRechnungenTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(_liegt_im_zeitraum(
             datetime(2026, 4, 30, 22, 0, tzinfo=timezone.utc), start, ende
         ))
+
+    def test_dokumentfehler_beenden_nicht_den_gesamten_lauf(self):
+        class ApiFehler(Exception):
+            def __init__(self, status_code):
+                super().__init__(f"HTTP {status_code}")
+                self.status_code = status_code
+
+        self.assertFalse(_ist_abbruchrelevanter_systemfehler(
+            RuntimeError("Rechnungsdatum fehlt")
+        ))
+        self.assertFalse(_ist_abbruchrelevanter_systemfehler(ApiFehler(400)))
+        self.assertTrue(_ist_abbruchrelevanter_systemfehler(ApiFehler(401)))
 
     async def test_fehlendes_quellpostfach_bricht_vor_import_ab(self):
         with self.assertRaisesRegex(RuntimeError, "marketing"):

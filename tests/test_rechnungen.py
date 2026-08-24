@@ -15,6 +15,7 @@ from app.mail_parser import rechnungsanhaenge
 from app.main import liste_rechnungen
 from app.models import Base, Mail, Postfach, Rechnung
 from app.rechnungen import (
+    _bild_mime_type,
     _zahlungsstatus_absichern,
     rechnungsdatei_aus_mail_laden,
     rechnung_aus_rohdaten_verarbeiten,
@@ -66,6 +67,15 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
         anhaenge = rechnungsanhaenge(EML)
         self.assertEqual(1, len(anhaenge))
         self.assertEqual(".pdf", anhaenge[0]["endung"])
+
+    def test_bildformat_wird_anhand_des_inhalts_statt_des_headers_erkannt(self):
+        jpeg = {"inhalt": b"\xff\xd8\xff\xe0daten", "mime_type": "image/png"}
+        png = {
+            "inhalt": b"\x89PNG\r\n\x1a\ndaten",
+            "mime_type": "application/octet-stream",
+        }
+        self.assertEqual("image/jpeg", _bild_mime_type(jpeg))
+        self.assertEqual("image/png", _bild_mime_type(png))
 
     def test_verrechnung_mit_guthaben_ist_nicht_offen(self):
         daten = _zahlungsstatus_absichern({
@@ -187,6 +197,34 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
                     await rechnung_aus_rohdaten_verarbeiten(session, mail, EML)
 
         dropbox_client.assert_not_called()
+
+    async def test_fehlendes_rechnungsdatum_nutzt_nachvollziehbar_eingangsdatum(self):
+        analyse = {
+            "ist_rechnung": True, "aussteller": "Test GmbH", "rechnungsnummer": "99",
+            "rechnungsdatum": "", "faellig_am": "", "bruttobetrag": 10.0,
+            "waehrung": "EUR", "zahlungsstatus": "offen",
+            "zahlungshinweis": "Bitte ueberweisen",
+        }
+        dbx = MagicMock()
+        with patch("app.rechnungen._analysiere", return_value=analyse), \
+             patch("app.rechnungen._dropbox_client", return_value=dbx):
+            async with SessionLocal() as session:
+                mail = await session.get(Mail, self.mail_id)
+                mail.empfangen_am = datetime(2026, 2, 4, 12, 0, tzinfo=timezone.utc)
+                await rechnung_aus_rohdaten_verarbeiten(
+                    session,
+                    mail,
+                    EML,
+                    zielordner="/Rechnungen/Eingang",
+                    jahresordner=False,
+                )
+                await session.commit()
+
+        pfad = dbx.files_upload.call_args.args[1]
+        self.assertTrue(pfad.startswith("/Rechnungen/Eingang/2026-02-04-"))
+        async with SessionLocal() as session:
+            rechnung = (await session.execute(select(Rechnung))).scalar_one()
+        self.assertIn("Eingangsdatum", rechnung.zahlungshinweis)
 
     async def test_komplettliste_sortiert_nach_mail_eingang_und_liefert_zeitpunkt(self):
         neuer_eingang = datetime(2026, 8, 5, 15, 0, tzinfo=timezone.utc)

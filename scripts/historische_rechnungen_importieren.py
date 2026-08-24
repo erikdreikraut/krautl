@@ -55,6 +55,40 @@ def _liegt_im_zeitraum(
     return start <= lokales_datum < ende_exklusiv
 
 
+def _ist_abbruchrelevanter_systemfehler(exc: Exception) -> bool:
+    """Trennt globale Ausfaelle von Fehlern eines einzelnen Dokuments."""
+    status_code = getattr(exc, "status_code", None)
+    if status_code == 400:
+        return False
+    if status_code in {401, 403, 408, 429}:
+        return True
+    if isinstance(status_code, int) and status_code >= 500:
+        return True
+
+    text = f"{type(exc).__name__}: {exc}".casefold()
+    system_signale = (
+        "authenticationerror",
+        "autherror",
+        "invalid_api_key",
+        "invalid_access_token",
+        "expired_access_token",
+        "rate_limit",
+        "ratelimit",
+        "overloaded",
+        "connectionerror",
+        "connecttimeout",
+        "readtimeout",
+        "databaseerror",
+        "operationalerror",
+    )
+    if any(signal in text for signal in system_signale):
+        return True
+    # RuntimeErrors in diesem Ablauf beschreiben meist ein einzelnes Dokument
+    # (unlesbares Format, fehlende Rechnungsangabe) und duerfen den gesamten
+    # Postfachlauf nicht stoppen. Unbekannte technische Exceptions dagegen ja.
+    return not isinstance(exc, RuntimeError)
+
+
 def _rechnungskandidaten_laden(
     config: PostfachConfig,
     ordner: str,
@@ -209,11 +243,19 @@ async def _kandidat_verarbeiten(
                 return {"status": "keine_rechnung"}
             await session.rollback()
             bekannte_message_ids.discard(message_id)
-            return {"status": "fehler", "detail": str(exc)}
+            return {
+                "status": "fehler",
+                "detail": str(exc),
+                "abbruchrelevant": False,
+            }
         except Exception as exc:
             await session.rollback()
             bekannte_message_ids.discard(message_id)
-            return {"status": "fehler", "detail": str(exc)}
+            return {
+                "status": "fehler",
+                "detail": str(exc),
+                "abbruchrelevant": _ist_abbruchrelevanter_systemfehler(exc),
+            }
 
         rechnungen = verarbeitet["rechnungen"]
         if mail.pruefstatus == HISTORISCH_KEINE_RECHNUNG:
@@ -301,7 +343,11 @@ async def importieren(
                     erneut_pruefen,
                 )
             except Exception as exc:
-                return {"status": "fehler", "detail": str(exc)}
+                return {
+                    "status": "fehler",
+                    "detail": str(exc),
+                    "abbruchrelevant": _ist_abbruchrelevanter_systemfehler(exc),
+                }
 
     for config in quellconfigs:
         ordner = QUELLORDNER
@@ -370,7 +416,10 @@ async def importieren(
                     ergebnis["keine_rechnung"] += 1
                     aufeinanderfolgende_fehler = 0
                 elif ausgang["status"] == "fehler":
-                    aufeinanderfolgende_fehler += 1
+                    if ausgang.get("abbruchrelevant", True):
+                        aufeinanderfolgende_fehler += 1
+                    else:
+                        aufeinanderfolgende_fehler = 0
                     ergebnis["fehler"].append(
                         f"{config.user}/{ordner}/UID {kandidat['uid']}: "
                         f"{ausgang['detail']}"
