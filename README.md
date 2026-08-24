@@ -368,4 +368,6 @@ einem Fortsetzungslauf nicht erneut per KI analysiert. Mit
 `--start`, `--ende-einschliesslich` und `--zielordner` angeben. Nach fünf
 aufeinanderfolgenden Abruf- oder Verarbeitungsfehlern bricht das Skript
 kontrolliert ab, damit eine fehlerhafte Konfiguration nicht den gesamten
-Posteingang mit Fehlversuchen durchläuft.
+Posteingang mit Fehlversuchen durchläuft. Standardmäßig laufen zwei
+Rechnungsanalysen gleichzeitig. `--parallelitaet 1` schaltet auf den
+langsameren seriellen Betrieb zurück; Werte bis höchstens `4` sind möglich.

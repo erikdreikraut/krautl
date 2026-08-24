@@ -1,3 +1,4 @@
+import asyncio
 import os
 import unittest
 from datetime import datetime, timezone
@@ -284,6 +285,47 @@ class HistorischeRechnungenTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(ergebnis["abgebrochen"])
         self.assertEqual(5, verarbeiten.await_count)
         self.assertIn("Sicherheitsabbruch", ergebnis["fehler"][-1])
+
+    async def test_rechnungsanalysen_laufen_begrenzt_parallel(self):
+        eingang = datetime(2026, 2, 3, 9, 5, tzinfo=timezone.utc)
+        kandidaten_liste = [
+            {"uid": uid, "ordner": "INBOX", "eingegangen_am": eingang}
+            for uid in range(1, 6)
+        ]
+        gleichzeitig = 0
+        maximal_gleichzeitig = 0
+
+        def kandidaten(config, _ordner, _start, _ende):
+            return (
+                (len(kandidaten_liste), kandidaten_liste)
+                if config.funktion == "info" else (0, [])
+            )
+
+        async def verarbeiten(*_args, **_kwargs):
+            nonlocal gleichzeitig, maximal_gleichzeitig
+            gleichzeitig += 1
+            maximal_gleichzeitig = max(maximal_gleichzeitig, gleichzeitig)
+            await asyncio.sleep(0.02)
+            gleichzeitig -= 1
+            return {"status": "keine_rechnung"}
+
+        with patch(
+            "scripts.historische_rechnungen_importieren._rechnungskandidaten_laden",
+            side_effect=kandidaten,
+        ), patch(
+            "scripts.historische_rechnungen_importieren._rohdaten_batch_laden",
+            side_effect=lambda _config, _ordner, uids: {uid: EML for uid in uids},
+        ), patch(
+            "scripts.historische_rechnungen_importieren.rechnungsanhaenge",
+            return_value=[{"dateiname": "rechnung.pdf"}],
+        ), patch(
+            "scripts.historische_rechnungen_importieren._kandidat_verarbeiten",
+            side_effect=verarbeiten,
+        ):
+            ergebnis = await importieren(configs=configs(), parallelitaet=2)
+
+        self.assertEqual(2, maximal_gleichzeitig)
+        self.assertEqual(5, ergebnis["keine_rechnung"])
 
 
 if __name__ == "__main__":

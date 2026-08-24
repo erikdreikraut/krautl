@@ -35,6 +35,7 @@ METADATEN_BATCH_GROESSE = 250
 ROHDATEN_BATCH_GROESSE = 5
 HISTORISCH_KEINE_RECHNUNG = "hist_keine_rg"
 MAX_AUFEINANDERFOLGENDE_FEHLER = 5
+STANDARD_PARALLELITAET = 2
 
 
 def _eingangsdatum_normalisieren(wert: datetime) -> datetime:
@@ -148,6 +149,10 @@ async def _kandidat_verarbeiten(
     message_id = geparst["message_id"]
     if message_id in bekannte_message_ids:
         return {"status": "uebersprungen"}
+    # Reservierung vor dem ersten await: Falls dieselbe Nachricht in mehreren
+    # Postfaechern liegt, kann sie auch bei paralleler Verarbeitung nur einmal
+    # gleichzeitig analysiert werden. Bei echten Fehlern wird sie freigegeben.
+    bekannte_message_ids.add(message_id)
 
     async with SessionLocal() as session:
         mail = (await session.execute(
@@ -164,7 +169,6 @@ async def _kandidat_verarbeiten(
                 mail.pruefstatus == HISTORISCH_KEINE_RECHNUNG
                 or bereits_importiert is not None
             ):
-                bekannte_message_ids.add(message_id)
                 return {"status": "uebersprungen"}
         if mail is None:
             mail = Mail(
@@ -202,12 +206,13 @@ async def _kandidat_verarbeiten(
                 mail.pruefstatus = HISTORISCH_KEINE_RECHNUNG
                 mail.im_krautl_posteingang = False
                 await session.commit()
-                bekannte_message_ids.add(message_id)
                 return {"status": "keine_rechnung"}
             await session.rollback()
+            bekannte_message_ids.discard(message_id)
             return {"status": "fehler", "detail": str(exc)}
         except Exception as exc:
             await session.rollback()
+            bekannte_message_ids.discard(message_id)
             return {"status": "fehler", "detail": str(exc)}
 
         rechnungen = verarbeitet["rechnungen"]
@@ -223,7 +228,6 @@ async def _kandidat_verarbeiten(
             ),
         ))
         await session.commit()
-        bekannte_message_ids.add(message_id)
         return {
             "status": "verarbeitet",
             "rechnungen": len(rechnungen),
@@ -239,11 +243,14 @@ async def importieren(
     zielordner: str = STANDARD_ZIELORDNER,
     configs: list[PostfachConfig] | None = None,
     erneut_pruefen: bool = False,
+    parallelitaet: int = STANDARD_PARALLELITAET,
 ) -> dict:
     if start > ende_einschliesslich:
         raise RuntimeError(
             "Das Startdatum darf nicht nach dem einschliesslichen Enddatum liegen"
         )
+    if not 1 <= parallelitaet <= 4:
+        raise RuntimeError("Parallelitaet muss zwischen 1 und 4 liegen")
     ende_exklusiv = ende_einschliesslich + timedelta(days=1)
     alle_configs = configs if configs is not None else lade_postfaecher()
     quellconfigs = [
@@ -275,6 +282,26 @@ async def importieren(
     bekannte_message_ids: set[str] = set()
     aufeinanderfolgende_fehler = 0
     aufeinanderfolgende_abruf_fehler = 0
+    analyse_semaphore = asyncio.Semaphore(parallelitaet)
+
+    async def kandidat_begrenzt_verarbeiten(
+        config: PostfachConfig,
+        ordner: str,
+        kandidat: dict,
+    ) -> dict:
+        async with analyse_semaphore:
+            try:
+                return await _kandidat_verarbeiten(
+                    config,
+                    ordner,
+                    kandidat,
+                    postfach_ids,
+                    zielordner,
+                    bekannte_message_ids,
+                    erneut_pruefen,
+                )
+            except Exception as exc:
+                return {"status": "fehler", "detail": str(exc)}
 
     for config in quellconfigs:
         ordner = QUELLORDNER
@@ -325,21 +352,20 @@ async def importieren(
                 continue
             aufeinanderfolgende_abruf_fehler = 0
 
+            analyse_kandidaten = []
             for kandidat in batch:
                 raw = rohdaten.get(kandidat["uid"])
                 if not raw or not rechnungsanhaenge(raw):
                     continue
                 postfach_kandidaten += 1
                 ergebnis["kandidaten"] += 1
-                ausgang = await _kandidat_verarbeiten(
-                    config,
-                    ordner,
-                    {**kandidat, "raw": raw},
-                    postfach_ids,
-                    zielordner,
-                    bekannte_message_ids,
-                    erneut_pruefen,
-                )
+                analyse_kandidaten.append({**kandidat, "raw": raw})
+
+            ausgaenge = await asyncio.gather(*(
+                kandidat_begrenzt_verarbeiten(config, ordner, kandidat)
+                for kandidat in analyse_kandidaten
+            ))
+            for kandidat, ausgang in zip(analyse_kandidaten, ausgaenge):
                 if ausgang["status"] == "keine_rechnung":
                     ergebnis["keine_rechnung"] += 1
                     aufeinanderfolgende_fehler = 0
@@ -391,6 +417,12 @@ def main() -> None:
         type=_datum_argument,
         default=STANDARD_ENDE_EINSCHLIESSLICH,
     )
+    parser.add_argument(
+        "--parallelitaet",
+        type=int,
+        default=STANDARD_PARALLELITAET,
+        help="Anzahl gleichzeitig laufender Rechnungsanalysen (1 bis 4)",
+    )
     parser.add_argument("--zielordner", default=STANDARD_ZIELORDNER)
     parser.add_argument(
         "--erneut-pruefen",
@@ -406,6 +438,7 @@ def main() -> None:
         ende_einschliesslich=args.ende_einschliesslich,
         zielordner=args.zielordner,
         erneut_pruefen=args.erneut_pruefen,
+        parallelitaet=args.parallelitaet,
     ))
     print("Historischer Rechnungslauf abgeschlossen:")
     for schluessel, wert in ergebnis.items():
