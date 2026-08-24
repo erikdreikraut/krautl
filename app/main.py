@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import mimetypes
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -715,8 +716,62 @@ async def mail_loeschen(
 
 
 @app.get("/aktionslog")
-async def liste_aktionslog(request: Request, session: AsyncSession = Depends(get_session)):
+async def liste_aktionslog(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    monat: str | None = None,
+    tag: str | None = None,
+    seite: int = 1,
+    pro_seite: int = 50,
+):
     _admin_erfordern(request)
+    if seite < 1:
+        raise HTTPException(status_code=422, detail="Seite muss mindestens 1 sein")
+    if pro_seite not in {25, 50, 100, 200}:
+        raise HTTPException(
+            status_code=422,
+            detail="Einträge pro Seite müssen 25, 50, 100 oder 200 sein",
+        )
+
+    berlin = ZoneInfo("Europe/Berlin")
+    start: datetime | None = None
+    ende: datetime | None = None
+    if tag:
+        try:
+            ausgewaehlter_tag = date.fromisoformat(tag)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail="Tag muss im Format YYYY-MM-DD angegeben werden"
+            ) from exc
+        if monat and tag[:7] != monat:
+            raise HTTPException(status_code=422, detail="Tag liegt nicht im gewählten Monat")
+        start = datetime.combine(ausgewaehlter_tag, datetime.min.time(), tzinfo=berlin)
+        ende = start + timedelta(days=1)
+    elif monat:
+        try:
+            jahr_text, monat_text = monat.split("-", 1)
+            jahr, monatsnummer = int(jahr_text), int(monat_text)
+            start = datetime(jahr, monatsnummer, 1, tzinfo=berlin)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=422, detail="Monat muss im Format YYYY-MM angegeben werden"
+            ) from exc
+        if monatsnummer == 12:
+            ende = datetime(jahr + 1, 1, 1, tzinfo=berlin)
+        else:
+            ende = datetime(jahr, monatsnummer + 1, 1, tzinfo=berlin)
+
+    filterbedingungen = []
+    if start is not None and ende is not None:
+        filterbedingungen.extend([
+            Aktionslog.erstellt_am >= start.astimezone(timezone.utc),
+            Aktionslog.erstellt_am < ende.astimezone(timezone.utc),
+        ])
+
+    gesamt = (await session.execute(
+        select(func.count(Aktionslog.id)).where(*filterbedingungen)
+    )).scalar_one()
+    seiten = max(1, (gesamt + pro_seite - 1) // pro_seite)
     result = await session.execute(
         select(
             Aktionslog,
@@ -724,19 +779,29 @@ async def liste_aktionslog(request: Request, session: AsyncSession = Depends(get
             Mail.absender_adresse,
         )
         .outerjoin(Mail, Aktionslog.mail_id == Mail.id)
+        .where(*filterbedingungen)
         .order_by(Aktionslog.erstellt_am.desc())
-        .limit(200)
+        .offset((seite - 1) * pro_seite)
+        .limit(pro_seite)
     )
-    return [
-        {
-            **{
-                spalte.name: getattr(eintrag, spalte.name)
-                for spalte in Aktionslog.__table__.columns
-            },
-            "mail_absender": absender_name or absender_adresse,
-        }
-        for eintrag, absender_name, absender_adresse in result.all()
-    ]
+    return {
+        "eintraege": [
+            {
+                **{
+                    spalte.name: getattr(eintrag, spalte.name)
+                    for spalte in Aktionslog.__table__.columns
+                },
+                "mail_absender": absender_name or absender_adresse,
+            }
+            for eintrag, absender_name, absender_adresse in result.all()
+        ],
+        "gesamt": gesamt,
+        "seite": seite,
+        "pro_seite": pro_seite,
+        "seiten": seiten,
+        "monat": monat,
+        "tag": tag,
+    }
 
 
 @app.post("/mails/{mail_id}/korrektur")

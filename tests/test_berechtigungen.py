@@ -56,12 +56,14 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
                     absender_name="Test", absender_adresse="test@example.test",
                     betreff="Erlaubt", text_auszug="Test", empfangen_am=datetime.now(timezone.utc),
                     klassifikation_id="KUNDE_TEST",
+                    zustaendig_admin=True,
                 ),
                 Mail(
                     message_id="<gesperrt@test>", postfach_id=postfach.id,
                     absender_name="Test", absender_adresse="test@example.test",
                     betreff="Gesperrt", text_auszug="Test", empfangen_am=datetime.now(timezone.utc),
                     klassifikation_id="RECHT_TEST",
+                    zustaendig_admin=True,
                 ),
             ])
             await session.commit()
@@ -171,9 +173,53 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
                 detail="KUNDE_TEST",
             ))
             await session.commit()
-            eintraege = await liste_aktionslog(request_fuer(ADMIN), session)
+            antwort = await liste_aktionslog(request_fuer(ADMIN), session)
 
-        self.assertEqual("Test", eintraege[0]["mail_absender"])
+        self.assertEqual("Test", antwort["eintraege"][0]["mail_absender"])
+
+    async def test_aktionslog_filtert_nach_monat_und_tag_und_paginiert(self):
+        async with SessionLocal() as session:
+            mail = (await session.execute(
+                select(Mail).where(Mail.klassifikation_id == "KUNDE_TEST")
+            )).scalar_one()
+            session.add_all([
+                Aktionslog(
+                    mail_id=mail.id,
+                    ereignis="klassifiziert",
+                    detail=f"Februar {nummer}",
+                    erstellt_am=datetime(2026, 2, 1, 10, nummer, tzinfo=timezone.utc),
+                )
+                for nummer in range(26)
+            ])
+            session.add_all([
+                Aktionslog(
+                    mail_id=mail.id,
+                    ereignis="bestaetigt",
+                    detail="Zweiter Februar",
+                    erstellt_am=datetime(2026, 2, 2, 10, 0, tzinfo=timezone.utc),
+                ),
+                Aktionslog(
+                    mail_id=mail.id,
+                    ereignis="bestaetigt",
+                    detail="März",
+                    erstellt_am=datetime(2026, 3, 1, 10, 0, tzinfo=timezone.utc),
+                ),
+            ])
+            await session.commit()
+
+            februar = await liste_aktionslog(
+                request_fuer(ADMIN), session, monat="2026-02", seite=2, pro_seite=25
+            )
+            zweiter_februar = await liste_aktionslog(
+                request_fuer(ADMIN), session,
+                monat="2026-02", tag="2026-02-02", pro_seite=25,
+            )
+
+        self.assertEqual(27, februar["gesamt"])
+        self.assertEqual(2, februar["seiten"])
+        self.assertEqual(2, len(februar["eintraege"]))
+        self.assertEqual(1, zweiter_februar["gesamt"])
+        self.assertEqual("Zweiter Februar", zweiter_februar["eintraege"][0]["detail"])
 
 
 if __name__ == "__main__":

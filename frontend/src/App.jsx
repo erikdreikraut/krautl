@@ -1287,14 +1287,107 @@ function KlassifikationenView({ katalog, onReload }) {
   );
 }
 
-function AktionslogView({ eintraege }) {
+function AktionslogView() {
+  const [monat, setMonat] = useState("");
+  const [tagImMonat, setTagImMonat] = useState("");
+  const [seite, setSeite] = useState(1);
+  const [proSeite, setProSeite] = useState(50);
+  const [antwort, setAntwort] = useState({ eintraege: [], gesamt: 0, seite: 1, seiten: 1 });
+  const [laedt, setLaedt] = useState(true);
+  const [fehler, setFehler] = useState("");
+
+  const tageImMonat = useMemo(() => {
+    if (!monat) return 0;
+    const [jahr, monatsnummer] = monat.split("-").map(Number);
+    return new Date(jahr, monatsnummer, 0).getDate();
+  }, [monat]);
+
+  useEffect(() => {
+    let aktiv = true;
+    setLaedt(true);
+    setFehler("");
+    const tag = monat && tagImMonat
+      ? `${monat}-${String(tagImMonat).padStart(2, "0")}`
+      : "";
+    api.aktionslog({ monat, tag, seite, proSeite })
+      .then((daten) => {
+        if (aktiv) setAntwort(daten);
+      })
+      .catch((error) => {
+        if (aktiv) setFehler(error.message);
+      })
+      .finally(() => {
+        if (aktiv) setLaedt(false);
+      });
+    return () => { aktiv = false; };
+  }, [monat, tagImMonat, seite, proSeite]);
+
+  const eintraege = antwort.eintraege ?? [];
+  const ersterEintrag = antwort.gesamt === 0 ? 0 : (antwort.seite - 1) * antwort.pro_seite + 1;
+  const letzterEintrag = Math.min(antwort.gesamt, antwort.seite * antwort.pro_seite);
+
   return (
     <div className="flex-1 overflow-y-auto px-8 py-6 content-view action-log-view">
       <h2 style={{ ...fontDisplay, fontSize: "20px", color: tokens.mossDeep, marginBottom: "4px" }}>Aktionslog</h2>
-      <p className="mb-5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
+      <p className="mb-4" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
         Was Krautl tatsächlich getan hat — Klassifizierungen, Bestätigungen und Verschiebe-Versuche,
         neueste zuerst.
       </p>
+
+      <div className="action-log-filter flex items-end gap-3 mb-4" style={{ flexWrap: "wrap" }}>
+        <label style={{ ...fontUI, fontSize: "11px", color: tokens.inkMuted }}>
+          <span className="block mb-1">MONAT</span>
+          <input
+            type="month"
+            value={monat}
+            onChange={(event) => {
+              setMonat(event.target.value);
+              setTagImMonat("");
+              setSeite(1);
+            }}
+            style={{ border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised, padding: "7px 9px", color: tokens.ink }}
+          />
+        </label>
+        <label style={{ ...fontUI, fontSize: "11px", color: tokens.inkMuted }}>
+          <span className="block mb-1">TAG (OPTIONAL)</span>
+          <select
+            value={tagImMonat}
+            disabled={!monat}
+            onChange={(event) => { setTagImMonat(event.target.value); setSeite(1); }}
+            style={{ minWidth: "105px", border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised, padding: "8px 9px", color: tokens.ink }}
+          >
+            <option value="">Alle Tage</option>
+            {Array.from({ length: tageImMonat }, (_, index) => index + 1).map((tag) => (
+              <option key={tag} value={tag}>{tag}.</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ ...fontUI, fontSize: "11px", color: tokens.inkMuted }}>
+          <span className="block mb-1">EINTRÄGE PRO SEITE</span>
+          <select
+            value={proSeite}
+            onChange={(event) => { setProSeite(Number(event.target.value)); setSeite(1); }}
+            style={{ minWidth: "90px", border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised, padding: "8px 9px", color: tokens.ink }}
+          >
+            {[25, 50, 100, 200].map((anzahl) => <option key={anzahl} value={anzahl}>{anzahl}</option>)}
+          </select>
+        </label>
+        {(monat || tagImMonat) && (
+          <button
+            type="button"
+            onClick={() => { setMonat(""); setTagImMonat(""); setSeite(1); }}
+            style={{ ...fontUI, fontSize: "12px", border: `1px solid ${tokens.line}`, borderRadius: "6px", padding: "8px 11px", background: tokens.paperRaised, color: tokens.inkMuted }}
+          >
+            Filter löschen
+          </button>
+        )}
+      </div>
+
+      {fehler && (
+        <div className="mb-4 px-4 py-3" style={{ ...fontUI, fontSize: "12.5px", color: tokens.rust, background: tokens.rustPale, border: `1px solid ${tokens.rust}`, borderRadius: "6px" }}>
+          Aktionslog konnte nicht geladen werden: {fehler}
+        </div>
+      )}
 
       <div className="action-log-table" style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
         <div className="grid px-4 py-2.5 action-log-head" style={{ gridTemplateColumns: "1fr 1.35fr 1.45fr 1.1fr 2.3fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
@@ -1306,16 +1399,44 @@ function AktionslogView({ eintraege }) {
             <div>
               <Badge label={(EREIGNIS_LABEL[e.ereignis] ?? e.ereignis).toUpperCase()} color={farbeFuerEreignis(e.ereignis)} />
             </div>
-            <div style={{ ...fontSerif, fontSize: "13.5px" }}>{e.mailVon}</div>
+            <div style={{ ...fontSerif, fontSize: "13.5px" }}>{e.mail_absender || "—"}</div>
             <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.ink }}>{e.ausgeloest_von || "Krautl"}</div>
             <div style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, wordBreak: "break-word" }}>{e.detail}</div>
           </div>
         ))}
-        {eintraege.length === 0 && (
+        {!laedt && !fehler && eintraege.length === 0 && (
           <div className="px-4 py-6 text-center" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
-            Noch keine Aktionen protokolliert.
+            Für diesen Zeitraum wurden keine Aktionen protokolliert.
           </div>
         )}
+        {laedt && (
+          <div className="px-4 py-6 text-center" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
+            Aktionslog wird geladen …
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between gap-3 mt-4" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, flexWrap: "wrap" }}>
+        <span>{ersterEintrag}–{letzterEintrag} von {antwort.gesamt} Einträgen</span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={seite <= 1 || laedt}
+            onClick={() => setSeite((wert) => Math.max(1, wert - 1))}
+            style={{ border: `1px solid ${tokens.line}`, borderRadius: "6px", padding: "7px 11px", background: tokens.paperRaised, color: tokens.ink, opacity: seite <= 1 || laedt ? 0.45 : 1 }}
+          >
+            Zurück
+          </button>
+          <span>Seite {antwort.seite} von {antwort.seiten}</span>
+          <button
+            type="button"
+            disabled={seite >= antwort.seiten || laedt}
+            onClick={() => setSeite((wert) => wert + 1)}
+            style={{ border: `1px solid ${tokens.line}`, borderRadius: "6px", padding: "7px 11px", background: tokens.paperRaised, color: tokens.ink, opacity: seite >= antwort.seiten || laedt ? 0.45 : 1 }}
+          >
+            Weiter
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1331,12 +1452,11 @@ function verwendeKrautlDaten(onNichtAngemeldet, benutzer, alleMails) {
     laedt.current = true;
     try {
       const istAdmin = benutzer?.rolle === "admin";
-      const [health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, aktionslog, rollenMailzugriff] = await Promise.all([
+      const [health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, rollenMailzugriff] = await Promise.all([
         api.health(), api.mails(alleMails), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.wissensbasis(), api.wissensvorschlaege(), api.entwuerfe(alleMails),
-        istAdmin ? api.aktionslog() : Promise.resolve([]),
         istAdmin ? api.rollenMailzugriff() : Promise.resolve(null),
       ]);
-      setDaten({ health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, aktionslog, rollenMailzugriff });
+      setDaten({ health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, rollenMailzugriff });
       setFehler(null);
     } catch (e) {
       if (e.status === 401) {
@@ -1547,15 +1667,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
       };
     });
 
-    const aktionslog = daten.aktionslog.map((e) => {
-      const mail = e.mail_id != null ? mailsNachId[e.mail_id] : null;
-      return {
-        ...e,
-        mailVon: e.mail_absender || mail?.absender_name || mail?.absender_adresse || "—",
-      };
-    });
-
-    return { mails, faqVorschlaege, aktionslog };
+    return { mails, faqVorschlaege };
   }, [daten]);
 
   if (fehler) {
@@ -1636,7 +1748,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
       {tab === "rechnungen" && <RechnungenView rechnungen={daten.rechnungen} onReload={neuLaden} />}
       {tab === "wissen" && <WissensdatenbankViewNeu basis={daten.wissensbasis} faqEintraege={daten.faq} vorschlaege={daten.wissensvorschlaege} onReload={neuLaden} />}
       {tab === "klassifikationen" && <KlassifikationenView katalog={daten.katalog} onReload={neuLaden} />}
-      {tab === "aktionslog" && <AktionslogView eintraege={abgeleitet.aktionslog} />}
+      {tab === "aktionslog" && <AktionslogView />}
       {tab === "rollen" && daten.rollenMailzugriff && <RollenMailzugriffView konfiguration={daten.rollenMailzugriff} onReload={neuLaden} />}
     </div>
   );
