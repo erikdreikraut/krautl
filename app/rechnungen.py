@@ -333,7 +333,6 @@ async def rechnung_aus_rohdaten_verarbeiten(
     if not anhaenge:
         raise RuntimeError("Kein unterstützter Rechnungsanhang gefunden")
 
-    dbx = await asyncio.to_thread(_dropbox_client)
     verarbeitet = []
     gruppen: dict[str, dict] = {}
     for anhang in anhaenge:
@@ -347,6 +346,11 @@ async def rechnung_aus_rohdaten_verarbeiten(
 
     if not gruppen:
         raise RuntimeError("Anhänge enthalten laut Auswertung keine Rechnung")
+
+    # Dropbox wird erst benoetigt, nachdem mindestens ein Anhang tatsaechlich
+    # als Rechnung erkannt wurde. Negative Befunde bleiben dadurch unabhaengig
+    # von der Dropbox-Verbindung und erzeugen keinen unnoetigen API-Aufruf.
+    dbx = await asyncio.to_thread(_dropbox_client)
 
     for schluessel, gruppe in gruppen.items():
         daten = gruppe["daten"]

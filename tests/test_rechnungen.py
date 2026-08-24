@@ -176,6 +176,18 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
             pfad,
         )
 
+    async def test_negativer_rechnungsbefund_benoetigt_keine_dropbox_verbindung(self):
+        analyse = {"ist_rechnung": False}
+        dropbox_client = MagicMock(side_effect=RuntimeError("Dropbox nicht verbunden"))
+        with patch("app.rechnungen._analysiere", return_value=analyse), \
+             patch("app.rechnungen._dropbox_client", dropbox_client):
+            async with SessionLocal() as session:
+                mail = await session.get(Mail, self.mail_id)
+                with self.assertRaisesRegex(RuntimeError, "keine Rechnung"):
+                    await rechnung_aus_rohdaten_verarbeiten(session, mail, EML)
+
+        dropbox_client.assert_not_called()
+
     async def test_komplettliste_sortiert_nach_mail_eingang_und_liefert_zeitpunkt(self):
         neuer_eingang = datetime(2026, 8, 5, 15, 0, tzinfo=timezone.utc)
         alter_eingang = neuer_eingang - timedelta(days=4)

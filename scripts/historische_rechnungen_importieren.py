@@ -27,7 +27,14 @@ QUELLORDNER = "INBOX"
 STANDARD_START = date(2026, 2, 1)
 STANDARD_ENDE_EINSCHLIESSLICH = date(2026, 4, 30)
 STANDARD_ZIELORDNER = "/Rechnungen/Eingang"
-BATCH_GROESSE = 25
+METADATEN_BATCH_GROESSE = 250
+# Vollstaendige Mails koennen durch PDF- oder Bildanhaenge sehr gross sein.
+# Nur wenige davon gleichzeitig im Speicher zu halten verhindert, dass der
+# Container bei umfangreichen Postfaechern erneut vom Betriebssystem beendet
+# wird (Exit 137).
+ROHDATEN_BATCH_GROESSE = 5
+HISTORISCH_KEINE_RECHNUNG = "hist_keine_rg"
+MAX_AUFEINANDERFOLGENDE_FEHLER = 5
 
 
 def _eingangsdatum_normalisieren(wert: datetime) -> datetime:
@@ -65,8 +72,8 @@ def _rechnungskandidaten_laden(
         uids = client.search(["SINCE", start, "BEFORE", ende_exklusiv])
         uids_im_zeitraum = []
         eingangszeiten = {}
-        for position in range(0, len(uids), BATCH_GROESSE):
-            batch = uids[position:position + BATCH_GROESSE]
+        for position in range(0, len(uids), METADATEN_BATCH_GROESSE):
+            batch = uids[position:position + METADATEN_BATCH_GROESSE]
             metadaten = client.fetch(batch, ["INTERNALDATE"])
             for uid in batch:
                 eingegangen_am = metadaten.get(uid, {}).get(b"INTERNALDATE")
@@ -135,17 +142,30 @@ async def _kandidat_verarbeiten(
     postfach_ids: dict[str, int],
     zielordner: str,
     bekannte_message_ids: set[str],
+    erneut_pruefen: bool = False,
 ) -> dict:
     geparst = parse_eml(kandidat["raw"])
     message_id = geparst["message_id"]
     if message_id in bekannte_message_ids:
         return {"status": "uebersprungen"}
-    bekannte_message_ids.add(message_id)
 
     async with SessionLocal() as session:
         mail = (await session.execute(
             select(Mail).where(Mail.message_id == message_id)
         )).scalar_one_or_none()
+        if mail is not None and not erneut_pruefen:
+            bereits_importiert = (await session.execute(
+                select(Aktionslog.id).where(
+                    Aktionslog.mail_id == mail.id,
+                    Aktionslog.ereignis == "historische_rechnung_importiert",
+                ).limit(1)
+            )).scalar_one_or_none()
+            if (
+                mail.pruefstatus == HISTORISCH_KEINE_RECHNUNG
+                or bereits_importiert is not None
+            ):
+                bekannte_message_ids.add(message_id)
+                return {"status": "uebersprungen"}
         if mail is None:
             mail = Mail(
                 message_id=message_id,
@@ -176,15 +196,23 @@ async def _kandidat_verarbeiten(
                 dubletten_erneut_ablegen=True,
             )
         except RuntimeError as exc:
-            await session.rollback()
             if "enthalten laut Auswertung keine Rechnung" in str(exc):
+                # Auch ein negativer Befund wird gespeichert. Sonst wuerde ein
+                # fortgesetzter Lauf denselben Anhang erneut per KI pruefen.
+                mail.pruefstatus = HISTORISCH_KEINE_RECHNUNG
+                mail.im_krautl_posteingang = False
+                await session.commit()
+                bekannte_message_ids.add(message_id)
                 return {"status": "keine_rechnung"}
+            await session.rollback()
             return {"status": "fehler", "detail": str(exc)}
         except Exception as exc:
             await session.rollback()
             return {"status": "fehler", "detail": str(exc)}
 
         rechnungen = verarbeitet["rechnungen"]
+        if mail.pruefstatus == HISTORISCH_KEINE_RECHNUNG:
+            mail.pruefstatus = "geprueft"
         session.add(Aktionslog(
             mail_id=mail.id,
             ereignis="historische_rechnung_importiert",
@@ -195,6 +223,7 @@ async def _kandidat_verarbeiten(
             ),
         ))
         await session.commit()
+        bekannte_message_ids.add(message_id)
         return {
             "status": "verarbeitet",
             "rechnungen": len(rechnungen),
@@ -209,7 +238,12 @@ async def importieren(
     ende_einschliesslich: date = STANDARD_ENDE_EINSCHLIESSLICH,
     zielordner: str = STANDARD_ZIELORDNER,
     configs: list[PostfachConfig] | None = None,
+    erneut_pruefen: bool = False,
 ) -> dict:
+    if start > ende_einschliesslich:
+        raise RuntimeError(
+            "Das Startdatum darf nicht nach dem einschliesslichen Enddatum liegen"
+        )
     ende_exklusiv = ende_einschliesslich + timedelta(days=1)
     alle_configs = configs if configs is not None else lade_postfaecher()
     quellconfigs = [
@@ -233,10 +267,14 @@ async def importieren(
         "rechnungen": 0,
         "dubletten": 0,
         "keine_rechnung": 0,
+        "uebersprungen": 0,
+        "abgebrochen": False,
         "fehler": [],
         "zielordner": "/" + zielordner.strip("/"),
     }
     bekannte_message_ids: set[str] = set()
+    aufeinanderfolgende_fehler = 0
+    aufeinanderfolgende_abruf_fehler = 0
 
     for config in quellconfigs:
         ordner = QUELLORDNER
@@ -261,18 +299,31 @@ async def importieren(
         )
 
         postfach_kandidaten = 0
-        for position in range(0, len(kandidaten), BATCH_GROESSE):
-            batch = kandidaten[position:position + BATCH_GROESSE]
+        for position in range(0, len(kandidaten), ROHDATEN_BATCH_GROESSE):
+            batch = kandidaten[position:position + ROHDATEN_BATCH_GROESSE]
             uids = [kandidat["uid"] for kandidat in batch]
             try:
                 rohdaten = await asyncio.to_thread(
                     _rohdaten_batch_laden, config, ordner, uids
                 )
             except Exception as exc:
+                aufeinanderfolgende_abruf_fehler += 1
                 ergebnis["fehler"].append(
                     f"{config.user}/{ordner}/UIDs {uids[0]}–{uids[-1]}: Abruf: {exc}"
                 )
+                if (
+                    aufeinanderfolgende_abruf_fehler
+                    >= MAX_AUFEINANDERFOLGENDE_FEHLER
+                ):
+                    ergebnis["abgebrochen"] = True
+                    ergebnis["fehler"].append(
+                        "Sicherheitsabbruch nach "
+                        f"{MAX_AUFEINANDERFOLGENDE_FEHLER} "
+                        "aufeinanderfolgenden Mail-Abruffehlern"
+                    )
+                    return ergebnis
                 continue
+            aufeinanderfolgende_abruf_fehler = 0
 
             for kandidat in batch:
                 raw = rohdaten.get(kandidat["uid"])
@@ -287,17 +338,34 @@ async def importieren(
                     postfach_ids,
                     zielordner,
                     bekannte_message_ids,
+                    erneut_pruefen,
                 )
                 if ausgang["status"] == "keine_rechnung":
                     ergebnis["keine_rechnung"] += 1
+                    aufeinanderfolgende_fehler = 0
                 elif ausgang["status"] == "fehler":
+                    aufeinanderfolgende_fehler += 1
                     ergebnis["fehler"].append(
                         f"{config.user}/{ordner}/UID {kandidat['uid']}: "
                         f"{ausgang['detail']}"
                     )
+                    if (
+                        aufeinanderfolgende_fehler
+                        >= MAX_AUFEINANDERFOLGENDE_FEHLER
+                    ):
+                        ergebnis["abgebrochen"] = True
+                        ergebnis["fehler"].append(
+                            "Sicherheitsabbruch nach "
+                            f"{MAX_AUFEINANDERFOLGENDE_FEHLER} "
+                            "aufeinanderfolgenden Verarbeitungsfehlern"
+                        )
+                        return ergebnis
                 elif ausgang["status"] == "verarbeitet":
+                    aufeinanderfolgende_fehler = 0
                     ergebnis["rechnungen"] += ausgang["rechnungen"]
                     ergebnis["dubletten"] += ausgang["dubletten"]
+                elif ausgang["status"] == "uebersprungen":
+                    ergebnis["uebersprungen"] += 1
 
             print(
                 f"{config.user}/{ordner}: {min(position + len(batch), anzahl)} "
@@ -324,11 +392,20 @@ def main() -> None:
         default=STANDARD_ENDE_EINSCHLIESSLICH,
     )
     parser.add_argument("--zielordner", default=STANDARD_ZIELORDNER)
+    parser.add_argument(
+        "--erneut-pruefen",
+        action="store_true",
+        help=(
+            "Auch bereits importierte oder als Nicht-Rechnung erkannte "
+            "Anhaenge erneut analysieren"
+        ),
+    )
     args = parser.parse_args()
     ergebnis = asyncio.run(importieren(
         start=args.start,
         ende_einschliesslich=args.ende_einschliesslich,
         zielordner=args.zielordner,
+        erneut_pruefen=args.erneut_pruefen,
     ))
     print("Historischer Rechnungslauf abgeschlossen:")
     for schluessel, wert in ergebnis.items():
@@ -339,6 +416,8 @@ def main() -> None:
         print(f"  fehler: {len(ergebnis['fehler'])}")
         for fehler in ergebnis["fehler"]:
             print(f"    - {fehler}")
+    if ergebnis["abgebrochen"]:
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":

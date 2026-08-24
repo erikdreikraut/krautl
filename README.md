@@ -360,6 +360,12 @@ docker compose exec app python -m scripts.historische_rechnungen_importieren
 Bei der Dropbox-App `krautl Elestio` entspricht das lokal dem synchronisierten
 Ordner `Apps/krautl Elestio/Rechnungen/Eingang`. Der Lauf ist wiederholbar:
 Message-IDs, Rechnungsmerkmale und deterministische Dateinamen verhindern
-zusätzliche Rechnungsdatensätze und Dateikopien. Abweichende Zeiträume und
-Zielordner lassen sich mit `--start`, `--ende-einschliesslich` und
-`--zielordner` angeben.
+zusätzliche Rechnungsdatensätze und Dateikopien. Erfolgreiche Importe und als
+Nicht-Rechnung erkannte Anhänge werden als Fortschritt gespeichert und bei
+einem Fortsetzungslauf nicht erneut per KI analysiert. Mit
+`--erneut-pruefen` kann diese Sperre für einen bewussten Kontrolllauf
+übergangen werden. Abweichende Zeiträume und Zielordner lassen sich mit
+`--start`, `--ende-einschliesslich` und `--zielordner` angeben. Nach fünf
+aufeinanderfolgenden Abruf- oder Verarbeitungsfehlern bricht das Skript
+kontrolliert ab, damit eine fehlerhafte Konfiguration nicht den gesamten
+Posteingang mit Fehlversuchen durchläuft.

@@ -14,7 +14,12 @@ from sqlalchemy import select
 from app.db import SessionLocal, engine
 from app.imap_client import PostfachConfig
 from app.models import Base, Mail, Postfach
-from scripts.historische_rechnungen_importieren import _liegt_im_zeitraum, importieren
+from scripts.historische_rechnungen_importieren import (
+    HISTORISCH_KEINE_RECHNUNG,
+    ROHDATEN_BATCH_GROESSE,
+    _liegt_im_zeitraum,
+    importieren,
+)
 
 
 EML = b"""From: Lieferant <rechnung@example.test>\r
@@ -126,6 +131,159 @@ class HistorischeRechnungenTest(unittest.IsolatedAsyncioTestCase):
     async def test_fehlendes_quellpostfach_bricht_vor_import_ab(self):
         with self.assertRaisesRegex(RuntimeError, "marketing"):
             await importieren(configs=configs()[:-1])
+
+    async def test_negativer_befund_wird_beim_fortsetzen_nicht_neu_analysiert(self):
+        eingang = datetime(2026, 2, 3, 9, 5, tzinfo=timezone.utc)
+
+        def kandidaten(config, _ordner, _start, _ende):
+            if config.funktion == "info":
+                return 1, [{
+                    "uid": 42,
+                    "ordner": "INBOX",
+                    "eingegangen_am": eingang,
+                }]
+            return 0, []
+
+        verarbeiten = AsyncMock(side_effect=RuntimeError(
+            "Anhaenge enthalten laut Auswertung keine Rechnung"
+        ))
+        with patch(
+            "scripts.historische_rechnungen_importieren._rechnungskandidaten_laden",
+            side_effect=kandidaten,
+        ), patch(
+            "scripts.historische_rechnungen_importieren._rohdaten_batch_laden",
+            return_value={42: EML},
+        ), patch(
+            "scripts.historische_rechnungen_importieren.rechnung_aus_rohdaten_verarbeiten",
+            verarbeiten,
+        ):
+            erstes = await importieren(configs=configs())
+            zweites = await importieren(configs=configs())
+            verarbeiten.side_effect = None
+            verarbeiten.return_value = {
+                "rechnungen": [{"id": 1, "dublette": False}]
+            }
+            erzwungen = await importieren(
+                configs=configs(),
+                erneut_pruefen=True,
+            )
+
+        self.assertEqual(1, erstes["keine_rechnung"])
+        self.assertEqual(1, zweites["uebersprungen"])
+        self.assertEqual(1, erzwungen["rechnungen"])
+        self.assertEqual(2, verarbeiten.await_count)
+        async with SessionLocal() as session:
+            mail = (await session.execute(select(Mail))).scalar_one()
+        self.assertEqual("geprueft", mail.pruefstatus)
+        self.assertFalse(mail.im_krautl_posteingang)
+
+    async def test_erfolgreicher_import_wird_beim_fortsetzen_uebersprungen(self):
+        eingang = datetime(2026, 2, 3, 9, 5, tzinfo=timezone.utc)
+
+        def kandidaten(config, _ordner, _start, _ende):
+            if config.funktion == "info":
+                return 1, [{
+                    "uid": 42,
+                    "ordner": "INBOX",
+                    "eingegangen_am": eingang,
+                }]
+            return 0, []
+
+        verarbeiten = AsyncMock(return_value={
+            "rechnungen": [{"id": 1, "dublette": False}]
+        })
+        with patch(
+            "scripts.historische_rechnungen_importieren._rechnungskandidaten_laden",
+            side_effect=kandidaten,
+        ), patch(
+            "scripts.historische_rechnungen_importieren._rohdaten_batch_laden",
+            return_value={42: EML},
+        ), patch(
+            "scripts.historische_rechnungen_importieren.rechnung_aus_rohdaten_verarbeiten",
+            verarbeiten,
+        ):
+            erstes = await importieren(configs=configs())
+            zweites = await importieren(configs=configs())
+
+        self.assertEqual(1, erstes["rechnungen"])
+        self.assertEqual(1, zweites["uebersprungen"])
+        verarbeiten.assert_awaited_once()
+
+    async def test_rohdaten_werden_nur_in_kleinen_bloecken_geladen(self):
+        eingang = datetime(2026, 2, 3, 9, 5, tzinfo=timezone.utc)
+        kandidaten_liste = [
+            {"uid": uid, "ordner": "INBOX", "eingegangen_am": eingang}
+            for uid in range(1, 13)
+        ]
+        batchgroessen = []
+
+        def kandidaten(config, _ordner, _start, _ende):
+            return (
+                (len(kandidaten_liste), kandidaten_liste)
+                if config.funktion == "info" else (0, [])
+            )
+
+        def rohdaten(_config, _ordner, uids):
+            batchgroessen.append(len(uids))
+            return {}
+
+        with patch(
+            "scripts.historische_rechnungen_importieren._rechnungskandidaten_laden",
+            side_effect=kandidaten,
+        ), patch(
+            "scripts.historische_rechnungen_importieren._rohdaten_batch_laden",
+            side_effect=rohdaten,
+        ):
+            await importieren(configs=configs())
+
+        self.assertEqual(
+            [ROHDATEN_BATCH_GROESSE, ROHDATEN_BATCH_GROESSE, 2],
+            batchgroessen,
+        )
+
+    async def test_ungueltiger_zeitraum_wird_abgewiesen(self):
+        with self.assertRaisesRegex(RuntimeError, "Startdatum"):
+            await importieren(
+                start=datetime(2026, 5, 1).date(),
+                ende_einschliesslich=datetime(2026, 4, 30).date(),
+                configs=configs(),
+            )
+
+    async def test_wiederholte_systemfehler_brechen_den_lauf_sicher_ab(self):
+        eingang = datetime(2026, 2, 3, 9, 5, tzinfo=timezone.utc)
+        kandidaten_liste = [
+            {"uid": uid, "ordner": "INBOX", "eingegangen_am": eingang}
+            for uid in range(1, 13)
+        ]
+
+        def kandidaten(config, _ordner, _start, _ende):
+            return (
+                (len(kandidaten_liste), kandidaten_liste)
+                if config.funktion == "info" else (0, [])
+            )
+
+        verarbeiten = AsyncMock(return_value={
+            "status": "fehler",
+            "detail": "API-Zugang ungueltig",
+        })
+        with patch(
+            "scripts.historische_rechnungen_importieren._rechnungskandidaten_laden",
+            side_effect=kandidaten,
+        ), patch(
+            "scripts.historische_rechnungen_importieren._rohdaten_batch_laden",
+            side_effect=lambda _config, _ordner, uids: {uid: EML for uid in uids},
+        ), patch(
+            "scripts.historische_rechnungen_importieren.rechnungsanhaenge",
+            return_value=[{"dateiname": "rechnung.pdf"}],
+        ), patch(
+            "scripts.historische_rechnungen_importieren._kandidat_verarbeiten",
+            verarbeiten,
+        ):
+            ergebnis = await importieren(configs=configs())
+
+        self.assertTrue(ergebnis["abgebrochen"])
+        self.assertEqual(5, verarbeiten.await_count)
+        self.assertIn("Sicherheitsabbruch", ergebnis["fehler"][-1])
 
 
 if __name__ == "__main__":
