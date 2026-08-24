@@ -1,4 +1,4 @@
-"""Importiert historische Rechnungen aus den vier operativen Postfächern.
+"""Importiert historische Rechnungen aus den vier operativen Maileingängen.
 
 Der Lauf liest IMAP ausschließlich. Mails werden weder markiert noch verschoben
 oder gelöscht. Nur tatsächliche Rechnungen werden als ausgeblendete Quellmail
@@ -10,6 +10,7 @@ und deterministischen Dateinamen wiederholbar.
 import argparse
 import asyncio
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from imapclient import IMAPClient
 from sqlalchemy import select
@@ -22,31 +23,28 @@ from app.rechnungen import rechnung_aus_rohdaten_verarbeiten
 
 
 QUELLFUNKTIONEN = {"info", "service", "einkauf", "marketing"}
-AUSGESCHLOSSENE_ORDNERTYPEN = {
-    "\\sent", "\\drafts", "\\trash", "\\junk", "\\noselect",
-}
+QUELLORDNER = "INBOX"
 STANDARD_START = date(2026, 2, 1)
 STANDARD_ENDE_EINSCHLIESSLICH = date(2026, 4, 30)
 STANDARD_ZIELORDNER = "/Rechnungen/Eingang"
 BATCH_GROESSE = 25
 
 
-def _flag_text(flag) -> str:
-    if isinstance(flag, bytes):
-        return flag.decode("ascii", errors="ignore").casefold()
-    return str(flag).casefold()
+def _eingangsdatum_normalisieren(wert: datetime) -> datetime:
+    if wert.tzinfo is None:
+        return wert.replace(tzinfo=timezone.utc)
+    return wert.astimezone(timezone.utc)
 
 
-def _durchsuchbare_ordner(config: PostfachConfig) -> list[str]:
-    with IMAPClient(config.host, ssl=True, timeout=60) as client:
-        client.login(config.user, config.password)
-        ordner = []
-        for flags, _trennzeichen, name in client.list_folders():
-            normalisierte_flags = {_flag_text(flag) for flag in flags}
-            if normalisierte_flags & AUSGESCHLOSSENE_ORDNERTYPEN:
-                continue
-            ordner.append(name)
-        return ordner
+def _liegt_im_zeitraum(
+    eingegangen_am: datetime,
+    start: date,
+    ende_exklusiv: date,
+) -> bool:
+    lokales_datum = _eingangsdatum_normalisieren(eingegangen_am).astimezone(
+        ZoneInfo("Europe/Berlin")
+    ).date()
+    return start <= lokales_datum < ende_exklusiv
 
 
 def _rechnungskandidaten_laden(
@@ -55,34 +53,57 @@ def _rechnungskandidaten_laden(
     start: date,
     ende_exklusiv: date,
 ) -> tuple[int, list[dict]]:
-    """Lädt nur Mails mit einem technisch unterstützten Rechnungsanhang."""
+    """Ermittelt zeitlich passende UIDs, ohne vollständige Mails zu laden.
+
+    Das IMAP-Suchergebnis wird anhand von INTERNALDATE nochmals lokal geprüft.
+    So kann ein Server, der die Datumsbedingung ungenau auswertet, keine fremden
+    Zeiträume in die teurere Rechnungsanalyse einschleusen.
+    """
     with IMAPClient(config.host, ssl=True, timeout=60) as client:
         client.login(config.user, config.password)
         client.select_folder(ordner, readonly=True)
         uids = client.search(["SINCE", start, "BEFORE", ende_exklusiv])
-        kandidaten = []
+        uids_im_zeitraum = []
+        eingangszeiten = {}
         for position in range(0, len(uids), BATCH_GROESSE):
             batch = uids[position:position + BATCH_GROESSE]
-            daten = client.fetch(batch, ["RFC822", "INTERNALDATE"])
+            metadaten = client.fetch(batch, ["INTERNALDATE"])
             for uid in batch:
-                eintrag = daten.get(uid, {})
-                raw = eintrag.get(b"RFC822")
-                if not raw or not rechnungsanhaenge(raw):
-                    continue
-                eingegangen_am = eintrag.get(b"INTERNALDATE")
+                eingegangen_am = metadaten.get(uid, {}).get(b"INTERNALDATE")
                 if eingegangen_am is None:
-                    eingegangen_am = parse_eml(raw)["empfangen_am"]
-                elif eingegangen_am.tzinfo is None:
-                    eingegangen_am = eingegangen_am.replace(tzinfo=timezone.utc)
-                else:
-                    eingegangen_am = eingegangen_am.astimezone(timezone.utc)
-                kandidaten.append({
-                    "uid": uid,
-                    "ordner": ordner,
-                    "raw": raw,
-                    "eingegangen_am": eingegangen_am,
-                })
-        return len(uids), kandidaten
+                    continue
+                eingegangen_am = _eingangsdatum_normalisieren(eingegangen_am)
+                if not _liegt_im_zeitraum(eingegangen_am, start, ende_exklusiv):
+                    continue
+                uids_im_zeitraum.append(uid)
+                eingangszeiten[uid] = eingegangen_am
+
+        kandidaten = [
+            {
+                "uid": uid,
+                "ordner": ordner,
+                "eingegangen_am": eingangszeiten[uid],
+            }
+            for uid in uids_im_zeitraum
+        ]
+        return len(uids_im_zeitraum), kandidaten
+
+
+def _rohdaten_batch_laden(
+    config: PostfachConfig,
+    ordner: str,
+    uids: list[int],
+) -> dict[int, bytes]:
+    """Lädt höchstens einen kleinen Batch vollständiger Mails aus INBOX."""
+    with IMAPClient(config.host, ssl=True, timeout=60) as client:
+        client.login(config.user, config.password)
+        client.select_folder(ordner, readonly=True)
+        daten = client.fetch(uids, ["RFC822"])
+        return {
+            uid: eintrag[b"RFC822"]
+            for uid, eintrag in daten.items()
+            if eintrag.get(b"RFC822")
+        }
 
 
 async def _postfaecher_sicherstellen(
@@ -105,6 +126,82 @@ async def _postfaecher_sicherstellen(
             ids[config.user.casefold()] = postfach.id
         await session.commit()
     return ids
+
+
+async def _kandidat_verarbeiten(
+    config: PostfachConfig,
+    ordner: str,
+    kandidat: dict,
+    postfach_ids: dict[str, int],
+    zielordner: str,
+    bekannte_message_ids: set[str],
+) -> dict:
+    geparst = parse_eml(kandidat["raw"])
+    message_id = geparst["message_id"]
+    if message_id in bekannte_message_ids:
+        return {"status": "uebersprungen"}
+    bekannte_message_ids.add(message_id)
+
+    async with SessionLocal() as session:
+        mail = (await session.execute(
+            select(Mail).where(Mail.message_id == message_id)
+        )).scalar_one_or_none()
+        if mail is None:
+            mail = Mail(
+                message_id=message_id,
+                imap_uid=None,
+                postfach_id=postfach_ids[config.user.casefold()],
+                absender_name=geparst["absender_name"],
+                absender_adresse=geparst["absender_adresse"],
+                antwort_an_adresse=geparst.get("antwort_an_adresse"),
+                betreff=geparst["betreff"],
+                text_auszug=geparst["text_auszug"],
+                empfangen_am=kandidat["eingegangen_am"],
+                spam_score=geparst["spam_score"],
+                anhang_dateinamen=geparst.get("anhang_dateinamen") or None,
+                pruefstatus="geprueft",
+                im_krautl_posteingang=False,
+                zustaendig_admin=True,
+                zustaendig_sachbearbeiter=False,
+            )
+            session.add(mail)
+            await session.flush()
+        try:
+            verarbeitet = await rechnung_aus_rohdaten_verarbeiten(
+                session,
+                mail,
+                kandidat["raw"],
+                zielordner=zielordner,
+                jahresordner=False,
+                dubletten_erneut_ablegen=True,
+            )
+        except RuntimeError as exc:
+            await session.rollback()
+            if "enthalten laut Auswertung keine Rechnung" in str(exc):
+                return {"status": "keine_rechnung"}
+            return {"status": "fehler", "detail": str(exc)}
+        except Exception as exc:
+            await session.rollback()
+            return {"status": "fehler", "detail": str(exc)}
+
+        rechnungen = verarbeitet["rechnungen"]
+        session.add(Aktionslog(
+            mail_id=mail.id,
+            ereignis="historische_rechnung_importiert",
+            ausgeloest_von="Krautl",
+            detail=(
+                f"{len(rechnungen)} Rechnung(en) aus {config.user}/{ordner} "
+                f"nach /{zielordner.strip('/')} abgelegt"
+            ),
+        ))
+        await session.commit()
+        return {
+            "status": "verarbeitet",
+            "rechnungen": len(rechnungen),
+            "dubletten": sum(
+                1 for rechnung in rechnungen if rechnung["dublette"]
+            ),
+        }
 
 
 async def importieren(
@@ -142,108 +239,71 @@ async def importieren(
     bekannte_message_ids: set[str] = set()
 
     for config in quellconfigs:
+        ordner = QUELLORDNER
+        ergebnis["ordner"] += 1
         try:
-            ordnerliste = await asyncio.to_thread(_durchsuchbare_ordner, config)
+            anzahl, kandidaten = await asyncio.to_thread(
+                _rechnungskandidaten_laden,
+                config,
+                ordner,
+                start,
+                ende_exklusiv,
+            )
         except Exception as exc:
-            ergebnis["fehler"].append(f"{config.user}: Ordnerliste: {exc}")
+            ergebnis["fehler"].append(
+                f"{config.user}/{ordner}: Abruf: {exc}"
+            )
             continue
-        for ordner in ordnerliste:
-            ergebnis["ordner"] += 1
+        ergebnis["mails_im_zeitraum"] += anzahl
+        print(
+            f"{config.user}/{ordner}: {anzahl} Mail(s) im Zeitraum; "
+            "prüfe Anhänge speicherschonend in kleinen Blöcken"
+        )
+
+        postfach_kandidaten = 0
+        for position in range(0, len(kandidaten), BATCH_GROESSE):
+            batch = kandidaten[position:position + BATCH_GROESSE]
+            uids = [kandidat["uid"] for kandidat in batch]
             try:
-                anzahl, kandidaten = await asyncio.to_thread(
-                    _rechnungskandidaten_laden,
-                    config,
-                    ordner,
-                    start,
-                    ende_exklusiv,
+                rohdaten = await asyncio.to_thread(
+                    _rohdaten_batch_laden, config, ordner, uids
                 )
             except Exception as exc:
                 ergebnis["fehler"].append(
-                    f"{config.user}/{ordner}: Abruf: {exc}"
+                    f"{config.user}/{ordner}/UIDs {uids[0]}–{uids[-1]}: Abruf: {exc}"
                 )
                 continue
-            ergebnis["mails_im_zeitraum"] += anzahl
-            ergebnis["kandidaten"] += len(kandidaten)
-            print(
-                f"{config.user}/{ordner}: {anzahl} Mail(s), "
-                f"{len(kandidaten)} Anhang-Kandidat(en)"
-            )
 
-            for kandidat in kandidaten:
-                geparst = parse_eml(kandidat["raw"])
-                message_id = geparst["message_id"]
-                if message_id in bekannte_message_ids:
+            for kandidat in batch:
+                raw = rohdaten.get(kandidat["uid"])
+                if not raw or not rechnungsanhaenge(raw):
                     continue
-                bekannte_message_ids.add(message_id)
-
-                async with SessionLocal() as session:
-                    mail = (await session.execute(
-                        select(Mail).where(Mail.message_id == message_id)
-                    )).scalar_one_or_none()
-                    neue_mail = mail is None
-                    if neue_mail:
-                        mail = Mail(
-                            message_id=message_id,
-                            imap_uid=None,
-                            postfach_id=postfach_ids[config.user.casefold()],
-                            absender_name=geparst["absender_name"],
-                            absender_adresse=geparst["absender_adresse"],
-                            antwort_an_adresse=geparst.get("antwort_an_adresse"),
-                            betreff=geparst["betreff"],
-                            text_auszug=geparst["text_auszug"],
-                            empfangen_am=kandidat["eingegangen_am"],
-                            spam_score=geparst["spam_score"],
-                            anhang_dateinamen=(
-                                geparst.get("anhang_dateinamen") or None
-                            ),
-                            pruefstatus="geprueft",
-                            im_krautl_posteingang=False,
-                            zustaendig_admin=True,
-                            zustaendig_sachbearbeiter=False,
-                        )
-                        session.add(mail)
-                        await session.flush()
-                    try:
-                        verarbeitet = await rechnung_aus_rohdaten_verarbeiten(
-                            session,
-                            mail,
-                            kandidat["raw"],
-                            zielordner=zielordner,
-                            jahresordner=False,
-                            dubletten_erneut_ablegen=True,
-                        )
-                    except RuntimeError as exc:
-                        await session.rollback()
-                        if "enthalten laut Auswertung keine Rechnung" in str(exc):
-                            ergebnis["keine_rechnung"] += 1
-                        else:
-                            ergebnis["fehler"].append(
-                                f"{config.user}/{ordner}/UID {kandidat['uid']}: {exc}"
-                            )
-                        continue
-                    except Exception as exc:
-                        await session.rollback()
-                        ergebnis["fehler"].append(
-                            f"{config.user}/{ordner}/UID {kandidat['uid']}: {exc}"
-                        )
-                        continue
-
-                    rechnungen = verarbeitet["rechnungen"]
-                    ergebnis["rechnungen"] += len(rechnungen)
-                    ergebnis["dubletten"] += sum(
-                        1 for rechnung in rechnungen if rechnung["dublette"]
+                postfach_kandidaten += 1
+                ergebnis["kandidaten"] += 1
+                ausgang = await _kandidat_verarbeiten(
+                    config,
+                    ordner,
+                    {**kandidat, "raw": raw},
+                    postfach_ids,
+                    zielordner,
+                    bekannte_message_ids,
+                )
+                if ausgang["status"] == "keine_rechnung":
+                    ergebnis["keine_rechnung"] += 1
+                elif ausgang["status"] == "fehler":
+                    ergebnis["fehler"].append(
+                        f"{config.user}/{ordner}/UID {kandidat['uid']}: "
+                        f"{ausgang['detail']}"
                     )
-                    session.add(Aktionslog(
-                        mail_id=mail.id,
-                        ereignis="historische_rechnung_importiert",
-                        ausgeloest_von="Krautl",
-                        detail=(
-                            f"{len(rechnungen)} Rechnung(en) aus "
-                            f"{config.user}/{ordner} nach "
-                            f"/{zielordner.strip('/')} abgelegt"
-                        ),
-                    ))
-                    await session.commit()
+                elif ausgang["status"] == "verarbeitet":
+                    ergebnis["rechnungen"] += ausgang["rechnungen"]
+                    ergebnis["dubletten"] += ausgang["dubletten"]
+
+            print(
+                f"{config.user}/{ordner}: {min(position + len(batch), anzahl)} "
+                f"von {anzahl} Mail(s) geprüft; "
+                f"{postfach_kandidaten} mit unterstütztem Anhang"
+            )
 
     return ergebnis
 

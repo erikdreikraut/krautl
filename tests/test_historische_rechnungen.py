@@ -14,7 +14,7 @@ from sqlalchemy import select
 from app.db import SessionLocal, engine
 from app.imap_client import PostfachConfig
 from app.models import Base, Mail, Postfach
-from scripts.historische_rechnungen_importieren import importieren
+from scripts.historische_rechnungen_importieren import _liegt_im_zeitraum, importieren
 
 
 EML = b"""From: Lieferant <rechnung@example.test>\r
@@ -54,13 +54,14 @@ class HistorischeRechnungenTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_import_bleibt_aus_arbeitsliste_und_nutzt_eingangsordner(self):
         eingang = datetime(2026, 2, 3, 9, 5, tzinfo=timezone.utc)
+        abgefragte_ordner = []
 
-        def kandidaten(config, _ordner, _start, _ende):
+        def kandidaten(config, ordner, _start, _ende):
+            abgefragte_ordner.append(ordner)
             if config.funktion == "info":
                 return 1, [{
                     "uid": 42,
                     "ordner": "INBOX",
-                    "raw": EML,
                     "eingegangen_am": eingang,
                 }]
             return 0, []
@@ -69,11 +70,13 @@ class HistorischeRechnungenTest(unittest.IsolatedAsyncioTestCase):
             "rechnungen": [{"id": 1, "dublette": False}]
         })
         with patch(
-            "scripts.historische_rechnungen_importieren._durchsuchbare_ordner",
-            return_value=["INBOX"],
-        ), patch(
             "scripts.historische_rechnungen_importieren._rechnungskandidaten_laden",
             side_effect=kandidaten,
+        ), patch(
+            "scripts.historische_rechnungen_importieren._rohdaten_batch_laden",
+            side_effect=lambda config, _ordner, _uids: (
+                {42: EML} if config.funktion == "info" else {}
+            ),
         ), patch(
             "scripts.historische_rechnungen_importieren.rechnung_aus_rohdaten_verarbeiten",
             verarbeiten,
@@ -81,6 +84,8 @@ class HistorischeRechnungenTest(unittest.IsolatedAsyncioTestCase):
             ergebnis = await importieren(configs=configs())
 
         self.assertEqual(4, ergebnis["postfaecher"])
+        self.assertEqual(["INBOX"] * 4, abgefragte_ordner)
+        self.assertEqual(4, ergebnis["ordner"])
         self.assertEqual(1, ergebnis["rechnungen"])
         self.assertEqual("/Rechnungen/Eingang", ergebnis["zielordner"])
         verarbeiten.assert_awaited_once()
@@ -100,6 +105,23 @@ class HistorischeRechnungenTest(unittest.IsolatedAsyncioTestCase):
             mail.empfangen_am.replace(tzinfo=None),
         )
         self.assertEqual(4, len(postfaecher))
+
+    def test_zeitraum_wird_nach_internaldate_in_berliner_zeit_strikt_geprueft(self):
+        start = datetime(2026, 2, 1, 0, 0, tzinfo=timezone.utc).date()
+        ende = datetime(2026, 5, 1, 0, 0, tzinfo=timezone.utc).date()
+
+        self.assertFalse(_liegt_im_zeitraum(
+            datetime(2026, 1, 31, 22, 59, tzinfo=timezone.utc), start, ende
+        ))
+        self.assertTrue(_liegt_im_zeitraum(
+            datetime(2026, 1, 31, 23, 0, tzinfo=timezone.utc), start, ende
+        ))
+        self.assertTrue(_liegt_im_zeitraum(
+            datetime(2026, 4, 30, 21, 59, tzinfo=timezone.utc), start, ende
+        ))
+        self.assertFalse(_liegt_im_zeitraum(
+            datetime(2026, 4, 30, 22, 0, tzinfo=timezone.utc), start, ende
+        ))
 
     async def test_fehlendes_quellpostfach_bricht_vor_import_ab(self):
         with self.assertRaisesRegex(RuntimeError, "marketing"):

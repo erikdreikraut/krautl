@@ -342,12 +342,13 @@ Ordner direkt im Dropbox-Hauptverzeichnis. Für Krautl genügt grundsätzlich
 
 ### Historische Rechnungen nachholen
 
-Der historische Rechnungslauf durchsucht die vier operativen Postfächer
-`info`, `service`, `einkauf` und `marketing` einschließlich ihrer Unterordner.
-Gesendet-, Entwurfs-, Papierkorb- und Spamordner werden ausgelassen. Die
-gefundenen Nachrichten werden weder verschoben noch gelöscht oder als gelesen
-markiert. Erkannte Rechnungen erscheinen in Krautl, bleiben aber aus der
-Mail-Arbeitsliste ausgeblendet.
+Der historische Rechnungslauf durchsucht ausschließlich den jeweiligen
+`INBOX`-Ordner der vier operativen Postfächer `info`, `service`, `einkauf` und
+`marketing`. Unterordner werden ausdrücklich nicht durchsucht. Zusätzlich zur
+IMAP-Datumssuche wird das tatsächliche Eingangsdatum jeder gefundenen Nachricht
+noch einmal lokal in Berliner Zeit geprüft. Die Nachrichten werden weder
+verschoben noch gelöscht oder als gelesen markiert. Erkannte Rechnungen
+erscheinen in Krautl, bleiben aber aus der Mail-Arbeitsliste ausgeblendet.
 
 Für den vorbereiteten Zeitraum vom 1. Februar bis einschließlich 30. April
 2026 und den Dropbox-App-Pfad `/Rechnungen/Eingang` genügt:
