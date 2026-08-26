@@ -90,6 +90,37 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("Hallo Ada,\n\nsehr gern.", entwuerfe[0].text_ki)
             self.assertEqual("wartet", entwuerfe[0].status)
 
+    async def test_fremdsprachiger_ki_entwurf_wird_vor_dem_speichern_deutsch(self):
+        async with SessionLocal() as session:
+            mail = await session.get(Mail, self.mail_id)
+            mail.originalsprache = "Französisch"
+            mail.betreff_deutsch = "Eine Frage"
+            mail.text_deutsch = "Hallo, könnt Ihr mir helfen?"
+            await session.commit()
+
+        generator = AsyncMock(return_value="Bonjour,\n\nmerci pour votre message.")
+        uebersetzung = AsyncMock(
+            return_value="Guten Tag,\n\nvielen Dank für Ihre Nachricht."
+        )
+        with patch("app.antworten.antwortentwurf_erzeugen", generator), \
+             patch(
+                 "app.antworten.antwort_ins_deutsche_uebersetzen", uebersetzung
+             ):
+            async with SessionLocal() as session:
+                ergebnis = await mail_antwortentwurf_erzeugen(
+                    self.mail_id, test_request(), session
+                )
+
+        self.assertEqual("erzeugt", ergebnis["status"])
+        uebersetzung.assert_awaited_once_with(
+            "Bonjour,\n\nmerci pour votre message.", "Französisch"
+        )
+        async with SessionLocal() as session:
+            entwurf = (await session.execute(select(Entwurf))).scalar_one()
+            self.assertEqual(
+                "Guten Tag,\n\nvielen Dank für Ihre Nachricht.", entwurf.text_ki
+            )
+
     async def test_manuelle_antwort_legt_ohne_ki_einen_leeren_entwurf_an(self):
         generator = AsyncMock(return_value="Dieser Text darf nicht entstehen")
         with patch("app.antworten.antwortentwurf_erzeugen", generator):

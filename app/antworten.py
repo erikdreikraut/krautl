@@ -10,7 +10,10 @@ from anthropic import Anthropic
 from sqlalchemy import select
 
 from .models import Entwurf, FaqEintrag, Klassifikation, Mail, Wissenseintrag
-from .uebersetzungen import uebersetzung_fuer_mail_sicherstellen
+from .uebersetzungen import (
+    antwort_ins_deutsche_uebersetzen, ist_deutsche_sprache,
+    uebersetzung_fuer_mail_sicherstellen,
+)
 from .wissensbasis import relevante_wissensbasis, wissen_als_text
 
 
@@ -178,6 +181,13 @@ async def antwortentwurf_speichern(session, mail: Mail) -> tuple[Entwurf, bool]:
 
     _produkt, wissen, faq = await relevante_wissensbasis(session, mail)
     text = await antwortentwurf_erzeugen(mail, faq, wissen)
+    if not ist_deutsche_sprache(mail.originalsprache):
+        # Das Erzeugungsmodell erhält bereits eine verbindliche Deutsch-Vorgabe.
+        # Diese zweite, rein übersetzende Stufe sichert sie technisch ab, falls
+        # das Modell dennoch direkt in der Kundensprache antwortet.
+        text = await antwort_ins_deutsche_uebersetzen(
+            text, mail.originalsprache
+        )
     entwurf = Entwurf(mail_id=mail.id, text_ki=text, status="wartet")
     session.add(entwurf)
     await session.flush()

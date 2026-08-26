@@ -6,8 +6,9 @@ from unittest.mock import AsyncMock, patch
 os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 
 from app.uebersetzungen import (
-    antwort_in_originalsprache_uebersetzen, ist_deutsche_sprache,
-    mail_ins_deutsche_uebersetzen, uebersetzung_fuer_mail_sicherstellen,
+    antwort_in_originalsprache_uebersetzen, antwort_ins_deutsche_uebersetzen,
+    ist_deutsche_sprache, mail_ins_deutsche_uebersetzen,
+    uebersetzung_fuer_mail_sicherstellen,
 )
 
 
@@ -63,6 +64,17 @@ class UebersetzungenTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("Vielen Dank.", deutsch)
         self.assertEqual("Thank you.", englisch)
         uebersetzer.assert_called_once_with("Vielen Dank.", "Englisch")
+
+    async def test_fremdsprachiger_entwurf_wird_ins_deutsche_uebersetzt(self):
+        with patch(
+            "app.uebersetzungen._synchron_antwort_uebersetzen",
+            return_value="Vielen Dank.",
+        ) as uebersetzer:
+            ergebnis = await antwort_ins_deutsche_uebersetzen(
+                "Merci beaucoup.", "Französisch"
+            )
+        self.assertEqual("Vielen Dank.", ergebnis)
+        uebersetzer.assert_called_once_with("Merci beaucoup.", "Deutsch")
 
 
 if __name__ == "__main__":
