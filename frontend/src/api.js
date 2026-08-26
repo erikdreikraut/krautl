@@ -157,6 +157,8 @@ export const api = {
     anfrage(`/mails/${mailId}/antwortentwurf`, { method: "POST" }),
   antwortBeginnen: (mailId) =>
     anfrage(`/mails/${mailId}/antwort`, { method: "POST" }),
+  mailUebersetzen: (mailId) =>
+    anfrage(`/mails/${mailId}/uebersetzung`, { method: "POST" }),
   entwurfFreigeben: (id, finalerText) =>
     anfrage(`/entwuerfe/${id}/freigeben`, {
       method: "POST",

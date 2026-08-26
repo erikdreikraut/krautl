@@ -8,6 +8,7 @@ from app.agent import (
     amazon_absender_zuordnung_absichern,
     ebay_verkaufszuordnung_absichern,
     einkaufszuordnung_absichern,
+    interne_aufgaben_zuordnung_absichern,
     marktplatz_zuordnung_absichern,
     steuer_absender_zuordnung_absichern,
     technik_absender_zuordnung_absichern,
@@ -248,6 +249,39 @@ class KlassifizierungsPromptTest(unittest.TestCase):
             [{"klassifikation_id": "SYSTEM_TECHNIK"}],
         )
         self.assertEqual("SPAM_WERBUNG", ergebnis["klassifikation_id"])
+
+    def test_dreikraut_bestandswarnung_wird_interne_aufgabe(self):
+        self.assertIn("INTERNE AUFGABENHINWEISE", KLASSIFIZIERUNGS_SYSTEMPROMPT)
+        ergebnis = interne_aufgaben_zuordnung_absichern(
+            {"klassifikation_id": "SYSTEM_TECHNIK", "aktion_erforderlich": False},
+            {
+                "absender_adresse": "system@dreikraut.de",
+                "betreff": "Bestandswarnung",
+                "text_auszug": "Der Lagerbestand für Artikel 4711 ist niedrig.",
+            },
+            [{"klassifikation_id": "INTERN_AUFGABEN"}],
+        )
+        self.assertEqual("INTERN_AUFGABEN", ergebnis["klassifikation_id"])
+        self.assertTrue(ergebnis["aktion_erforderlich"])
+
+    def test_externer_absender_und_normale_interne_mail_bleiben_unveraendert(self):
+        katalog = [{"klassifikation_id": "INTERN_AUFGABEN"}]
+        for mail in (
+            {
+                "absender_adresse": "alarm@example.test",
+                "betreff": "dreikraut Lagerbestand niedrig",
+                "text_auszug": "Bitte prüfen.",
+            },
+            {
+                "absender_adresse": "kollegin@dreikraut.de",
+                "betreff": "Besprechung",
+                "text_auszug": "Können wir uns morgen abstimmen?",
+            },
+        ):
+            ergebnis = interne_aufgaben_zuordnung_absichern(
+                {"klassifikation_id": "UNGEKLAERT"}, mail, katalog
+            )
+            self.assertEqual("UNGEKLAERT", ergebnis["klassifikation_id"])
 
 
 if __name__ == "__main__":

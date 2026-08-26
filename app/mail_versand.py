@@ -52,12 +52,12 @@ def antwort_mit_signatur(antworttext: str, benutzer: dict) -> str:
         text = text.split(marker, 1)[0].rstrip()
         zeilen = text.splitlines()
         if zeilen and zeilen[-1].strip() in {
-            "Erik Schweitzer", "Gursewak Singh", "Ludwig Schnorrenberg",
+            "Erik Schweitzer", "Gursewak Singh", "Ludwig Schnorrenberg", "Aneta",
             "Auszubildender",
         }:
             zeilen.pop()
             if zeilen and zeilen[-1].strip() in {
-                "Erik Schweitzer", "Gursewak Singh", "Ludwig Schnorrenberg",
+                "Erik Schweitzer", "Gursewak Singh", "Ludwig Schnorrenberg", "Aneta",
             }:
                 zeilen.pop()
             text = "\n".join(zeilen).rstrip()
@@ -95,7 +95,7 @@ def antwortadresse(mail: Mail) -> str:
         if adresse:
             return adresse
     raise RuntimeError(
-        "Weder Reply-To noch Absenderadresse der Kundenmail sind gültig"
+        "Reply-To und Absenderadresse der Kundenmail sind ungültig"
     )
 
 

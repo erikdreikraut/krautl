@@ -35,7 +35,9 @@ async def relevante_wissensbasis(session, mail: Mail) -> tuple[Produkt | None, l
     )).scalars().all()
     produkt = produkt_fuer_text(
         produkte,
-        f"{mail.betreff}\n{mail.text_auszug}\n{mail.klassifikation_id or ''}",
+        f"{mail.betreff_deutsch or mail.betreff}\n"
+        f"{mail.text_deutsch or mail.text_auszug}\n"
+        f"{mail.klassifikation_id or ''}",
     )
     wissen = (await session.execute(
         select(Wissenseintrag).where(Wissenseintrag.status == "freigegeben")
@@ -199,7 +201,8 @@ def _vorschlag_synchron(
             f"=== BESTEHENDE FAQ ===\n" + "\n\n".join(
                 f"{e.kategorie}: {e.frage}\n{e.antwort}" for e in faq
             ) + "\n\n=== KUNDENFRAGE ===\n"
-            f"{mail.betreff}\n{mail.text_auszug}\n\n"
+            f"{mail.betreff_deutsch or mail.betreff}\n"
+            f"{mail.text_deutsch or mail.text_auszug}\n\n"
             f"=== URSPRÜNGLICHER KI-ENTWURF ===\n{ki_text}\n\n"
             f"=== TATSÄCHLICH FREIGEGEBENE FASSUNG ===\n{finaler_text}"
         )}],

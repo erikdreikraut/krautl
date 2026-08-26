@@ -17,6 +17,7 @@ from .db import SessionLocal
 from .imap_client import PostfachConfig, lade_postfaecher, neue_mails_abrufen
 from .mail_parser import parse_eml
 from .models import Aktionslog, Klassifikation, Korrektur, Mail, Postfach
+from .uebersetzungen import mail_ins_deutsche_uebersetzen
 
 logger = logging.getLogger("krautl.worker")
 
@@ -161,6 +162,24 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
                 session, klassifikation_id
             )
 
+            sprachdaten = {
+                "originalsprache": klass.get("originalsprache"),
+                "betreff_deutsch": None,
+                "text_deutsch": None,
+            }
+            try:
+                sprachdaten = await mail_ins_deutsche_uebersetzen(
+                    geparst["betreff"],
+                    geparst["text_auszug"],
+                    klass.get("originalsprache"),
+                )
+            except Exception:
+                # Die Mail darf wegen einer Übersetzungsstörung nicht verloren
+                # gehen. Die Oberfläche kann die Übersetzung später erneut anstoßen.
+                logger.exception(
+                    "Übersetzung fehlgeschlagen für %s", geparst["message_id"]
+                )
+
             mail = Mail(
                 message_id=geparst["message_id"],
                 imap_uid=roh["uid"],
@@ -170,6 +189,9 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
                 antwort_an_adresse=geparst.get("antwort_an_adresse"),
                 betreff=geparst["betreff"],
                 text_auszug=geparst["text_auszug"],
+                originalsprache=sprachdaten["originalsprache"],
+                betreff_deutsch=sprachdaten["betreff_deutsch"],
+                text_deutsch=sprachdaten["text_deutsch"],
                 empfangen_am=geparst["empfangen_am"],
                 spam_score=geparst["spam_score"],
                 klassifikation_id=klassifikation_id,

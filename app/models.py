@@ -101,6 +101,11 @@ class Mail(Base):
     antwort_an_adresse: Mapped[str | None] = mapped_column(String(255), nullable=True)
     betreff: Mapped[str] = mapped_column(Text)
     text_auszug: Mapped[str] = mapped_column(Text)
+    # Fremdsprachige Mails bleiben im Original erhalten und bekommen eine
+    # separate deutsche Arbeitsübersetzung für die interne Bearbeitung.
+    originalsprache: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    betreff_deutsch: Mapped[str | None] = mapped_column(Text, nullable=True)
+    text_deutsch: Mapped[str | None] = mapped_column(Text, nullable=True)
     empfangen_am: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     spam_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Nur die Dateinamen — der Inhalt wird bei Bedarf erneut per IMAP geladen
@@ -185,6 +190,9 @@ class Entwurf(Base):
     mail_id: Mapped[int] = mapped_column(ForeignKey("mail.id"))
     text_ki: Mapped[str] = mapped_column(Text)
     text_final: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Die intern freigegebene deutsche Fassung bleibt zusätzlich zur tatsächlich
+    # versendeten (gegebenenfalls übersetzten) Fassung nachvollziehbar.
+    text_final_deutsch: Mapped[str | None] = mapped_column(Text, nullable=True)
     # "wartet" | "versendet" | "verworfen"
     status: Mapped[str] = mapped_column(String(20), default="wartet")
     erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

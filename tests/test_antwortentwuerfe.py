@@ -63,9 +63,11 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
                 absender_adresse="ada@example.test",
                 betreff="Eine Frage",
                 text_auszug="Hallo, könnt Ihr mir helfen?",
+                originalsprache="Deutsch",
                 empfangen_am=datetime.now(timezone.utc),
                 im_krautl_posteingang=True,
                 klassifikation_id="KUNDE_FRAGE",
+                zustaendig_admin=True,
             )
             session.add(mail)
             await session.commit()
@@ -239,7 +241,57 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("versendet", entwurf.status)
             self.assertIsNotNone(entwurf.versendet_am)
             self.assertIn("\nErik Schweitzer\n-- \ndreikraut e.K.\n", entwurf.text_final)
+            self.assertIn(
+                "\nErik Schweitzer\n-- \ndreikraut e.K.\n",
+                entwurf.text_final_deutsch,
+            )
             self.assertFalse(mail.im_krautl_posteingang)
+
+    async def test_fremdsprachige_antwort_wird_erst_nach_freigabe_uebersetzt(self):
+        async with SessionLocal() as session:
+            mail = await session.get(Mail, self.mail_id)
+            mail.originalsprache = "Englisch"
+            mail.betreff_deutsch = "Eine Frage"
+            mail.text_deutsch = "Hallo, könnt Ihr mir helfen?"
+            entwurf = Entwurf(
+                mail_id=self.mail_id,
+                text_ki="Guten Tag,\n\nja, sehr gern.",
+                status="wartet",
+            )
+            session.add(entwurf)
+            await session.commit()
+            entwurf_id = entwurf.id
+
+        pruefung = AsyncMock(return_value={"freigabefaehig": True, "probleme": []})
+        uebersetzung = AsyncMock(return_value="Hello,\n\nyes, gladly.")
+        versand = AsyncMock(return_value={
+            "message_id": "<test-en@dreikraut.de>",
+            "empfaenger": "ada@example.test",
+            "bcc": "info@erikschweitzer.de",
+        })
+        with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
+             patch("app.main.antwort_in_originalsprache_uebersetzen", uebersetzung), \
+             patch("app.main.antwort_senden", versand), \
+             patch("app.main.wissenszuwachs_nach_antwort_pruefen", AsyncMock(return_value=None)), \
+             patch("app.main.bestaetigung_erfassen", AsyncMock(return_value={"status": "bestaetigt"})):
+            async with SessionLocal() as session:
+                ergebnis = await entwurf_freigeben(
+                    entwurf_id,
+                    EntwurfFreigabe(finaler_text="Guten Tag,\n\nja, sehr gern."),
+                    test_request(),
+                    session,
+                )
+
+        pruefung.assert_awaited_once()
+        uebersetzung.assert_awaited_once_with(
+            "Guten Tag,\n\nja, sehr gern.", "Englisch"
+        )
+        self.assertEqual("Hello,\n\nyes, gladly.", versand.await_args.args[1])
+        self.assertEqual("Englisch", ergebnis["versandsprache"])
+        async with SessionLocal() as session:
+            entwurf = await session.get(Entwurf, entwurf_id)
+            self.assertIn("Guten Tag", entwurf.text_final_deutsch)
+            self.assertIn("Hello", entwurf.text_final)
 
     async def test_offene_punkte_blockieren_den_versand(self):
         async with SessionLocal() as session:

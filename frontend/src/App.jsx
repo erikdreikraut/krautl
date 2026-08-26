@@ -90,6 +90,11 @@ function formatMailZeit(iso, jetzt = new Date()) {
   return `${datum.toLocaleDateString("de-DE", datumsOptionen)}, ${uhrzeit}`;
 }
 
+function istDeutscheSprache(sprache) {
+  const wert = String(sprache || "").trim().toLowerCase().replace("_", "-");
+  return ["de", "de-de", "de-at", "de-ch", "deutsch", "german"].includes(wert);
+}
+
 function formatDatum(iso) {
   if (!iso) return "";
   return new Date(iso).toLocaleDateString("de-DE", { timeZone: ZEITZONE });
@@ -163,6 +168,8 @@ const EREIGNIS_LABEL = {
   klassifikation_korrigiert: "Kategorie korrigiert",
   rechnungsstatus_geaendert: "Rechnungsstatus geändert",
   antwortvorschlag_verworfen: "Antwortvorschlag verworfen",
+  mail_uebersetzt: "Deutsche Arbeitsübersetzung erstellt",
+  antwort_uebersetzung_fehlgeschlagen: "Antwortübersetzung fehlgeschlagen",
   mail_manuell_erledigt: "Manuell erledigt",
   mail_geloescht: "Mail gelöscht",
   mail_loeschen_fehlgeschlagen: "Mail-Löschung fehlgeschlagen",
@@ -171,7 +178,7 @@ const EREIGNIS_LABEL = {
 function farbeFuerEreignis(ereignis) {
   if (ereignis.endsWith("fehlgeschlagen")) return tokens.rust;
   if (ereignis === "mail_geloescht") return tokens.rust;
-  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt", "antwortentwurf_erstellt", "antwort_versendet_test", "antwort_versendet", "audio_transkribiert", "wissensvorschlag_erstellt", "mail_manuell_erledigt"].includes(ereignis)) return tokens.moss;
+  if (["verschoben", "bestaetigt", "rechnung_verarbeitet", "antwortvorschlag_erstellt", "antwortentwurf_erstellt", "antwort_versendet_test", "antwort_versendet", "audio_transkribiert", "wissensvorschlag_erstellt", "mail_uebersetzt", "mail_manuell_erledigt"].includes(ereignis)) return tokens.moss;
   return tokens.inkMuted;
 }
 
@@ -356,7 +363,7 @@ function MailLoeschenButton({ mail, onGeloescht }) {
     setFehler("");
     try {
       await api.mailLoeschen(mail.id);
-      await onGeloescht();
+      await onGeloescht(mail.id);
     } catch (e) {
       setFehler(e.message);
     } finally {
@@ -416,7 +423,7 @@ function ZuweisenButton({ mail, onZugewiesen }) {
             ? [{ value: "admin", label: "Erik (Admin)" }]
             : []),
           ...(mail.zuweisbareRollen.includes("sachbearbeiter")
-            ? [{ value: "sachbearbeiter", label: "Guri, Ludwig (Sachbearbeiter)" }]
+            ? [{ value: "sachbearbeiter", label: "Guri, Ludwig, Aneta (Sachbearbeitung)" }]
             : []),
         ]}
         onWaehlen={zuweisen}
@@ -476,28 +483,42 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
   const [suchbegriff, setSuchbegriff] = useState("");
   const [selectedId, setSelectedId] = useState(mails[0]?.id ?? null);
   const [versandbestaetigungen, setVersandbestaetigungen] = useState({});
+  const [uebersetzungsstatus, setUebersetzungsstatus] = useState({});
+  const [lokalAusgeblendeteMailIds, setLokalAusgeblendeteMailIds] = useState(() => new Set());
   const [mobileDetailOffen, setMobileDetailOffen] = useState(false);
 
-  const kategorien = useMemo(() => [...new Set(mails.map((m) => m.kat))], [mails]);
-  const kategorieGefiltert = filter ? mails.filter((m) => m.kat === filter) : mails;
+  const verfuegbareMails = useMemo(
+    () => mails.filter((mail) => !lokalAusgeblendeteMailIds.has(mail.id)),
+    [mails, lokalAusgeblendeteMailIds],
+  );
+  const kategorien = useMemo(
+    () => [...new Set(verfuegbareMails.map((m) => m.kat))],
+    [verfuegbareMails],
+  );
+  const kategorieGefiltert = filter
+    ? verfuegbareMails.filter((m) => m.kat === filter)
+    : verfuegbareMails;
   const suchtreffer = suchbegriff.trim().toLowerCase();
   const sichtbar = suchtreffer
     ? kategorieGefiltert.filter((m) => {
         const felderText = Object.values(m.felder || {}).join(" ");
-        const text = [m.betreff, m.absender, m.absenderAdresse, m.snippet, m.katId, felderText]
+        const text = [
+          m.betreff, m.betreffDeutsch, m.absender, m.absenderAdresse,
+          m.snippet, m.uebersetzung, m.katId, felderText,
+        ]
           .filter(Boolean).join(" ").toLowerCase();
         return text.includes(suchtreffer);
       })
     : kategorieGefiltert;
-  const selected = mails.find((m) => m.id === selectedId) ?? sichtbar[0] ?? null;
-  const vorherigeMailIds = useRef(mails.map((m) => m.id));
+  const selected = verfuegbareMails.find((m) => m.id === selectedId) ?? sichtbar[0] ?? null;
+  const vorherigeMailIds = useRef(verfuegbareMails.map((m) => m.id));
 
   // Verschwindet die ausgewählte Mail aus der Liste (verschoben, gelöscht,
   // Zuständigkeit geändert …), auf den Nachfolger an ihrer alten Position
   // springen statt immer zurück zum ersten Eintrag.
   useEffect(() => {
     const vorherige = vorherigeMailIds.current;
-    const nochVorhanden = mails.some((m) => m.id === selectedId);
+    const nochVorhanden = verfuegbareMails.some((m) => m.id === selectedId);
 
     if (!nochVorhanden && selectedId != null) {
       const alterIndex = vorherige.indexOf(selectedId);
@@ -516,10 +537,20 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
       }
     }
 
-    vorherigeMailIds.current = mails.map((m) => m.id);
+    vorherigeMailIds.current = verfuegbareMails.map((m) => m.id);
     // sichtbar bewusst nicht in den Deps: soll nur auf echte Mail-Reloads
     // reagieren, nicht auf lokale Filter-Wechsel.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verfuegbareMails]);
+
+  useEffect(() => {
+    const idsVomServer = new Set(mails.map((mail) => mail.id));
+    setLokalAusgeblendeteMailIds((alt) => {
+      const verbleibend = new Set(
+        [...alt].filter((mailId) => idsVomServer.has(mailId))
+      );
+      return verbleibend.size === alt.size ? alt : verbleibend;
+    });
   }, [mails]);
 
   useEffect(() => {
@@ -530,12 +561,51 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
     if (!selected) setMobileDetailOffen(false);
   }, [selected]);
 
+  const uebersetzungStarten = useCallback(async (mail) => {
+    if (!mail || uebersetzungsstatus[mail.id]?.status === "laeuft") return;
+    setUebersetzungsstatus((alt) => ({
+      ...alt,
+      [mail.id]: { status: "laeuft", fehler: "" },
+    }));
+    try {
+      await api.mailUebersetzen(mail.id);
+      setUebersetzungsstatus((alt) => ({
+        ...alt,
+        [mail.id]: { status: "fertig", fehler: "" },
+      }));
+      await onReload();
+    } catch (fehler) {
+      setUebersetzungsstatus((alt) => ({
+        ...alt,
+        [mail.id]: {
+          status: "fehler",
+          fehler: fehler.message || "Übersetzung fehlgeschlagen",
+        },
+      }));
+    }
+  }, [onReload, uebersetzungsstatus]);
+
+  useEffect(() => {
+    if (
+      selected?.uebersetzungFehlt
+      && !uebersetzungsstatus[selected.id]
+    ) {
+      uebersetzungStarten(selected);
+    }
+  }, [selected, uebersetzungsstatus, uebersetzungStarten]);
+
   function mailOeffnen(id) {
     setSelectedId(id);
     setMobileDetailOffen(true);
   }
 
   async function aktionAbschliessen() {
+    setMobileDetailOffen(false);
+    await onReload();
+  }
+
+  async function loeschenAbschliessen(mailId) {
+    setLokalAusgeblendeteMailIds((alt) => new Set([...alt, mailId]));
     setMobileDetailOffen(false);
     await onReload();
   }
@@ -617,11 +687,11 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
                   <Paperclip size={11} style={{ color: tokens.inkMuted, flexShrink: 0 }} />
                 )}
               </div>
-              <div style={{ ...fontSerif, fontSize: "13.5px" }}>{m.betreff}</div>
+              <div style={{ ...fontSerif, fontSize: "13.5px" }}>{m.betreffDeutsch || m.betreff}</div>
               <Konfidenz value={m.konfidenz} />
             </button>
           ))}
-          {mails.length === 0 && (
+          {verfuegbareMails.length === 0 && (
             <div className="px-5 py-10 text-center" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
               {alleMails
                 ? "Keine Mails im Krautl-Posteingang."
@@ -652,10 +722,15 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
                   <BestaetigenButton mail={selected} onBestaetigt={aktionAbschliessen} />
                   <ZuweisenButton mail={selected} onZugewiesen={aktionAbschliessen} />
                   <KategorieKorrektur mail={selected} katalog={katalog} onKorrigiert={onReload} />
-                  <MailLoeschenButton mail={selected} onGeloescht={aktionAbschliessen} />
+                  <MailLoeschenButton mail={selected} onGeloescht={loeschenAbschliessen} />
                 </div>
               </div>
-              <h2 style={{ ...fontDisplay, fontSize: "19px", marginTop: "12px" }}>{selected.betreff}</h2>
+              <h2 style={{ ...fontDisplay, fontSize: "19px", marginTop: "12px" }}>{selected.betreffDeutsch || selected.betreff}</h2>
+              {selected.betreffDeutsch && selected.betreffDeutsch !== selected.betreff && (
+                <div style={{ ...fontUI, fontSize: "11.5px", color: tokens.inkMuted, marginTop: "3px" }}>
+                  Originalbetreff: {selected.betreff}
+                </div>
+              )}
               <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, marginTop: "4px" }}>
                 {selected.absender}
                 {selected.absenderAdresse && selected.absenderAdresse !== selected.absender
@@ -669,6 +744,65 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
                 </div>
               )}
             </div>
+            {selected.entwurf ? (
+              <EntwurfPanel
+                key={selected.entwurf.id}
+                entwurf={selected.entwurf}
+                kiPruefung={String(selected.kat || "").toUpperCase() === "KUNDENSERVICE"}
+                originalsprache={selected.originalsprache}
+                onErledigt={onReload}
+                onVersendet={(ergebnis) => setVersandbestaetigungen((alt) => ({
+                  ...alt,
+                  [selected.id]: ergebnis,
+                }))}
+              />
+            ) : versandbestaetigungen[selected.id] ? (
+              <div className="px-6 py-4" style={{ borderBottom: `1px solid ${tokens.line}` }}>
+                <div className="px-3 py-2.5" style={{ background: tokens.mossPale, border: `1px solid ${tokens.moss}`, borderRadius: "6px" }}>
+                  <div style={{ ...fontUI, fontSize: "12.5px", fontWeight: 600, color: tokens.mossDeep }}>
+                    Antwort an den Mailserver übergeben
+                  </div>
+                  <div style={{ ...fontUI, fontSize: "12px", color: tokens.inkMuted, marginTop: "3px" }}>
+                    Empfänger: {versandbestaetigungen[selected.id].empfaenger}<br />
+                    BCC: {versandbestaetigungen[selected.id].bcc}<br />
+                    SMTP-Nachrichten-ID: {versandbestaetigungen[selected.id].messageId}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-3 antwort-bereich" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, borderBottom: `1px solid ${tokens.line}` }}>
+                <span>Noch keine Antwort begonnen.</span>
+                <AntwortAktionen mail={selected} onErzeugt={onReload} />
+              </div>
+            )}
+            {selected.uebersetzung ? (
+              <div className="px-6 py-4 mail-uebersetzung" style={{ background: tokens.mossPale, borderBottom: `1px solid ${tokens.line}` }}>
+                <div style={{ ...fontMono, fontSize: "10.5px", color: tokens.mossDeep, letterSpacing: "0.05em" }}>
+                  DEUTSCHE ARBEITSÜBERSETZUNG · ORIGINALSPRACHE: {selected.originalsprache.toUpperCase()}
+                </div>
+                <div style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginTop: "8px" }}>
+                  {selected.uebersetzung}
+                </div>
+              </div>
+            ) : selected.uebersetzungFehlt ? (
+              <div className="px-6 py-3 flex flex-wrap items-center justify-between gap-3 mail-uebersetzung" style={{ background: tokens.amberPale, borderBottom: `1px solid ${tokens.line}` }}>
+                <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
+                  {uebersetzungsstatus[selected.id]?.status === "fehler"
+                    ? uebersetzungsstatus[selected.id].fehler
+                    : "Deutsche Arbeitsübersetzung wird erstellt …"}
+                </div>
+                {uebersetzungsstatus[selected.id]?.status === "fehler" && (
+                  <button type="button" onClick={() => uebersetzungStarten(selected)} className="px-2.5 py-1.5" style={AUSWAHL_BUTTON_STIL}>
+                    Erneut versuchen
+                  </button>
+                )}
+              </div>
+            ) : null}
+            {selected.istFremdsprache && (
+              <div className="px-6 pt-4 mail-original-label" style={{ ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em" }}>
+                ORIGINAL · {selected.originalsprache.toUpperCase()}
+              </div>
+            )}
             <div className="px-6 py-4 mail-body" style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere", borderBottom: `1px solid ${tokens.line}` }}>{selected.snippet}</div>
             {Object.keys(selected.felder).length > 0 && (
               <div className="px-6 py-4 grid grid-cols-2 gap-3 mail-fields" style={{ borderBottom: `1px solid ${tokens.line}` }}>
@@ -691,36 +825,6 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
                 ))}
               </div>
             )}
-            {selected.entwurf ? (
-              <EntwurfPanel
-                key={selected.entwurf.id}
-                entwurf={selected.entwurf}
-                kiPruefung={String(selected.kat || "").toUpperCase() === "KUNDENSERVICE"}
-                onErledigt={onReload}
-                onVersendet={(ergebnis) => setVersandbestaetigungen((alt) => ({
-                  ...alt,
-                  [selected.id]: ergebnis,
-                }))}
-              />
-            ) : versandbestaetigungen[selected.id] ? (
-              <div className="px-6 py-6 flex-1">
-                <div className="px-3 py-2.5" style={{ background: tokens.mossPale, border: `1px solid ${tokens.moss}`, borderRadius: "6px" }}>
-                  <div style={{ ...fontUI, fontSize: "12.5px", fontWeight: 600, color: tokens.mossDeep }}>
-                    Antwort an den Mailserver übergeben
-                  </div>
-                  <div style={{ ...fontUI, fontSize: "12px", color: tokens.inkMuted, marginTop: "3px" }}>
-                    Empfänger: {versandbestaetigungen[selected.id].empfaenger}<br />
-                    BCC: {versandbestaetigungen[selected.id].bcc}<br />
-                    SMTP-Nachrichten-ID: {versandbestaetigungen[selected.id].messageId}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="px-6 py-8 flex-1 flex flex-col items-center justify-center gap-3" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
-                <span>Noch keine Antwort begonnen.</span>
-                <AntwortAktionen mail={selected} onErzeugt={onReload} />
-              </div>
-            )}
           </>
         )}
         {!selected && (
@@ -735,7 +839,7 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
   );
 }
 
-function EntwurfPanel({ entwurf, kiPruefung, onErledigt, onVersendet }) {
+function EntwurfPanel({ entwurf, kiPruefung, originalsprache, onErledigt, onVersendet }) {
   const [text, setText] = useState(entwurf.text);
   const [prueft, setPrueft] = useState(false);
   const [probleme, setProbleme] = useState([]);
@@ -778,9 +882,9 @@ function EntwurfPanel({ entwurf, kiPruefung, onErledigt, onVersendet }) {
   }
 
   return (
-    <div className="px-6 py-4 flex-1 flex flex-col entwurf-panel">
-      <div style={{ ...fontMono, fontSize: "10.5px", color: tokens.amber, letterSpacing: "0.05em" }}>ANTWORTENTWURF · WARTET AUF FREIGABE</div>
-      <textarea value={text} onChange={(e) => setText(e.target.value)} className="mt-2 flex-1 p-3 resize-none"
+    <div className="px-6 py-4 flex flex-col entwurf-panel" style={{ borderBottom: `1px solid ${tokens.line}` }}>
+      <div style={{ ...fontMono, fontSize: "10.5px", color: tokens.amber, letterSpacing: "0.05em" }}>ANTWORTENTWURF · DEUTSCHE ARBEITSFASSUNG · WARTET AUF FREIGABE</div>
+      <textarea value={text} onChange={(e) => setText(e.target.value)} className="mt-2 p-3 resize-y"
         style={{ ...fontSerif, fontSize: "14.5px", background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px", minHeight: "320px" }} />
       {probleme.length > 0 && (
         <div className="mt-3 px-3 py-2.5" style={{ background: tokens.amberPale, border: `1px solid ${tokens.amber}`, borderRadius: "6px" }}>
@@ -833,6 +937,9 @@ function EntwurfPanel({ entwurf, kiPruefung, onErledigt, onVersendet }) {
         {kiPruefung
           ? "Vor dem Versand prüft die KI die Antwort auf offene Punkte. Die Antwort geht an den Absender der Kundenmail, eine Kontrollkopie per BCC an info@erikschweitzer.de."
           : "Diese Antwort wird ohne inhaltliche KI-Prüfung an den Absender versendet. Eine Kontrollkopie geht per BCC an info@erikschweitzer.de."}
+        {originalsprache && !istDeutscheSprache(originalsprache)
+          ? ` Du bearbeitest ausschließlich die deutsche Arbeitsfassung. Unmittelbar vor dem Versand übersetzt Krautl sie automatisch in ${originalsprache}.`
+          : ""}
       </div>
     </div>
   );
@@ -1445,29 +1552,38 @@ function AktionslogView() {
 function verwendeKrautlDaten(onNichtAngemeldet, benutzer, alleMails) {
   const [daten, setDaten] = useState(null);
   const [fehler, setFehler] = useState(null);
-  const laedt = useRef(false);
+  const laufenderAbruf = useRef(null);
 
   const laden = useCallback(async ({ imHintergrund = false } = {}) => {
-    if (laedt.current) return;
-    laedt.current = true;
-    try {
-      const istAdmin = benutzer?.rolle === "admin";
-      const [health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, rollenMailzugriff] = await Promise.all([
-        api.health(), api.mails(alleMails), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.wissensbasis(), api.wissensvorschlaege(), api.entwuerfe(alleMails),
-        istAdmin ? api.rollenMailzugriff() : Promise.resolve(null),
-      ]);
-      setDaten({ health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, rollenMailzugriff });
-      setFehler(null);
-    } catch (e) {
-      if (e.status === 401) {
-        onNichtAngemeldet();
-        return;
+    while (laufenderAbruf.current) {
+      if (imHintergrund) return laufenderAbruf.current;
+      await laufenderAbruf.current;
+    }
+
+    const abruf = (async () => {
+      try {
+        const istAdmin = benutzer?.rolle === "admin";
+        const [health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, rollenMailzugriff] = await Promise.all([
+          api.health(), api.mails(alleMails), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.wissensbasis(), api.wissensvorschlaege(), api.entwuerfe(alleMails),
+          istAdmin ? api.rollenMailzugriff() : Promise.resolve(null),
+        ]);
+        setDaten({ health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, rollenMailzugriff });
+        setFehler(null);
+      } catch (e) {
+        if (e.status === 401) {
+          onNichtAngemeldet();
+          return;
+        }
+        // Ein vorübergehender Hintergrundfehler soll die bereits sichtbare
+        // Oberfläche nicht durch eine Fehlerseite ersetzen.
+        if (!imHintergrund) setFehler(e.message);
       }
-      // Ein vorübergehender Hintergrundfehler soll die bereits sichtbare
-      // Oberfläche nicht durch eine Fehlerseite ersetzen.
-      if (!imHintergrund) setFehler(e.message);
+    })();
+    laufenderAbruf.current = abruf;
+    try {
+      await abruf;
     } finally {
-      laedt.current = false;
+      if (laufenderAbruf.current === abruf) laufenderAbruf.current = null;
     }
   }, [onNichtAngemeldet, benutzer, alleMails]);
 
@@ -1624,6 +1740,15 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         antwortAnAdresse: m.antwort_an_adresse,
         betreff: m.betreff,
         snippet: m.text_auszug,
+        originalsprache: m.originalsprache,
+        betreffDeutsch: m.betreff_deutsch,
+        uebersetzung: m.text_deutsch,
+        istFremdsprache: Boolean(m.originalsprache && !istDeutscheSprache(m.originalsprache)),
+        uebersetzungFehlt: !m.originalsprache || Boolean(
+          m.originalsprache
+          && !istDeutscheSprache(m.originalsprache)
+          && !m.text_deutsch
+        ),
         zeit: formatMailZeit(m.empfangen_am),
         konfidenz: m.konfidenz,
         aufgaben: m.aufgaben ?? [],
@@ -1632,9 +1757,9 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         zustaendigSachbearbeiter: Boolean(m.zustaendig_sachbearbeiter),
         zuweisbareRollen: m.zuweisbare_rollen ?? ["admin", "sachbearbeiter"],
         zustaendigkeitLabel: (() => {
-          if (m.zustaendig_admin && m.zustaendig_sachbearbeiter) return "Erik, Guri und Ludwig";
+          if (m.zustaendig_admin && m.zustaendig_sachbearbeiter) return "Erik, Guri, Ludwig und Aneta";
           if (m.zustaendig_admin) return "Erik (Admin)";
-          if (m.zustaendig_sachbearbeiter) return "Guri, Ludwig (Sachbearbeiter)";
+          if (m.zustaendig_sachbearbeiter) return "Guri, Ludwig, Aneta (Sachbearbeitung)";
           return "nicht zugewiesen";
         })(),
         zielhinweis: (() => {

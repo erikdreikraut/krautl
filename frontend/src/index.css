@@ -172,6 +172,9 @@ textarea {
   .mail-detail-header,
   .mail-body,
   .mail-fields,
+  .antwort-bereich,
+  .mail-uebersetzung,
+  .mail-original-label,
   .entwurf-panel {
     padding-left: 14px !important;
     padding-right: 14px !important;

@@ -23,7 +23,7 @@
   sein letztes Lebenszeichen in der Datenbank
 - `app/main.py` — FastAPI mit den Endpunkten, die die Oberfläche braucht
 - `app/auth.py` — persönliche Anmeldung mit signierten Sitzungen für Erik,
-  Gursewak und Ludwig sowie deren Rollen **Admin** beziehungsweise
+  Gursewak, Ludwig und Aneta sowie deren Rollen **Admin** beziehungsweise
   **Sachbearbeiter**
 - `scripts/import_klassifikationen.py` — importiert/aktualisiert die
   `klassifikation`-Tabelle aus `data/mail-klassifikationen.csv` (idempotent)
@@ -118,15 +118,27 @@ getrennt und versucht zusätzlich, die Nachricht dauerhaft aus IMAP zu löschen.
   `SMTP_SERVICE_HOST`, `SMTP_SERVICE_PORT`, `SMTP_SERVICE_USER` und
   `SMTP_SERVICE_PASSWORD` gesetzt sein.
 - Alle fachlichen API-Funktionen erfordern eine persönliche Krautl-Anmeldung.
-  `erik` ist Admin; `gursewak` und `ludwig` sind Sachbearbeiter.
+  `erik` ist Admin; `gursewak`, `ludwig` und `aneta` gehören zur
+  Sachbearbeitung.
   Passwörter stehen ausschließlich in den Elestio-Umgebungsvariablen
   `KRAUTL_PASSWORD_ERIK`, `KRAUTL_PASSWORD_GURSEWAK` und
-  `KRAUTL_PASSWORD_LUDWIG`. `KRAUTL_SESSION_SECRET` signiert die
+  `KRAUTL_PASSWORD_LUDWIG` sowie `KRAUTL_PASSWORD_ANETA`.
+  `KRAUTL_SESSION_SECRET` signiert die
   Anmeldesitzungen und muss ein langes zufälliges Geheimnis sein.
 - Beim Versand ergänzt Krautl abhängig vom angemeldeten Nutzer automatisch
   Name, gegebenenfalls `Auszubildender` und die gemeinsame
   dreikraut-Geschäftssignatur. Der freigebende Nutzer wird im Aktionslog
   protokolliert.
+- Die Klassifikation erkennt die Hauptsprache eingehender Mails. Fremdsprachige
+  Nachrichten werden im Original und zusätzlich als deutsche Arbeitsübersetzung
+  angezeigt. Bereits vorhandene Mails werden beim ersten Öffnen nachgezogen.
+  Antwortvorschläge und manuelle Entwürfe bleiben für die interne Bearbeitung
+  immer deutsch. Erst nach der finalen Freigabe und unmittelbar vor SMTP wird
+  die Antwort in die Originalsprache übersetzt. Krautl speichert sowohl die
+  freigegebene deutsche als auch die tatsächlich versendete Fassung.
+- Nach dem ersten Deployment dieser Fremdsprachenfunktion muss einmalig
+  `python -m scripts.migrate_uebersetzungen` im App-Container ausgeführt werden,
+  bevor App und Worker mit dem neuen Schema gestartet werden.
 - Bestehende Klassifikationen lassen sich unter **Einstellungen →
   Mail-Klassifikationen** bearbeiten: Zielordner sowie eine geordnete Liste
   von Aufgaben. **Bestätigung einholen** ist dabei eine frei wählbare Aufgabe,
@@ -147,10 +159,16 @@ getrennt und versucht zusätzlich, die Nachricht dauerhaft aus IMAP zu löschen.
   abgeleitete Wissensvorschläge. Admins haben stets Zugriff auf alle Mailarten.
 - Die Rollen-Matrix bestimmt zugleich die anfängliche Zuständigkeit neuer
   Mails. Über **Zuweisen** kann eine Mail anschließend exklusiv Erik als Admin
-  oder der gemeinsamen Sachbearbeiter-Gruppe Guri und Ludwig zugeordnet
+  oder der gemeinsamen Sachbearbeitungsgruppe Guri, Ludwig und Aneta zugeordnet
   werden. Admins sehen standardmäßig nur ihre eigene Arbeitsliste und können
   zur Kontrolle auf **Alle Mails** wechseln. Zuweisungen werden im Aktionslog
   mit dem auslösenden Nutzer festgehalten.
+- Von `dreikraut.de` selbst versendete Systemhinweise zu Lagerbeständen oder
+  möglichen Adressfehlern gehören in `INTERN_AUFGABEN`. Sie warten nur auf
+  Bestätigung und werden danach nach `service@dreikraut.de/Erledigt`
+  verschoben. Die Kategorie wird einmalig mit
+  `python -m scripts.aktualisiere_interne_aufgaben` angelegt beziehungsweise
+  gezielt aktualisiert.
 - Bestätiger-Ziele pro Aufgabe sind weiterhin nicht nach einzelnen Personen
   oder Rollen differenziert; innerhalb einer freigegebenen Mailart darf jeder
   Sachbearbeiter bestätigen.

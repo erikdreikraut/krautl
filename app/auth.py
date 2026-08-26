@@ -32,6 +32,13 @@ BENUTZER = {
         "rolle": "sachbearbeiter",
         "passwort_env": "KRAUTL_PASSWORD_LUDWIG",
     },
+    "aneta": {
+        "benutzername": "aneta",
+        "name": "Aneta",
+        "titel": None,
+        "rolle": "sachbearbeiter",
+        "passwort_env": "KRAUTL_PASSWORD_ANETA",
+    },
 }
 
 

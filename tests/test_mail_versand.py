@@ -35,6 +35,7 @@ class _SmtpAttrappe:
 class MailVersandTest(unittest.TestCase):
     erik = {"name": "Erik Schweitzer", "titel": None}
     gursewak = {"name": "Gursewak Singh", "titel": "Auszubildender"}
+    aneta = {"name": "Aneta", "titel": None}
 
     def test_antwort_geht_an_kunden_und_kontrolladresse_nur_in_bcc(self):
         mail = Mail(
@@ -109,6 +110,11 @@ Fax +49 202 2531 2301
 """,
             text,
         )
+
+    def test_signatur_fuer_aneta_ohne_zusatztitel(self):
+        text = antwort_mit_signatur("Viele Grüße", self.aneta)
+        self.assertIn("\n\nAneta\n-- \ndreikraut e.K.\n", text)
+        self.assertNotIn("Auszubildender", text)
 
 
 if __name__ == "__main__":

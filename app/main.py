@@ -43,6 +43,10 @@ from .rechnungen import (
     rechnungsdatei_aus_mail_laden,
 )
 from .mail_anhaenge import anhang_aus_mail_laden
+from .uebersetzungen import (
+    antwort_in_originalsprache_uebersetzen, ist_deutsche_sprache,
+    uebersetzung_fuer_mail_sicherstellen,
+)
 
 app = FastAPI(title="Krautl API")
 logger = logging.getLogger(__name__)
@@ -281,6 +285,37 @@ async def liste_mails(
     ]
 
 
+@app.post("/mails/{mail_id}/uebersetzung")
+async def mail_uebersetzung_erstellen(
+    mail_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """Ergänzt die deutsche Arbeitsübersetzung, auch für bereits vorhandene Mails."""
+    mail = await session.get(Mail, mail_id)
+    await _mailzugriff_erfordern(session, request, mail)
+    try:
+        geaendert = await uebersetzung_fuer_mail_sicherstellen(mail)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Mailübersetzung konnte nicht erstellt werden: {exc}",
+        ) from exc
+    if geaendert and not ist_deutsche_sprache(mail.originalsprache):
+        session.add(Aktionslog(
+            mail_id=mail.id,
+            ereignis="mail_uebersetzt",
+            ausgeloest_von=request.state.benutzer["name"],
+            detail=f"Deutsche Arbeitsübersetzung aus {mail.originalsprache} erstellt",
+        ))
+    await session.commit()
+    return {
+        "originalsprache": mail.originalsprache,
+        "betreff_deutsch": mail.betreff_deutsch,
+        "text_deutsch": mail.text_deutsch,
+    }
+
+
 @app.put("/mails/{mail_id}/zustaendigkeit")
 async def mail_zustaendigkeit_aendern(
     mail_id: int,
@@ -308,7 +343,7 @@ async def mail_zustaendigkeit_aendern(
     ziel = (
         "Erik (Admin)"
         if zuweisung.rolle == "admin"
-        else "Guri und Ludwig (Sachbearbeiter)"
+        else "Guri, Ludwig und Aneta (Sachbearbeitung)"
     )
     session.add(Aktionslog(
         mail_id=mail.id,
@@ -1514,6 +1549,14 @@ async def entwurf_freigeben(
     finaler_text = freigabe.finaler_text.strip()
     if not finaler_text:
         raise HTTPException(status_code=422, detail="Die Antwort ist leer")
+    try:
+        await uebersetzung_fuer_mail_sicherstellen(mail)
+        await session.flush()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Originalsprache konnte nicht sicher bestimmt werden: {exc}",
+        ) from exc
     kundenservice = await ist_kundenservice_mail(session, mail)
     bisherige_blockierungen = 0
     pruefung_uebersprungen = False
@@ -1573,9 +1616,31 @@ async def entwurf_freigeben(
             ),
         ))
 
+    versand_text = finaler_text
+    if not ist_deutsche_sprache(mail.originalsprache):
+        try:
+            versand_text = await antwort_in_originalsprache_uebersetzen(
+                finaler_text, mail.originalsprache
+            )
+        except Exception as exc:
+            session.add(Aktionslog(
+                mail_id=mail.id,
+                ereignis="antwort_uebersetzung_fehlgeschlagen",
+                ausgeloest_von=request.state.benutzer["name"],
+                detail=(
+                    f"Entwurf #{entwurf.id}: Übersetzung in "
+                    f"{mail.originalsprache} fehlgeschlagen: {exc}"
+                ),
+            ))
+            await session.commit()
+            raise HTTPException(
+                status_code=502,
+                detail=f"Antwort konnte nicht in {mail.originalsprache} übersetzt werden: {exc}",
+            ) from exc
+
     try:
         versandergebnis = await antwort_senden(
-            mail, finaler_text, request.state.benutzer
+            mail, versand_text, request.state.benutzer
         )
     except Exception as exc:
         try:
@@ -1598,6 +1663,9 @@ async def entwurf_freigeben(
         ) from exc
 
     entwurf.text_final = antwort_mit_signatur(
+        versand_text, request.state.benutzer
+    )
+    entwurf.text_final_deutsch = antwort_mit_signatur(
         finaler_text, request.state.benutzer
     )
     entwurf.status = "versendet"
@@ -1621,7 +1689,12 @@ async def entwurf_freigeben(
                 else "ohne inhaltliche KI-Prüfung "
             )
             + f"an den Mailserver für {versandergebnis['empfaenger']} übergeben; "
-            f"BCC an {versandergebnis['bcc']}; "
+            + (
+                f"Antwort unmittelbar zuvor in {mail.originalsprache} übersetzt; "
+                if not ist_deutsche_sprache(mail.originalsprache)
+                else ""
+            )
+            + f"BCC an {versandergebnis['bcc']}; "
             f"Message-ID {versandergebnis['message_id']}"
         ),
     ))
@@ -1675,6 +1748,7 @@ async def entwurf_freigeben(
         "message_id": versandergebnis["message_id"],
         "pruefung_uebersprungen": pruefung_uebersprungen,
         "ki_pruefung": kundenservice,
+        "versandsprache": mail.originalsprache,
         "abschlussstatus": abschlussstatus,
     }
 
