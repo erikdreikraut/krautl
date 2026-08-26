@@ -646,20 +646,18 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
               <X size={13} />
             </button>
           )}
-          {benutzer.rolle === "admin" && (
-            <div className="flex items-center rounded-md overflow-hidden" style={{ border: `1px solid ${tokens.line}` }}>
-              <button
-                onClick={() => onAlleMailsAendern(false)}
-                className="px-2 py-1"
-                style={{ ...fontMono, fontSize: "9.5px", background: !alleMails ? tokens.mossDeep : tokens.paperRaised, color: !alleMails ? "#fff" : tokens.inkMuted }}
-              >MEINE</button>
-              <button
-                onClick={() => onAlleMailsAendern(true)}
-                className="px-2 py-1"
-                style={{ ...fontMono, fontSize: "9.5px", background: alleMails ? tokens.mossDeep : tokens.paperRaised, color: alleMails ? "#fff" : tokens.inkMuted, borderLeft: `1px solid ${tokens.line}` }}
-              >ALLE MAILS</button>
-            </div>
-          )}
+          <div className="flex items-center rounded-md overflow-hidden" style={{ border: `1px solid ${tokens.line}` }}>
+            <button
+              onClick={() => onAlleMailsAendern(false)}
+              className="px-2 py-1"
+              style={{ ...fontMono, fontSize: "9.5px", background: !alleMails ? tokens.mossDeep : tokens.paperRaised, color: !alleMails ? "#fff" : tokens.inkMuted }}
+            >MEINE</button>
+            <button
+              onClick={() => onAlleMailsAendern(true)}
+              className="px-2 py-1"
+              style={{ ...fontMono, fontSize: "9.5px", background: alleMails ? tokens.mossDeep : tokens.paperRaised, color: alleMails ? "#fff" : tokens.inkMuted, borderLeft: `1px solid ${tokens.line}` }}
+            >ALLE MAILS</button>
+          </div>
         </div>
         <div className="flex items-center gap-1.5 px-4 py-2 overflow-x-auto" style={{ borderBottom: `1px solid ${tokens.line}` }}>
           <button onClick={() => setFilter(null)} className="px-2 py-1 rounded-full shrink-0"
@@ -1202,7 +1200,7 @@ function RollenMailzugriffView({ konfiguration, onReload }) {
   </div>;
 }
 
-function EinstellungenMenu({ active, onWaehlen }) {
+function EinstellungenMenu({ active, onWaehlen, istAdmin }) {
   const [offen, setOffen] = useState(false);
   const ref = useRef(null);
 
@@ -1231,10 +1229,12 @@ function EinstellungenMenu({ active, onWaehlen }) {
             style={{ ...fontUI, fontSize: "13px", color: tokens.ink }}>
             Aktionslog
           </button>
-          <button onClick={() => { onWaehlen("rollen"); setOffen(false); }} className="w-full text-left px-3.5 py-2"
-            style={{ ...fontUI, fontSize: "13px", color: tokens.ink }}>
-            Rollen & Mailzugriff
-          </button>
+          {istAdmin && (
+            <button onClick={() => { onWaehlen("rollen"); setOffen(false); }} className="w-full text-left px-3.5 py-2"
+              style={{ ...fontUI, fontSize: "13px", color: tokens.ink }}>
+              Rollen & Mailzugriff
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -1713,7 +1713,7 @@ export default function KrautlUI() {
 
 function KrautlAnwendung({ benutzer, onAbmelden }) {
   const [tab, setTab] = useState("posteingang");
-  const [alleMails, setAlleMails] = useState(false);
+  const [alleMails, setAlleMails] = useState(true);
   const { daten, fehler, neuLaden } = verwendeKrautlDaten(onAbmelden, benutzer, alleMails);
 
   const abgeleitet = useMemo(() => {
@@ -1824,7 +1824,11 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
           <NavTab icon={InboxIcon} label="Posteingang" mobileLabel="Postfach" active={tab === "posteingang"} onClick={() => setTab("posteingang")} />
           <NavTab icon={Receipt} label="Rechnungen" count={offeneRechnungen} accent active={tab === "rechnungen"} onClick={() => setTab("rechnungen")} />
           <NavTab icon={BookOpen} label="Wissensdatenbank" mobileLabel="Wissen" count={daten.wissensvorschlaege.length} accent active={tab === "wissen"} onClick={() => setTab("wissen")} />
-          {benutzer.rolle === "admin" && <EinstellungenMenu active={["klassifikationen", "aktionslog", "rollen"].includes(tab)} onWaehlen={setTab} />}
+          <EinstellungenMenu
+            active={["klassifikationen", "aktionslog", "rollen"].includes(tab)}
+            onWaehlen={setTab}
+            istAdmin={benutzer.rolle === "admin"}
+          />
         </nav>
         <div className="ml-auto flex items-center gap-2 krautl-header-meta">
           <span

@@ -233,8 +233,6 @@ async def liste_mails(
     alle: bool = False,
 ):
     benutzer = request.state.benutzer
-    if alle and not ist_admin(benutzer):
-        raise HTTPException(status_code=403, detail="Die Gesamtübersicht ist nur für Admins")
     verweigert = await verweigerte_klassifikationen(session, request.state.benutzer)
     if "*" in verweigert:
         return []
@@ -506,10 +504,13 @@ async def klassifikation_aktualisieren(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
-    _admin_erfordern(request)
     klassifikation = await session.get(Klassifikation, klassifikation_id)
     if klassifikation is None:
         raise HTTPException(status_code=404, detail="Klassifikation nicht gefunden")
+    if not await darf_klassifikation_sehen(
+        session, request.state.benutzer, klassifikation_id
+    ):
+        raise HTTPException(status_code=403, detail="Kein Zugriff auf diese Mailart")
 
     ungueltig = [a for a in aenderung.aufgaben if a not in ERLAUBTE_AKTIONEN]
     if ungueltig:
@@ -759,7 +760,6 @@ async def liste_aktionslog(
     seite: int = 1,
     pro_seite: int = 50,
 ):
-    _admin_erfordern(request)
     if seite < 1:
         raise HTTPException(status_code=422, detail="Seite muss mindestens 1 sein")
     if pro_seite not in {25, 50, 100, 200}:
@@ -797,6 +797,28 @@ async def liste_aktionslog(
             ende = datetime(jahr, monatsnummer + 1, 1, tzinfo=berlin)
 
     filterbedingungen = []
+    verweigert = await verweigerte_klassifikationen(
+        session, request.state.benutzer
+    )
+    if "*" in verweigert:
+        return {
+            "eintraege": [],
+            "gesamt": 0,
+            "seite": seite,
+            "pro_seite": pro_seite,
+            "seiten": 1,
+            "monat": monat,
+            "tag": tag,
+        }
+    if verweigert:
+        sichtbare_mail_ids = select(Mail.id).where(or_(
+            Mail.klassifikation_id.is_(None),
+            ~Mail.klassifikation_id.in_(verweigert),
+        ))
+        filterbedingungen.append(or_(
+            Aktionslog.mail_id.is_(None),
+            Aktionslog.mail_id.in_(sichtbare_mail_ids),
+        ))
     if start is not None and ende is not None:
         filterbedingungen.extend([
             Aktionslog.erstellt_am >= start.astimezone(timezone.utc),
@@ -1430,8 +1452,6 @@ async def liste_entwuerfe(
     alle: bool = False,
 ):
     benutzer = request.state.benutzer
-    if alle and not ist_admin(benutzer):
-        raise HTTPException(status_code=403, detail="Die Gesamtübersicht ist nur für Admins")
     verweigert = await verweigerte_klassifikationen(session, request.state.benutzer)
     if "*" in verweigert:
         return []

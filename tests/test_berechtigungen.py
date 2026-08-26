@@ -11,11 +11,15 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_berechtigungen
 from app.berechtigungen import darf_mail_sehen
 from app.db import SessionLocal, engine
 from app.main import (
-    MailZuweisung, RollenMailzugriffAenderung, liste_mails,
-    liste_aktionslog, mail_antwortentwurf_erzeugen, mail_zustaendigkeit_aendern,
-    rollen_mailzugriff_speichern,
+    KlassifikationAenderung, MailZuweisung, RollenMailzugriffAenderung,
+    klassifikation_aktualisieren, liste_aktionslog, liste_entwuerfe,
+    liste_klassifikationen, liste_mails, mail_antwortentwurf_erzeugen,
+    mail_zustaendigkeit_aendern, rollen_mailzugriff_speichern,
 )
-from app.models import Aktionslog, Base, Klassifikation, Mail, Postfach, RollenMailzugriff
+from app.models import (
+    Aktionslog, Base, Entwurf, Klassifikation, Mail, Postfach,
+    RollenMailzugriff,
+)
 
 
 ADMIN = {"rolle": "admin", "name": "Erik Schweitzer"}
@@ -90,6 +94,64 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
                     gesperrte_mail.id, request_fuer(SACHBEARBEITER), session
                 )
         self.assertEqual(["Erlaubt"], [mail["betreff"] for mail in sichtbar])
+        self.assertEqual(403, fehler.exception.status_code)
+
+    async def test_sachbearbeiter_kann_alle_erlaubten_statt_nur_meine_laden(self):
+        async with SessionLocal() as session:
+            erlaubte_mail = (await session.execute(
+                select(Mail).where(Mail.klassifikation_id == "KUNDE_TEST")
+            )).scalar_one()
+            erlaubte_mail.zustaendig_sachbearbeiter = False
+            session.add(Entwurf(
+                mail_id=erlaubte_mail.id,
+                text_ki="Guten Tag,",
+                status="wartet",
+            ))
+            await session.commit()
+
+        async with SessionLocal() as session:
+            meine_mails = await liste_mails(
+                request_fuer(SACHBEARBEITER), session, alle=False
+            )
+            alle_mails = await liste_mails(
+                request_fuer(SACHBEARBEITER), session, alle=True
+            )
+            meine_entwuerfe = await liste_entwuerfe(
+                request_fuer(SACHBEARBEITER), session, alle=False
+            )
+            alle_entwuerfe = await liste_entwuerfe(
+                request_fuer(SACHBEARBEITER), session, alle=True
+            )
+
+        self.assertEqual([], meine_mails)
+        self.assertEqual(["Erlaubt"], [mail["betreff"] for mail in alle_mails])
+        self.assertEqual([], meine_entwuerfe)
+        self.assertEqual(1, len(alle_entwuerfe))
+
+    async def test_sachbearbeiter_kann_freigegebene_klassifikationen_bearbeiten(self):
+        aenderung = KlassifikationAenderung(
+            zielpostfach="service@dreikraut.de",
+            zielordner="Bearbeitet",
+            aufgaben=["MAIL_VERSCHIEBEN"],
+        )
+        async with SessionLocal() as session:
+            sichtbare = await liste_klassifikationen(
+                request_fuer(SACHBEARBEITER), session
+            )
+            await klassifikation_aktualisieren(
+                "KUNDE_TEST", aenderung, request_fuer(SACHBEARBEITER), session
+            )
+            with self.assertRaises(HTTPException) as fehler:
+                await klassifikation_aktualisieren(
+                    "RECHT_TEST", aenderung,
+                    request_fuer(SACHBEARBEITER), session,
+                )
+            erlaubt = await session.get(Klassifikation, "KUNDE_TEST")
+
+        self.assertEqual(
+            ["KUNDE_TEST"], [k["klassifikation_id"] for k in sichtbare]
+        )
+        self.assertEqual("Bearbeitet", erlaubt.zielordner)
         self.assertEqual(403, fehler.exception.status_code)
 
     async def test_admin_kann_rollenzugriff_speichern(self):
@@ -176,6 +238,40 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
             antwort = await liste_aktionslog(request_fuer(ADMIN), session)
 
         self.assertEqual("Test", antwort["eintraege"][0]["mail_absender"])
+
+    async def test_sachbearbeiter_sieht_nur_zulaessige_mailbezogene_logs(self):
+        async with SessionLocal() as session:
+            mails = {
+                mail.klassifikation_id: mail
+                for mail in (await session.execute(select(Mail))).scalars().all()
+            }
+            session.add_all([
+                Aktionslog(
+                    mail_id=mails["KUNDE_TEST"].id,
+                    ereignis="klassifiziert",
+                    detail="Sichtbar",
+                ),
+                Aktionslog(
+                    mail_id=mails["RECHT_TEST"].id,
+                    ereignis="klassifiziert",
+                    detail="Verborgen",
+                ),
+                Aktionslog(
+                    mail_id=None,
+                    ereignis="system",
+                    detail="Global sichtbar",
+                ),
+            ])
+            await session.commit()
+            antwort = await liste_aktionslog(
+                request_fuer(SACHBEARBEITER), session
+            )
+
+        self.assertEqual(2, antwort["gesamt"])
+        self.assertEqual(
+            {"Sichtbar", "Global sichtbar"},
+            {eintrag["detail"] for eintrag in antwort["eintraege"]},
+        )
 
     async def test_aktionslog_filtert_nach_monat_und_tag_und_paginiert(self):
         async with SessionLocal() as session:
