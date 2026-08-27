@@ -174,9 +174,15 @@ getrennt und versucht zusätzlich, die Nachricht dauerhaft aus IMAP zu löschen.
 - **Audio transkribieren** ist als auswählbare Aufgabe implementiert. Sie muss
   vor **Mail verschieben** stehen, solange das Audio aus dem ursprünglichen
   IMAP-Posteingang geladen wird. Das Ergebnis wird als bereits gelesene Mail
-  eingestellt, damit der Worker seine eigene Transkriptionsmail nicht erneut
-  verarbeitet. `OPENAI_API_KEY` ist erforderlich; das Modell kann optional
-  mit `OPENAI_TRANSCRIPTION_MODEL` geändert werden. Die reine Gliederung und
+  mit dem Präfix **[TRANSKRIPTION]** eingestellt und anschließend anhand des
+  gesprochenen Kundenanliegens normal klassifiziert. Der technische Absender
+  und das mitgesendete Originalaudio werden dabei als Klassifikationsmerkmale
+  ausgeschlossen, damit weder INTERN_AUFGABEN noch eine erneute
+  AUDIO_TRANSKRIBIEREN-Schleife entstehen. Bereits vom alten Schleifenschutz
+  versteckte Transkripte nimmt einmalig
+  `python -m scripts.klassifiziere_transkripte_nach` wieder auf.
+  `OPENAI_API_KEY` ist erforderlich; das Modell kann optional mit
+  `OPENAI_TRANSCRIPTION_MODEL` geändert werden. Die reine Gliederung und
   Formatierung übernimmt standardmäßig das kleine, schnelle Claude Haiku 4.5;
   `AUDIO_FORMATTING_MODEL` kann dieses zweite Modell bei Bedarf überschreiben.
 - Unter **Einstellungen → Rollen & Mailzugriff** legt ein Admin je

@@ -283,6 +283,20 @@ class KlassifizierungsPromptTest(unittest.TestCase):
             )
             self.assertEqual("UNGEKLAERT", ergebnis["klassifikation_id"])
 
+    def test_fertiges_transkript_ist_keine_interne_aufgabe(self):
+        self.assertIn("FERTIGE TELEFONTRANSKRIPTE", KLASSIFIZIERUNGS_SYSTEMPROMPT)
+        ergebnis = interne_aufgaben_zuordnung_absichern(
+            {"klassifikation_id": "KUNDE_TRACKING", "aktion_erforderlich": True},
+            {
+                "krautl_generiert": True,
+                "absender_adresse": "service@dreikraut.de",
+                "betreff": "[TRANSKRIPTION] Anruf von Brien",
+                "text_auszug": "Wann kommt meine Bestellung?",
+            },
+            [{"klassifikation_id": "INTERN_AUFGABEN"}],
+        )
+        self.assertEqual("KUNDE_TRACKING", ergebnis["klassifikation_id"])
+
 
 if __name__ == "__main__":
     unittest.main()

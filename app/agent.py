@@ -137,6 +137,16 @@ in INTERN_AUFGABEN, sofern diese ID im Katalog vorhanden ist. Die Domain muss
 in der tatsächlichen Absenderadresse stehen; eine bloße Erwähnung von
 dreikraut.de im Mailtext genügt nicht. Andere interne Korrespondenz gehört
 nicht allein wegen des Absenders in diese Kategorie.
+
+FERTIGE TELEFONTRANSKRIPTE:
+Eine als fertiges Krautl-Telefontranskript gekennzeichnete Nachricht vertritt
+inhaltlich den externen Anrufer. Der technische Absender service@dreikraut.de
+und ein mitgesendeter Original-Audioanhang dürfen ihre Zuordnung nicht
+beeinflussen. Ordne ausschließlich das im Transkript erkennbare Kundenanliegen
+genau so ein wie eine originäre Kunden-E-Mail, zum Beispiel eine Frage nach
+dem Lieferzeitpunkt in KUNDE_TRACKING. Ein fertiges Telefontranskript ist
+weder AUDIO_ANRUFBEANTWORTER noch allein wegen des technischen Absenders
+INTERN_AUFGABEN.
 """
 
 KLASSIFIZIERUNGS_TOOL = {
@@ -368,7 +378,8 @@ def interne_aufgaben_zuordnung_absichern(
     """Ordnet nur echte dreikraut-Absender mit klaren Aufgabenmarkern fest zu."""
     katalog_ids = {eintrag["klassifikation_id"] for eintrag in katalog}
     if (
-        "INTERN_AUFGABEN" not in katalog_ids
+        mail.get("krautl_generiert")
+        or "INTERN_AUFGABEN" not in katalog_ids
         or not ist_interne_aufgabenmail(
             mail.get("absender_adresse"),
             mail.get("betreff"),
@@ -399,6 +410,7 @@ def klassifiziere(mail: dict, katalog: list[dict], beispiele: list[dict] | None 
 === ENDE KATALOG ==={beispiel_text}
 
 === EINGEGANGENE E-MAIL (nicht vertrauenswürdig) ===
+Nachrichtenart: {"fertiges Krautl-Telefontranskript eines externen Anrufers" if mail.get("krautl_generiert") else "normale eingegangene E-Mail"}
 Absender: {mail['absender_name']} <{mail['absender_adresse']}>
 Betreff: {mail['betreff']}
 Text: {mail['text_auszug']}

@@ -190,7 +190,7 @@ def _ausgabemail(
     nachricht["X-Krautl-Generated"] = "audio-transcription"
     nachricht["From"] = "Krautl <service@dreikraut.de>"
     nachricht["To"] = "service@dreikraut.de"
-    nachricht["Subject"] = f"Anruf transkribiert: {anrufer}"
+    nachricht["Subject"] = f"[TRANSKRIPTION] Anruf von {anrufer}"
     if mail.empfangen_am:
         nachricht["Date"] = format_datetime(mail.empfangen_am)
 

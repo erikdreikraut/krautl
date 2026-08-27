@@ -22,6 +22,30 @@ from .uebersetzungen import mail_ins_deutsche_uebersetzen
 logger = logging.getLogger("krautl.worker")
 
 MAX_BEISPIELE = 20
+TRANSKRIPT_AUSGESCHLOSSENE_KLASSIFIKATIONEN = {
+    "AUDIO_ANRUFBEANTWORTER",
+    "INTERN_AUFGABEN",
+}
+
+
+def klassifizierungsdaten_fuer_transkript(
+    mail: dict, katalog: list[dict]
+) -> tuple[dict, list[dict]]:
+    """Entfernt nur Schleifenmerkmale, nicht den eigentlichen Transkripttext."""
+    if not mail.get("krautl_generiert"):
+        return mail, katalog
+    klassifizierungs_mail = {
+        **mail,
+        # Das Originalaudio bleibt an der sichtbaren Mail erhalten, darf aber
+        # nicht erneut die Klasse AUDIO_ANRUFBEANTWORTER auslösen.
+        "anhang_dateinamen": [],
+    }
+    klassifizierungs_katalog = [
+        eintrag for eintrag in katalog
+        if eintrag.get("klassifikation_id")
+        not in TRANSKRIPT_AUSGESCHLOSSENE_KLASSIFIKATIONEN
+    ]
+    return klassifizierungs_mail, klassifizierungs_katalog
 
 
 async def _postfach_holen_oder_anlegen(session, config: PostfachConfig) -> Postfach:
@@ -117,43 +141,36 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
             if await _mail_existiert(session, geparst["message_id"]):
                 continue
 
-            # Interne Ausgabemails müssen als UID-Marke gespeichert werden,
-            # dürfen aber niemals erneut klassifiziert oder ausgeführt werden.
-            # Die Transkriptionsmail enthält absichtlich das Originalaudio und
-            # würde sonst eine endlose Kette weiterer Transkriptionen auslösen.
-            if geparst.get("krautl_generiert"):
-                session.add(Mail(
-                    message_id=geparst["message_id"],
-                    imap_uid=roh["uid"],
-                    postfach_id=postfach.id,
-                    absender_name=geparst["absender_name"],
-                    absender_adresse=geparst["absender_adresse"],
-                    antwort_an_adresse=geparst.get("antwort_an_adresse"),
-                    betreff=geparst["betreff"],
-                    text_auszug=geparst["text_auszug"],
-                    empfangen_am=geparst["empfangen_am"],
-                    spam_score=geparst["spam_score"],
-                    anhang_dateinamen=geparst.get("anhang_dateinamen") or None,
-                    im_krautl_posteingang=False,
-                ))
-                continue
-
             klass: dict = {}
+            gueltige_ids_fuer_mail = gueltige_ids
             if katalog:
-                try:
-                    klass = await asyncio.to_thread(
-                        klassifiziere, geparst, katalog, beispiele
-                    )
-                except Exception:
-                    logger.exception(
-                        "Klassifizierung fehlgeschlagen für %s", geparst["message_id"]
-                    )
+                klassifizierungs_mail, klassifizierungs_katalog = (
+                    klassifizierungsdaten_fuer_transkript(geparst, katalog)
+                )
+                gueltige_ids_fuer_mail = {
+                    eintrag["klassifikation_id"]
+                    for eintrag in klassifizierungs_katalog
+                }
+                if klassifizierungs_katalog:
+                    try:
+                        klass = await asyncio.to_thread(
+                            klassifiziere,
+                            klassifizierungs_mail,
+                            klassifizierungs_katalog,
+                            beispiele,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Klassifizierung fehlgeschlagen für %s",
+                            geparst["message_id"],
+                        )
 
             klassifikation_id = klass.get("klassifikation_id")
-            if klassifikation_id not in gueltige_ids:
+            if klassifikation_id not in gueltige_ids_fuer_mail:
                 if klassifikation_id is not None:
                     logger.warning(
-                        "Agent lieferte unbekannte Klassifikation_ID %r — speichere als unklassifiziert.",
+                        "Agent lieferte für diese Mail unzulässige oder unbekannte "
+                        "Klassifikation_ID %r — speichere als unklassifiziert.",
                         klassifikation_id,
                     )
                 klassifikation_id = None

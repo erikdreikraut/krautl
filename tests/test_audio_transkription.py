@@ -47,7 +47,7 @@ class AudioTranskriptionTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("<krautl-audio-17@dreikraut.de>", message_id)
         self.assertEqual("audio-transcription", ausgang["X-Krautl-Generated"])
         self.assertEqual("service@dreikraut.de", ausgang["To"])
-        self.assertEqual("Anruf transkribiert: Frau Müller", ausgang["Subject"])
+        self.assertEqual("[TRANSKRIPTION] Anruf von Frau Müller", ausgang["Subject"])
         self.assertIn(
             "Anruf erhalten von Frau Müller, automatisch transkribiert:",
             ausgang.get_body(preferencelist=("html",)).get_content(),
