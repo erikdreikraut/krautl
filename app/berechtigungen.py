@@ -1,6 +1,6 @@
 """Rollenbasierte Zugriffsprüfung für eingehende Mails."""
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from .models import Mail, RollenMailzugriff
 
@@ -45,9 +45,37 @@ async def darf_klassifikation_sehen(
 
 
 async def darf_mail_sehen(session, benutzer: dict, mail: Mail | None) -> bool:
-    return bool(mail) and await darf_klassifikation_sehen(
+    if not mail or not await darf_klassifikation_sehen(
         session, benutzer, mail.klassifikation_id
-    )
+    ):
+        return False
+    # Admins behalten die Gesamtaufsicht und können dadurch auch eine zuvor an
+    # die Sachbearbeitung vergebene Mail wieder neu zuweisen. Sachbearbeiter
+    # dürfen dagegen eine ausdrücklich Erik zugewiesene Mail weder über einen
+    # direkten API-Aufruf noch über abgeleitete Datensätze öffnen.
+    if ist_admin(benutzer):
+        return True
+    if mail.zustaendigkeit_manuell:
+        return (
+            benutzer.get("rolle") == ROLLE_SACHBEARBEITER
+            and mail.zustaendig_sachbearbeiter
+        )
+    return True
+
+
+def zustaendigkeitsfilter(benutzer: dict, alle: bool = False):
+    """SQL-Filter für Arbeitslisten; None bedeutet uneingeschränkte Adminsicht."""
+    if ist_admin(benutzer):
+        return None if alle else Mail.zustaendig_admin.is_(True)
+    if benutzer.get("rolle") == ROLLE_SACHBEARBEITER:
+        if alle:
+            return or_(
+                Mail.zustaendigkeit_manuell.is_(False),
+                Mail.zustaendig_sachbearbeiter.is_(True),
+            )
+        return Mail.zustaendig_sachbearbeiter.is_(True)
+    # Für unbekannte Rollen ist die Bedingung absichtlich unerfüllbar.
+    return Mail.id.is_(None)
 
 
 async def standard_zustaendigkeit(

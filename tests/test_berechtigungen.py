@@ -229,6 +229,62 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(mail.zustaendigkeit_manuell)
         self.assertEqual("Erik Schweitzer", log.ausgeloest_von)
 
+    async def test_an_admin_zugewiesene_mail_verschwindet_auch_aus_alle_der_sachbearbeiter(self):
+        async with SessionLocal() as session:
+            erlaubte_mail = (await session.execute(
+                select(Mail).where(Mail.klassifikation_id == "KUNDE_TEST")
+            )).scalar_one()
+            session.add(Entwurf(
+                mail_id=erlaubte_mail.id,
+                text_ki="Guten Tag,",
+                status="wartet",
+            ))
+            await session.commit()
+            await mail_zustaendigkeit_aendern(
+                erlaubte_mail.id,
+                MailZuweisung(rolle="admin"),
+                request_fuer(ADMIN),
+                session,
+            )
+
+        async with SessionLocal() as session:
+            admin_meine = await liste_mails(
+                request_fuer(ADMIN), session, alle=False
+            )
+            admin_alle = await liste_mails(
+                request_fuer(ADMIN), session, alle=True
+            )
+            sachbearbeiter_meine = await liste_mails(
+                request_fuer(SACHBEARBEITER), session, alle=False
+            )
+            sachbearbeiter_alle = await liste_mails(
+                request_fuer(SACHBEARBEITER), session, alle=True
+            )
+            sachbearbeiter_entwuerfe = await liste_entwuerfe(
+                request_fuer(SACHBEARBEITER), session, alle=True
+            )
+            zaehler = await mail_zaehler(
+                request_fuer(SACHBEARBEITER), session
+            )
+            mail = (await session.execute(
+                select(Mail).where(Mail.klassifikation_id == "KUNDE_TEST")
+            )).scalar_one()
+            direkter_zugriff = await darf_mail_sehen(
+                session, SACHBEARBEITER, mail
+            )
+
+        self.assertIn("Erlaubt", [mail["betreff"] for mail in admin_meine])
+        self.assertIn("Erlaubt", [mail["betreff"] for mail in admin_alle])
+        self.assertNotIn(
+            "Erlaubt", [mail["betreff"] for mail in sachbearbeiter_meine]
+        )
+        self.assertNotIn(
+            "Erlaubt", [mail["betreff"] for mail in sachbearbeiter_alle]
+        )
+        self.assertEqual([], sachbearbeiter_entwuerfe)
+        self.assertEqual({"meine": 0, "alle": 0}, zaehler)
+        self.assertFalse(direkter_zugriff)
+
     async def test_zuweisung_respektiert_die_rollen_matrix(self):
         async with SessionLocal() as session:
             gesperrte_mail = (await session.execute(
