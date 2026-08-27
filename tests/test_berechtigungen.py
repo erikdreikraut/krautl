@@ -13,7 +13,7 @@ from app.db import SessionLocal, engine
 from app.main import (
     KlassifikationAenderung, MailZuweisung, RollenMailzugriffAenderung,
     klassifikation_aktualisieren, liste_aktionslog, liste_entwuerfe,
-    liste_klassifikationen, liste_mails, mail_antwortentwurf_erzeugen,
+    liste_klassifikationen, liste_mails, mail_antwortentwurf_erzeugen, mail_zaehler,
     mail_zustaendigkeit_aendern, rollen_mailzugriff_speichern,
 )
 from app.models import (
@@ -127,6 +127,25 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["Erlaubt"], [mail["betreff"] for mail in alle_mails])
         self.assertEqual([], meine_entwuerfe)
         self.assertEqual(1, len(alle_entwuerfe))
+
+    async def test_mailzaehler_liefert_meine_und_alle_unabhaengig_vom_schalter(self):
+        async with SessionLocal() as session:
+            admin = await mail_zaehler(request_fuer(ADMIN), session)
+            sachbearbeiter = await mail_zaehler(
+                request_fuer(SACHBEARBEITER), session
+            )
+
+        self.assertEqual({"meine": 2, "alle": 2}, admin)
+        self.assertEqual({"meine": 1, "alle": 1}, sachbearbeiter)
+
+    async def test_hoch_priorisierte_mails_stehen_vor_neueren_normalen_mails(self):
+        async with SessionLocal() as session:
+            mails = await liste_mails(request_fuer(ADMIN), session, alle=True)
+
+        self.assertEqual(
+            ["Gesperrt", "Erlaubt"],
+            [mail["betreff"] for mail in mails],
+        )
 
     async def test_sachbearbeiter_kann_freigegebene_klassifikationen_bearbeiten(self):
         aenderung = KlassifikationAenderung(

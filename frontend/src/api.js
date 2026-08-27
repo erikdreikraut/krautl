@@ -49,6 +49,7 @@ export const api = {
   logout: () => anfrage("/auth/logout", { method: "POST" }),
   health: () => anfrage("/health"),
   mails: (alle = false) => anfrage(alle ? "/mails?alle=true" : "/mails"),
+  mailZaehler: () => anfrage("/mails/zaehler"),
   klassifikationen: () => anfrage("/klassifikationen"),
   klassifikationSpeichern: (klassifikationId, daten) =>
     anfrage(`/klassifikationen/${klassifikationId}`, {

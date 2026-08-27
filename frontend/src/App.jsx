@@ -203,6 +203,30 @@ function Konfidenz({ value }) {
   );
 }
 
+function MailAnzahlTag({ anzahl, aktiv }) {
+  if (!anzahl) return null;
+  return (
+    <span
+      aria-label={`${anzahl} offene ${anzahl === 1 ? "Mail" : "Mails"}`}
+      className="inline-flex items-center justify-center rounded-full"
+      style={{
+        minWidth: "17px",
+        height: "17px",
+        padding: "0 4px",
+        ...fontMono,
+        fontSize: "9px",
+        fontWeight: 700,
+        lineHeight: 1,
+        background: aktiv ? "rgba(255, 255, 255, 0.22)" : tokens.mossPale,
+        color: aktiv ? "#fff" : tokens.mossDeep,
+        border: `1px solid ${aktiv ? "rgba(255, 255, 255, 0.38)" : tokens.moss}`,
+      }}
+    >
+      {anzahl}
+    </span>
+  );
+}
+
 function NavTab({ icon: Icon, label, mobileLabel = label, count, active, onClick, accent }) {
   return (
     <button onClick={onClick} className="flex items-center gap-2 px-3.5 py-2.5 relative"
@@ -478,7 +502,7 @@ function AntwortAktionen({ mail, onErzeugt }) {
   );
 }
 
-function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAendern, onReload }) {
+function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onAlleMailsAendern, onReload }) {
   const [filter, setFilter] = useState(null);
   const [suchbegriff, setSuchbegriff] = useState("");
   const [selectedId, setSelectedId] = useState(mails[0]?.id ?? null);
@@ -649,18 +673,23 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
           <div className="flex items-center rounded-md overflow-hidden" style={{ border: `1px solid ${tokens.line}` }}>
             <button
               onClick={() => onAlleMailsAendern(false)}
-              className="px-2 py-1"
+              className="flex items-center gap-1.5 px-2 py-1"
               style={{ ...fontMono, fontSize: "9.5px", background: !alleMails ? tokens.mossDeep : tokens.paperRaised, color: !alleMails ? "#fff" : tokens.inkMuted }}
-            >MEINE</button>
+            >
+              <span>MEINE</span>
+              <MailAnzahlTag anzahl={mailZaehler?.meine ?? 0} aktiv={!alleMails} />
+            </button>
             <button
               onClick={() => onAlleMailsAendern(true)}
-              className="px-2 py-1"
+              className="flex items-center gap-1.5 px-2 py-1"
               style={{ ...fontMono, fontSize: "9.5px", background: alleMails ? tokens.mossDeep : tokens.paperRaised, color: alleMails ? "#fff" : tokens.inkMuted, borderLeft: `1px solid ${tokens.line}` }}
-            >ALLE MAILS</button>
+            >
+              <span>ALLE MAILS</span>
+              <MailAnzahlTag anzahl={mailZaehler?.alle ?? 0} aktiv={alleMails} />
+            </button>
           </div>
         </div>
-        <div className="flex items-stretch" style={{ borderBottom: `1px solid ${tokens.line}` }}>
-          <div className="flex flex-1 min-w-0 items-center gap-1.5 px-4 py-2 overflow-x-auto">
+        <div className="flex items-center gap-1.5 px-4 py-2 overflow-x-auto" style={{ borderBottom: `1px solid ${tokens.line}` }}>
             <button onClick={() => setFilter(null)} className="px-2 py-1 rounded-full shrink-0"
               style={{ ...fontMono, fontSize: "11px", background: !filter ? tokens.mossDeep : "transparent", color: !filter ? "#fff" : tokens.inkMuted, border: `1px solid ${!filter ? tokens.mossDeep : tokens.line}` }}>
               ALLE
@@ -671,21 +700,19 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
                 {k.toUpperCase()}
               </button>
             ))}
-          </div>
-          <div
-            aria-live="polite"
-            aria-label={`${sichtbar.length} Mails in der aktuellen Liste`}
-            title="Mails in der aktuell gefilterten Liste"
-            className="flex shrink-0 items-center px-3"
-            style={{ ...fontMono, fontSize: "10px", color: tokens.inkMuted, background: tokens.paperRaised, borderLeft: `1px solid ${tokens.line}` }}
-          >
-            {sichtbar.length} {sichtbar.length === 1 ? "MAIL" : "MAILS"}
-          </div>
         </div>
         <div className="flex-1 overflow-y-auto">
           {sichtbar.map((m) => (
             <button key={m.id} onClick={() => mailOeffnen(m.id)} className="w-full text-left px-4 py-3 flex flex-col gap-1.5"
-              style={{ borderBottom: `1px solid ${tokens.line}`, background: selected?.id === m.id ? tokens.mossPale : "transparent" }}>
+              style={{
+                borderBottom: `1px solid ${tokens.line}`,
+                background: m.prioritaet === "hoch"
+                  ? tokens.rustPale
+                  : selected?.id === m.id ? tokens.mossPale : "transparent",
+                boxShadow: selected?.id === m.id
+                  ? `inset 3px 0 0 ${m.prioritaet === "hoch" ? tokens.rust : tokens.moss}`
+                  : "none",
+              }}>
               <div className="flex items-center justify-between gap-2">
                 <Badge label={m.katId} color={farbeFuerKategorie(m.kat)} />
                 <span className="whitespace-nowrap" style={{ ...fontMono, fontSize: "11px", color: tokens.inkMuted }}>{m.zeit}</span>
@@ -1574,11 +1601,11 @@ function verwendeKrautlDaten(onNichtAngemeldet, benutzer, alleMails) {
     const abruf = (async () => {
       try {
         const istAdmin = benutzer?.rolle === "admin";
-        const [health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, rollenMailzugriff] = await Promise.all([
-          api.health(), api.mails(alleMails), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.wissensbasis(), api.wissensvorschlaege(), api.entwuerfe(alleMails),
+        const [health, mails, mailZaehler, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, rollenMailzugriff] = await Promise.all([
+          api.health(), api.mails(alleMails), api.mailZaehler(), api.klassifikationen(), api.rechnungen(), api.faq(), api.faqVorschlaege(), api.wissensbasis(), api.wissensvorschlaege(), api.entwuerfe(alleMails),
           istAdmin ? api.rollenMailzugriff() : Promise.resolve(null),
         ]);
-        setDaten({ health, mails, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, rollenMailzugriff });
+        setDaten({ health, mails, mailZaehler, katalog, rechnungen, faq, faqVorschlaege, wissensbasis, wissensvorschlaege, entwuerfe, rollenMailzugriff });
         setFehler(null);
       } catch (e) {
         if (e.status === 401) {
@@ -1752,6 +1779,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         betreff: m.betreff,
         snippet: m.text_auszug,
         originalsprache: m.originalsprache,
+        prioritaet: String(klass?.standard_prio || "normal").toLowerCase(),
         betreffDeutsch: m.betreff_deutsch,
         uebersetzung: m.text_deutsch,
         istFremdsprache: Boolean(m.originalsprache && !istDeutscheSprache(m.originalsprache)),
@@ -1882,6 +1910,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         katalog={daten.katalog}
         benutzer={benutzer}
         alleMails={alleMails}
+        mailZaehler={daten.mailZaehler}
         onAlleMailsAendern={setAlleMails}
         onReload={neuLaden}
       />}

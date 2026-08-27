@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -238,9 +238,19 @@ async def liste_mails(
         return []
     abfrage = (
         select(Mail)
+        .outerjoin(
+            Klassifikation,
+            Mail.klassifikation_id == Klassifikation.klassifikation_id,
+        )
         .options(selectinload(Mail.aufgaben), selectinload(Mail.postfach))
         .where(Mail.im_krautl_posteingang.is_(True))
-        .order_by(Mail.empfangen_am.desc())
+        .order_by(
+            case(
+                (func.lower(Klassifikation.standard_prio) == "hoch", 0),
+                else_=1,
+            ),
+            Mail.empfangen_am.desc(),
+        )
         .limit(100)
     )
     if verweigert:
@@ -281,6 +291,40 @@ async def liste_mails(
         }
         for mail in mails
     ]
+
+
+@app.get("/mails/zaehler")
+async def mail_zaehler(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """Liefert beide Posteingangszahlen unabhängig vom gewählten Schalter."""
+    benutzer = request.state.benutzer
+    verweigert = await verweigerte_klassifikationen(session, benutzer)
+    if "*" in verweigert:
+        return {"meine": 0, "alle": 0}
+
+    bedingungen = [Mail.im_krautl_posteingang.is_(True)]
+    if verweigert:
+        bedingungen.append(or_(
+            Mail.klassifikation_id.is_(None),
+            ~Mail.klassifikation_id.in_(verweigert),
+        ))
+
+    async def anzahl(*zusaetzliche_bedingungen) -> int:
+        abfrage = select(func.count(Mail.id)).where(
+            *bedingungen, *zusaetzliche_bedingungen
+        )
+        return int((await session.execute(abfrage)).scalar_one())
+
+    alle = await anzahl()
+    if ist_admin(benutzer):
+        meine = await anzahl(Mail.zustaendig_admin.is_(True))
+    elif benutzer.get("rolle") == ROLLE_SACHBEARBEITER:
+        meine = await anzahl(Mail.zustaendig_sachbearbeiter.is_(True))
+    else:
+        meine = alle
+    return {"meine": meine, "alle": alle}
 
 
 @app.post("/mails/{mail_id}/uebersetzung")
