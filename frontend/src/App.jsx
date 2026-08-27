@@ -659,17 +659,28 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, onAlleMailsAende
             >ALLE MAILS</button>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 px-4 py-2 overflow-x-auto" style={{ borderBottom: `1px solid ${tokens.line}` }}>
-          <button onClick={() => setFilter(null)} className="px-2 py-1 rounded-full shrink-0"
-            style={{ ...fontMono, fontSize: "11px", background: !filter ? tokens.mossDeep : "transparent", color: !filter ? "#fff" : tokens.inkMuted, border: `1px solid ${!filter ? tokens.mossDeep : tokens.line}` }}>
-            ALLE
-          </button>
-          {kategorien.map((k) => (
-            <button key={k} onClick={() => setFilter(k)} className="px-2 py-1 rounded-full shrink-0"
-              style={{ ...fontMono, fontSize: "11px", background: filter === k ? tokens.mossDeep : "transparent", color: filter === k ? "#fff" : tokens.inkMuted, border: `1px solid ${filter === k ? tokens.mossDeep : tokens.line}` }}>
-              {k.toUpperCase()}
+        <div className="flex items-stretch" style={{ borderBottom: `1px solid ${tokens.line}` }}>
+          <div className="flex flex-1 min-w-0 items-center gap-1.5 px-4 py-2 overflow-x-auto">
+            <button onClick={() => setFilter(null)} className="px-2 py-1 rounded-full shrink-0"
+              style={{ ...fontMono, fontSize: "11px", background: !filter ? tokens.mossDeep : "transparent", color: !filter ? "#fff" : tokens.inkMuted, border: `1px solid ${!filter ? tokens.mossDeep : tokens.line}` }}>
+              ALLE
             </button>
-          ))}
+            {kategorien.map((k) => (
+              <button key={k} onClick={() => setFilter(k)} className="px-2 py-1 rounded-full shrink-0"
+                style={{ ...fontMono, fontSize: "11px", background: filter === k ? tokens.mossDeep : "transparent", color: filter === k ? "#fff" : tokens.inkMuted, border: `1px solid ${filter === k ? tokens.mossDeep : tokens.line}` }}>
+                {k.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <div
+            aria-live="polite"
+            aria-label={`${sichtbar.length} Mails in der aktuellen Liste`}
+            title="Mails in der aktuell gefilterten Liste"
+            className="flex shrink-0 items-center px-3"
+            style={{ ...fontMono, fontSize: "10px", color: tokens.inkMuted, background: tokens.paperRaised, borderLeft: `1px solid ${tokens.line}` }}
+          >
+            {sichtbar.length} {sichtbar.length === 1 ? "MAIL" : "MAILS"}
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto">
           {sichtbar.map((m) => (
