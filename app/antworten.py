@@ -220,7 +220,26 @@ PRUEFUNGS_TOOL = {
             "freigabefaehig": {"type": "boolean"},
             "probleme": {
                 "type": "array",
-                "items": {"type": "string"},
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "typ": {
+                            "type": "string",
+                            "enum": [
+                                "innerer_widerspruch",
+                                "produkt_faktenfehler",
+                                "sprachfehler",
+                                "interner_hinweis",
+                                "kernfrage_unbeantwortet",
+                                "recht_gesundheit",
+                                "zeitfehler",
+                                "betriebliche_aussage_unbelegt",
+                            ],
+                        },
+                        "beschreibung": {"type": "string"},
+                    },
+                    "required": ["typ", "beschreibung"],
+                },
             },
         },
         "required": ["freigabefaehig", "probleme"],
@@ -244,10 +263,34 @@ widersprechen oder mit anderen Angaben in derselben Antwort unvereinbar sind -
 nicht schon deshalb, weil du sie nicht in Mail oder Wissensbasis belegt
 findest.
 
+Für betriebliche Handlungen gilt eine verbindliche Freigabelogik:
+- Eckige Klammern sind das Signal des Teams, dass eine Aussage oder Handlung
+  noch offen ist, geprüft oder ausgeführt werden muss.
+- Steht eine betriebliche Aussage OHNE eckige Klammern in der zu prüfenden
+  Antwort, gilt sie für dich als vom Menschen bestätigte Tatsache. Das gilt
+  ausdrücklich auch für bereits ausgeführte Handlungen wie „wir haben
+  storniert“, „wir haben erstattet“, „wir haben geprüft“ oder „wir haben die
+  Ersatzlieferung veranlasst“.
+- Fordere für solche Aussagen niemals einen Beleg in Kundenmail, FAQ oder
+  Wissensbasis. Die Kundenmail beschreibt häufig den Stand VOR der internen
+  Bearbeitung und kann deshalb noch von einem offenen Problem sprechen.
+- Erfinde niemals nachträglich einen fehlenden Prüfhinweis und beanstande nicht,
+  dass ein solcher Hinweis fehle. Das Entfernen des Klammerhinweises ist die
+  bewusste Bestätigung des Menschen, dass die Handlung erledigt ist.
+- Nur wenn sich zwei Aussagen IN DER ANTWORT gegenseitig ausschließen, liegt
+  ein innerer Widerspruch vor, zum Beispiel „Sie erhalten das Produkt
+  kostenlos“ und „dafür berechnen wir Ihnen 10 Euro“.
+- Die Beschreibung eines früheren Bearbeitungsstands und das danach genannte
+  Ergebnis sind kein innerer Widerspruch. Zum Beispiel darf „die überflüssige
+  Bestellung war noch nicht storniert“ zusammen mit „jetzt ist alles in bester
+  Ordnung“ stehen. Lege zeitlich mehrdeutige Formulierungen zugunsten der
+  menschlichen Freigabe aus, statt daraus einen Widerspruch zu konstruieren.
+
 Dein Schwerpunkt liegt auf:
 - inhaltlicher Konsistenz: Widerspricht sich die Antwort selbst, oder
-  widerspricht sie eindeutig der Kundenmail oder dreikraut-eigenen Fakten aus
-  FAQ/Fallwissen (Preise, Produkteigenschaften, Abläufe)?
+  widerspricht eine Produkt- oder Preisaussage eindeutig dreikraut-eigenen
+  Fakten aus FAQ/Fallwissen? Ein neuer Bearbeitungsstand gegenüber der
+  Kundenmail ist ausdrücklich KEIN Widerspruch.
 - sprachlichen und grammatikalischen Fehlern;
 - übersehenen internen Hinweisen, Platzhaltern oder eckigen Klammern - auch
   aus einem KI-Entwurf übernommen und beim Bearbeiten vergessen.
@@ -277,7 +320,18 @@ Bündele keine korrekten oder bloß diskutablen Formulierungen in einen echten
 Fehler hinein. Wenn du einen klaren Fehler gefunden hast, erfinde keine
 zusätzlichen Punkte, um die Liste zu verlängern. Nur ein wesentliches Hindernis
 bedeutet freigabefaehig=false.
+
+Ordne jeden Einwand exakt einem der vorgegebenen Problemtypen zu. Der Typ
+„betriebliche_aussage_unbelegt“ bedeutet ausdrücklich KEIN Versandhindernis:
+Nutze ihn nur, falls du trotz der obigen Regel lediglich Zweifel hast, ob eine
+ohne Klammern behauptete betriebliche Handlung wirklich ausgeführt wurde. Das
+Programm verwirft diesen Einwand und gibt die Antwort frei, sofern kein anderer
+echter Fehler vorliegt. „innerer_widerspruch“ ist ausschließlich für zwei
+logisch unvereinbare Aussagen innerhalb der zu prüfenden Antwort zulässig.
 """
+
+
+NICHT_BLOCKIERENDE_PRUEFTYPEN = {"betriebliche_aussage_unbelegt"}
 
 
 def _synchron_pruefen(
@@ -328,7 +382,10 @@ def pruefergebnis_absichern(
     if not isinstance(ergebnis, dict):
         ergebnis = {"freigabefaehig": False, "probleme": str(ergebnis)}
 
-    probleme = _probleme_normalisieren(ergebnis.get("probleme"))
+    probleme, typisierte_pruefung = _pruefprobleme_normalisieren(
+        ergebnis.get("probleme")
+    )
+    echte_ki_probleme = bool(probleme)
     if "[" in entwurfstext or "]" in entwurfstext:
         hinweis = "Der Antworttext enthält noch einen Prüfhinweis in eckigen Klammern."
         if hinweis not in probleme:
@@ -378,12 +435,35 @@ def pruefergebnis_absichern(
         if hinweis not in probleme:
             probleme.append(hinweis)
     freigabefaehig = _bool_normalisieren(ergebnis.get("freigabefaehig"))
+    if typisierte_pruefung and not echte_ki_probleme:
+        # Die strukturierte Prüfung hatte entweder gar keinen Einwand oder nur
+        # den ausdrücklich nicht blockierenden Zweifel an einer vom Menschen
+        # bestätigten betrieblichen Aussage. Ein abweichendes KI-Bool darf die
+        # Freigabe dann nicht trotzdem verhindern.
+        freigabefaehig = True
     if not freigabefaehig and not probleme:
         probleme.append("Die KI konnte die Antwort noch nicht als vollständig bestätigen.")
     return {
         "freigabefaehig": freigabefaehig and not probleme,
         "probleme": probleme,
     }
+
+
+def _pruefprobleme_normalisieren(wert) -> tuple[list[str], bool]:
+    """Filtert typisierte Nicht-Probleme, bleibt aber abwärtskompatibel."""
+    if isinstance(wert, (list, tuple)) and all(
+        isinstance(eintrag, dict) and "typ" in eintrag
+        for eintrag in wert
+    ):
+        probleme = []
+        for eintrag in wert:
+            if str(eintrag.get("typ") or "") in NICHT_BLOCKIERENDE_PRUEFTYPEN:
+                continue
+            beschreibung = str(eintrag.get("beschreibung") or "").strip()
+            if beschreibung:
+                probleme.append(beschreibung)
+        return list(dict.fromkeys(probleme)), True
+    return _probleme_normalisieren(wert), False
 
 
 def _probleme_normalisieren(wert) -> list[str]:
@@ -412,7 +492,9 @@ def _probleme_normalisieren(wert) -> list[str]:
             probleme.extend(_probleme_normalisieren(eintrag))
         return list(dict.fromkeys(probleme))
     if isinstance(wert, dict):
-        for schluessel in ("probleme", "problem", "message", "detail"):
+        for schluessel in (
+            "probleme", "problem", "beschreibung", "message", "detail",
+        ):
             if schluessel in wert:
                 return _probleme_normalisieren(wert[schluessel])
     return [str(wert).strip()]

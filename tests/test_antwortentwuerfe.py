@@ -442,8 +442,66 @@ class AntwortpruefungTest(unittest.TestCase):
     def test_pruefauftrag_trennt_zusage_von_erledigter_handlung(self):
         self.assertIn("angekündigte nächste Handlung", PRUEFUNGS_SYSTEMPROMPT)
         self.assertIn("internen Prüfhinweis", PRUEFUNGS_SYSTEMPROMPT)
+        self.assertIn("als vom Menschen bestätigte Tatsache", PRUEFUNGS_SYSTEMPROMPT)
+        self.assertIn("Erfinde niemals nachträglich", PRUEFUNGS_SYSTEMPROMPT)
+        self.assertIn("IN DER ANTWORT", PRUEFUNGS_SYSTEMPROMPT)
+        self.assertIn("früheren Bearbeitungsstands", PRUEFUNGS_SYSTEMPROMPT)
         self.assertIn("Wochenendwunsch am Freitag", PRUEFUNGS_SYSTEMPROMPT)
         self.assertIn("zusätzlichen Punkte", PRUEFUNGS_SYSTEMPROMPT)
+
+    def test_unbelegte_betriebliche_behauptung_ohne_klammer_blockiert_nicht(self):
+        ergebnis = pruefergebnis_absichern(
+            {
+                "freigabefaehig": False,
+                "probleme": [{
+                    "typ": "betriebliche_aussage_unbelegt",
+                    "beschreibung": (
+                        "Die Antwort behauptet die Stornierung, obwohl sie in "
+                        "der Kundenmail nicht belegt ist und ein Prüfhinweis fehlt."
+                    ),
+                }],
+            },
+            (
+                "Sehr geehrter Herr Maciejewski,\n\n"
+                "Ihre Bestellungen hatten wir richtig gehandhabt, nur die "
+                "überflüssige noch nicht storniert. Es ist alles in bester Ordnung."
+            ),
+        )
+        self.assertTrue(ergebnis["freigabefaehig"])
+        self.assertEqual([], ergebnis["probleme"])
+
+    def test_innerer_widerspruch_bleibt_ein_versandhindernis(self):
+        ergebnis = pruefergebnis_absichern(
+            {
+                "freigabefaehig": False,
+                "probleme": [{
+                    "typ": "innerer_widerspruch",
+                    "beschreibung": (
+                        "Kostenlos und eine Berechnung von 10 Euro widersprechen sich."
+                    ),
+                }],
+            },
+            (
+                "Sie erhalten das Produkt kostenlos. "
+                "Dafür berechnen wir Ihnen 10 Euro."
+            ),
+        )
+        self.assertFalse(ergebnis["freigabefaehig"])
+        self.assertEqual(1, len(ergebnis["probleme"]))
+
+    def test_klammer_blockiert_trotz_nicht_blockierendem_ki_einwand(self):
+        ergebnis = pruefergebnis_absichern(
+            {
+                "freigabefaehig": False,
+                "probleme": [{
+                    "typ": "betriebliche_aussage_unbelegt",
+                    "beschreibung": "Die Ausführung ist nicht extern belegt.",
+                }],
+            },
+            "Wir haben storniert. [Stornierung noch ausführen]",
+        )
+        self.assertFalse(ergebnis["freigabefaehig"])
+        self.assertIn("eckigen Klammern", ergebnis["probleme"][0])
 
     def test_eckige_klammern_blockieren_auch_bei_ki_fehlurteil(self):
         ergebnis = pruefergebnis_absichern(
