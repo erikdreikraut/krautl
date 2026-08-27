@@ -1,0 +1,11 @@
+[Unit]
+Description=Prüft Krautl regelmäßig auf fehlende oder ungesunde Container
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=krautl-guardian.service
+
+[Install]
+WantedBy=timers.target

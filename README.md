@@ -89,6 +89,33 @@ Der aktuelle Zustand ist über `/api/health` beziehungsweise intern über
 `true`, wenn innerhalb der letzten fünf Minuten ein Abruf-Lebenszeichen
 gespeichert wurde.
 
+### Automatische Wiederherstellung auf dem Produktivserver
+
+Die Docker-Restart-Policy startet abgestürzte vorhandene Container neu, kann
+aber einen entfernten oder bei einem Deployment nicht angelegten Container
+nicht zurückbringen. Ergänzend prüft deshalb ein systemd-Timer alle zwei
+Minuten die Dienste `db`, `app`, `worker` und `frontend`. Fehlende oder
+gestoppte Dienste werden mit Docker Compose wiederhergestellt; als `unhealthy`
+markierte Dienste werden neu gestartet. Das Frontend besitzt dafür einen
+eigenen HTTP-Healthcheck.
+
+Der Wächter wird auf dem Server einmalig installiert:
+
+```bash
+cd /opt/app/krautl
+sudo install -m 0644 ops/krautl-guardian.service /etc/systemd/system/krautl-guardian.service
+sudo install -m 0644 ops/krautl-guardian.timer /etc/systemd/system/krautl-guardian.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now krautl-guardian.timer
+sudo systemctl start krautl-guardian.service
+systemctl status krautl-guardian.timer --no-pager
+journalctl -u krautl-guardian.service -n 30 --no-pager
+```
+
+Für eine geplante vollständige Abschaltung muss der Timer vorher mit
+`sudo systemctl stop krautl-guardian.timer` angehalten werden. Nach der Wartung
+wird er mit `sudo systemctl start krautl-guardian.timer` wieder aktiviert.
+
 Jede sichtbare Mail kann unabhängig von ihrer Klassifikation manuell als
 **Erledigt** markiert werden. Sie verschwindet dann aus der Krautl-Arbeitsliste,
 bleibt im IMAP-Postfach aber unverändert erhalten; offene Krautl-Aufgaben werden

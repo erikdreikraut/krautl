@@ -1,0 +1,10 @@
+[Unit]
+Description=Krautl Compose-Selbstheilung
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/app/krautl
+ExecStart=/bin/sh /opt/app/krautl/scripts/krautl_guardian.sh
