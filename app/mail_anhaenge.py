@@ -12,14 +12,13 @@ from .mail_parser import alle_anhaenge
 from .models import Mail
 
 
-async def anhang_aus_mail_laden(
+async def mail_rohdaten_aus_ablage_laden(
     mail: Mail,
-    index: int,
     quellpostfach: str | None,
     zielpostfach: str | None,
     zielordner: str | None,
-) -> tuple[str, bytes]:
-    """Lädt einen einzelnen Anhang aus der Original- oder verschobenen Mail."""
+) -> bytes:
+    """Lädt die Originalmail aus ihrem aktuellen oder ursprünglichen Ablageort."""
     configs = {config.user.casefold(): config for config in lade_postfaecher()}
     orte: list[tuple[str, str]] = []
     if zielpostfach:
@@ -36,16 +35,29 @@ async def anhang_aus_mail_laden(
             fehler.append(f"{adresse}/{ordner}: Postfach nicht konfiguriert")
             continue
         try:
-            eml = await asyncio.to_thread(
+            return await asyncio.to_thread(
                 mail_rohdaten_nach_message_id_laden, config, mail.message_id, ordner,
             )
-            anhaenge = await asyncio.to_thread(alle_anhaenge, eml)
-            if not 0 <= index < len(anhaenge):
-                raise IndexError(
-                    f"Anhang-Index {index} existiert nicht (nur {len(anhaenge)} Anhänge vorhanden)"
-                )
-            anhang = anhaenge[index]
-            return anhang["dateiname"], anhang["inhalt"]
         except Exception as exc:
             fehler.append(f"{adresse}/{ordner}: {exc}")
     raise RuntimeError(" | ".join(fehler) or "Kein IMAP-Ablageort bekannt")
+
+
+async def anhang_aus_mail_laden(
+    mail: Mail,
+    index: int,
+    quellpostfach: str | None,
+    zielpostfach: str | None,
+    zielordner: str | None,
+) -> tuple[str, bytes]:
+    """Lädt einen einzelnen Anhang aus der Original- oder verschobenen Mail."""
+    eml = await mail_rohdaten_aus_ablage_laden(
+        mail, quellpostfach, zielpostfach, zielordner,
+    )
+    anhaenge = await asyncio.to_thread(alle_anhaenge, eml)
+    if not 0 <= index < len(anhaenge):
+        raise IndexError(
+            f"Anhang-Index {index} existiert nicht (nur {len(anhaenge)} Anhänge vorhanden)"
+        )
+    anhang = anhaenge[index]
+    return anhang["dateiname"], anhang["inhalt"]

@@ -43,7 +43,8 @@ from .shop_import import shop_katalog_laden, shop_katalog_speichern
 from .rechnungen import (
     rechnungsdatei_aus_mail_laden,
 )
-from .mail_anhaenge import anhang_aus_mail_laden
+from .mail_anhaenge import anhang_aus_mail_laden, mail_rohdaten_aus_ablage_laden
+from .mail_html import html_teil_aus_mail
 from .uebersetzungen import (
     antwort_in_originalsprache_uebersetzen, ist_deutsche_sprache,
     uebersetzung_fuer_mail_sicherstellen,
@@ -658,6 +659,60 @@ async def mail_erledigen(
     ))
     await session.commit()
     return {"status": "erledigt", "imap_unveraendert": True}
+
+
+@app.get("/mails/{mail_id}/html")
+async def mail_html_ansehen(
+    mail_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    mail = await session.get(Mail, mail_id)
+    await _mailzugriff_erfordern(session, request, mail)
+
+    quellpostfach = await session.get(Postfach, mail.postfach_id)
+    klassifikation = (
+        await session.get(Klassifikation, mail.klassifikation_id)
+        if mail.klassifikation_id else None
+    )
+    verschiebe_aufgabe = (await session.execute(
+        select(MailAufgabe).where(
+            MailAufgabe.mail_id == mail.id,
+            MailAufgabe.aufgabe_typ == "MAIL_VERSCHIEBEN",
+        ).order_by(MailAufgabe.position.desc())
+    )).scalars().first()
+    verschiebe_parameter = (verschiebe_aufgabe.parameter if verschiebe_aufgabe else {}) or {}
+    zielpostfach = (
+        verschiebe_parameter.get("zielpostfach")
+        or (klassifikation.zielpostfach if klassifikation else None)
+    )
+    zielordner = (
+        verschiebe_parameter.get("zielordner")
+        or (klassifikation.zielordner if klassifikation else None)
+    )
+
+    try:
+        eml = await mail_rohdaten_aus_ablage_laden(
+            mail,
+            quellpostfach.adresse if quellpostfach else None,
+            zielpostfach,
+            zielordner,
+        )
+        html = await asyncio.to_thread(html_teil_aus_mail, eml)
+    except RuntimeError as exc:
+        logger.warning("HTML-Teil von Mail %s nicht abrufbar: %s", mail_id, exc)
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Die Originalmail konnte nicht geladen werden. "
+                "Krautl zeigt stattdessen die gespeicherte Textansicht."
+            ),
+        ) from exc
+
+    return JSONResponse(
+        content={"html": html},
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 @app.get("/mails/{mail_id}/anhaenge/{index}")

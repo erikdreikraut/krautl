@@ -502,6 +502,92 @@ function AntwortAktionen({ mail, onErzeugt }) {
   );
 }
 
+function MailInhalt({ mail }) {
+  const [html, setHtml] = useState(null);
+  const [textAnsicht, setTextAnsicht] = useState(false);
+
+  useEffect(() => {
+    let aktiv = true;
+    setHtml(null);
+    setTextAnsicht(false);
+
+    api.mailHtml(mail.id)
+      .then((ergebnis) => {
+        if (aktiv) setHtml(ergebnis?.html || null);
+      })
+      .catch(() => {
+        // Die gespeicherte Textansicht bleibt ein belastbarer Fallback, wenn
+        // die Originalmail nicht mehr per IMAP auffindbar ist.
+        if (aktiv) setHtml(null);
+      });
+
+    return () => { aktiv = false; };
+  }, [mail.id]);
+
+  if (!html || textAnsicht) {
+    return (
+      <div style={{ borderBottom: `1px solid ${tokens.line}` }}>
+        {html && (
+          <div className="px-6 pt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setTextAnsicht(false)}
+              className="px-2.5 py-1"
+              style={AUSWAHL_BUTTON_STIL}
+            >
+              HTML-ANSICHT
+            </button>
+          </div>
+        )}
+        <div
+          className="px-6 py-4 mail-body"
+          style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
+        >
+          {mail.snippet}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ borderBottom: `1px solid ${tokens.line}` }}>
+      <div className="px-6 pt-3 flex items-center justify-between gap-3">
+        <span
+          title="Aktive Inhalte und externe Bilder sind zum Schutz vor Tracking blockiert."
+          style={{ ...fontUI, fontSize: "11px", color: tokens.inkMuted }}
+        >
+          Sichere HTML-Ansicht
+        </span>
+        <button
+          type="button"
+          onClick={() => setTextAnsicht(true)}
+          className="px-2.5 py-1"
+          style={AUSWAHL_BUTTON_STIL}
+        >
+          TEXTANSICHT
+        </button>
+      </div>
+      <div className="px-6 py-3">
+        <iframe
+          title={`HTML-Inhalt: ${mail.betreff}`}
+          sandbox=""
+          referrerPolicy="no-referrer"
+          srcDoc={html}
+          style={{
+            display: "block",
+            width: "100%",
+            height: "min(680px, 65vh)",
+            minHeight: "420px",
+            border: `1px solid ${tokens.line}`,
+            borderRadius: "6px",
+            background: tokens.paperRaised,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onAlleMailsAendern, onReload }) {
   const [filter, setFilter] = useState(null);
   const [suchbegriff, setSuchbegriff] = useState("");
@@ -839,7 +925,7 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
                 ORIGINAL · {selected.originalsprache.toUpperCase()}
               </div>
             )}
-            <div className="px-6 py-4 mail-body" style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere", borderBottom: `1px solid ${tokens.line}` }}>{selected.snippet}</div>
+            <MailInhalt key={selected.id} mail={selected} />
             {Object.keys(selected.felder).length > 0 && (
               <div className="px-6 py-4 grid grid-cols-2 gap-3 mail-fields" style={{ borderBottom: `1px solid ${tokens.line}` }}>
                 {Object.entries(selected.felder).map(([k, v]) => (
