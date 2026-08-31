@@ -122,7 +122,7 @@ function formatBetrag(wert, waehrung = "EUR") {
 // Aktionen brauchen jeweils eigenen Code in app/aufgaben.py — dies ist nur die
 // Anzeige, welche davon aktuell tatsächlich etwas auslösen.
 const AKTION_LABEL = {
-  BESTAETIGUNG_EINHOLEN: "Bestätigung einholen",
+  BESTAETIGUNG_EINHOLEN: "Erledigt-Klick verpflichtend",
   MAIL_VERSCHIEBEN: "Mail verschieben",
   RECHNUNG_VERWALTEN: "Rechnung verwalten",
   ANTWORTVORSCHLAG_ERSTELLEN: "Antwortvorschlag erstellen",
@@ -145,7 +145,7 @@ const EDITIERBARE_AKTIONEN = Object.keys(AKTION_LABEL).filter((aktion) =>
 
 const EREIGNIS_LABEL = {
   klassifiziert: "Klassifiziert",
-  bestaetigt: "Bestätigt",
+  bestaetigt: "Erledigt (Pflichtschritt)",
   posteingang_bereinigt: "Posteingang bereinigt",
   verschoben: "Verschoben",
   verschieben_fehlgeschlagen: "Verschieben fehlgeschlagen",
@@ -310,7 +310,7 @@ function AuswahlMenue({ label, title, icon: Icon, wert, optionen, onWaehlen, dea
   );
 }
 
-function KategorieKorrektur({ mail, katalog, onKorrigiert }) {
+function KategorieKorrektur({ mail, katalog, onKorrigiert, onMeldung }) {
   const [wird_gesendet, setWirdGesendet] = useState(false);
 
   async function korrigieren(neueId) {
@@ -319,6 +319,8 @@ function KategorieKorrektur({ mail, katalog, onKorrigiert }) {
     try {
       await api.korrigiereKlassifikation(mail.id, neueId);
       await onKorrigiert();
+    } catch (e) {
+      onMeldung(`Kategorie konnte nicht geändert werden: ${e.message}`);
     } finally {
       setWirdGesendet(false);
     }
@@ -340,35 +342,79 @@ function KategorieKorrektur({ mail, katalog, onKorrigiert }) {
   );
 }
 
-function BestaetigenButton({ mail, onBestaetigt }) {
+function ErledigtButton({ mail, onErledigt, onMeldung }) {
   const [laeuft, setLaeuft] = useState(false);
-  const [fehler, setFehler] = useState(null);
 
-  if (!mail.bestaetigungErforderlich) return null;
-
-  async function bestaetigen() {
+  async function erledigen() {
     setLaeuft(true);
-    setFehler(null);
     try {
-      const ergebnis = await api.mailBestaetigen(mail.id);
+      const ergebnis = mail.bestaetigungErforderlich
+        ? await api.mailBestaetigen(mail.id)
+        : await api.mailErledigen(mail.id);
       if (ergebnis.status === "fehlgeschlagen") {
-        setFehler(ergebnis.detail || "Folgeaufgabe fehlgeschlagen");
+        onMeldung(`Automatik fehlgeschlagen: ${ergebnis.detail || "Unbekannter Fehler"}`);
       }
-      await onBestaetigt();
+      await onErledigt(mail.id);
     } catch (e) {
-      setFehler(e.message);
+      onMeldung(`Mail konnte nicht als erledigt markiert werden: ${e.message}`);
     } finally {
       setLaeuft(false);
     }
   }
 
   return (
-    <div className="flex items-center gap-2">
-      {fehler && <span title={fehler} style={{ ...fontUI, fontSize: "11px", color: tokens.rust }}>Aktion fehlgeschlagen</span>}
-      <button onClick={bestaetigen} disabled={laeuft}
-        className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-60"
-        style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}>
-        <Check size={14} /> {laeuft ? "Wird bestätigt …" : "Bestätigen"}
+    <button
+      onClick={erledigen}
+      disabled={laeuft}
+      title={
+        mail.bestaetigungErforderlich
+          ? "Pflichtschritt bestätigen und vorgesehenen Ablauf fortsetzen"
+          : "Mail in Krautl als erledigt markieren"
+      }
+      className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-60"
+      style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}
+    >
+      <Check size={14} /> {laeuft ? "Wird erledigt …" : "Erledigt"}
+    </button>
+  );
+}
+
+function StatusMeldung({ text, onSchliessen }) {
+  if (!text) return null;
+  return (
+    <div
+      role="alert"
+      aria-live="assertive"
+      className="status-meldung"
+      style={{
+        position: "fixed",
+        right: "18px",
+        bottom: "18px",
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "flex-start",
+        gap: "12px",
+        width: "min(430px, calc(100vw - 36px))",
+        padding: "12px 14px",
+        color: tokens.rust,
+        background: tokens.rustPale,
+        border: `1px solid ${tokens.rust}`,
+        borderRadius: "8px",
+        boxShadow: "0 8px 28px rgba(36, 42, 31, 0.18)",
+        ...fontUI,
+        fontSize: "12.5px",
+        lineHeight: 1.45,
+      }}
+    >
+      <span className="flex-1">{text}</span>
+      <button
+        type="button"
+        onClick={onSchliessen}
+        aria-label="Meldung schließen"
+        title="Meldung schließen"
+        style={{ color: tokens.rust, flexShrink: 0 }}
+      >
+        <X size={15} />
       </button>
     </div>
   );
@@ -596,6 +642,8 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
   const [uebersetzungsstatus, setUebersetzungsstatus] = useState({});
   const [lokalAusgeblendeteMailIds, setLokalAusgeblendeteMailIds] = useState(() => new Set());
   const [mobileDetailOffen, setMobileDetailOffen] = useState(false);
+  const [statusMeldung, setStatusMeldung] = useState("");
+  const gemeldeteAufgabenfehler = useRef(new Set());
 
   const verfuegbareMails = useMemo(
     () => mails.filter((mail) => !lokalAusgeblendeteMailIds.has(mail.id)),
@@ -671,6 +719,26 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
     if (!selected) setMobileDetailOffen(false);
   }, [selected]);
 
+  useEffect(() => {
+    const fehlgeschlagen = selected?.aufgaben?.find(
+      (aufgabe) => aufgabe.status === "fehlgeschlagen"
+    );
+    if (!fehlgeschlagen) return;
+    const schluessel = [
+      selected.id,
+      fehlgeschlagen.id,
+      fehlgeschlagen.fehler || "",
+    ].join(":");
+    if (gemeldeteAufgabenfehler.current.has(schluessel)) return;
+    gemeldeteAufgabenfehler.current.add(schluessel);
+    const bezeichnung = AKTION_LABEL[fehlgeschlagen.aufgabe_typ]
+      || fehlgeschlagen.aufgabe_typ
+      || "Automatik";
+    setStatusMeldung(
+      `Automatik fehlgeschlagen – ${bezeichnung}: ${fehlgeschlagen.fehler || "Unbekannter Fehler"}`
+    );
+  }, [selected]);
+
   const uebersetzungStarten = useCallback(async (mail) => {
     if (!mail || uebersetzungsstatus[mail.id]?.status === "laeuft") return;
     setUebersetzungsstatus((alt) => ({
@@ -710,6 +778,12 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
   }
 
   async function aktionAbschliessen() {
+    setMobileDetailOffen(false);
+    await onReload();
+  }
+
+  async function erledigenAbschliessen(mailId) {
+    setLokalAusgeblendeteMailIds((alt) => new Set([...alt, mailId]));
     setMobileDetailOffen(false);
     await onReload();
   }
@@ -841,9 +915,18 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2 mail-detail-actions">
-                  <BestaetigenButton mail={selected} onBestaetigt={aktionAbschliessen} />
+                  <ErledigtButton
+                    mail={selected}
+                    onErledigt={erledigenAbschliessen}
+                    onMeldung={setStatusMeldung}
+                  />
                   <ZuweisenButton mail={selected} onZugewiesen={aktionAbschliessen} />
-                  <KategorieKorrektur mail={selected} katalog={katalog} onKorrigiert={onReload} />
+                  <KategorieKorrektur
+                    mail={selected}
+                    katalog={katalog}
+                    onKorrigiert={onReload}
+                    onMeldung={setStatusMeldung}
+                  />
                   <MailLoeschenButton mail={selected} onGeloescht={loeschenAbschliessen} />
                 </div>
               </div>
@@ -957,6 +1040,10 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
           </div>
         )}
       </div>
+      <StatusMeldung
+        text={statusMeldung}
+        onSchliessen={() => setStatusMeldung("")}
+      />
     </div>
   );
 }
