@@ -69,8 +69,12 @@ COM-... sowie Angaben zu Kunde, Artikeln, Mengen, Lieferadresse oder Versandfris
 gehören in SHOPAPOTHEKE_BESTELLUNG, sofern diese ID im Katalog vorhanden ist.
 Wichtige Richtlinien-, Compliance-, Konto-, Listing- oder Plattformmeldungen
 von Shop Apotheke/Redcare gehören in SHOPAPOTHEKE_WICHTIG, sofern diese ID im
-Katalog vorhanden ist. Fehlt eine passende Shop-Apotheke-Klasse, ist
-UNGEKLAERT einer sachlich falschen Amazon-Klassifikation vorzuziehen.
+Katalog vorhanden ist. Bei verifizierten Absenderdomains von Shop Apotheke,
+Redcare oder Mirakl gilt diese Zuordnung verbindlich: Solche Nachrichten dürfen
+auch nicht als Spam oder Systemtechnik einsortiert werden. Nur eine tatsächlich
+angehängte Rechnung bleibt RECHNUNG_EINGANG. Fehlt eine passende
+Shop-Apotheke-Klasse, ist UNGEKLAERT einer sachlich falschen Klassifikation
+vorzuziehen.
 
 AMAZON-ABSENDER:
 Nachrichten, die eindeutig direkt von Amazon oder Amazon Seller Central
@@ -175,18 +179,50 @@ KLASSIFIZIERUNGS_TOOL = {
 def marktplatz_zuordnung_absichern(
     ergebnis: dict, mail: dict, katalog: list[dict]
 ) -> dict:
-    """Verhindert Verwechslungen zwischen Shop Apotheke und Amazon."""
+    """Hält Mails verifizierter Shop-Apotheke-Absender im richtigen Ablauf."""
+    absender_adresse = str(mail.get("absender_adresse", "")).strip().casefold()
+    domain = (
+        absender_adresse.rsplit("@", 1)[-1].rstrip(">.")
+        if "@" in absender_adresse
+        else ""
+    )
+    vertrauenswuerdige_domains = (
+        "shop-apotheke.com",
+        "shop-apotheke.de",
+        "redcare-pharmacy.com",
+        "mirakl.net",
+        "mirakl.com",
+    )
+    ist_vertrauenswuerdiger_absender = any(
+        domain == basisdomain or domain.endswith(f".{basisdomain}")
+        for basisdomain in vertrauenswuerdige_domains
+    )
     text = " ".join(str(mail.get(feld, "")) for feld in (
         "absender_name", "absender_adresse", "betreff", "text_auszug"
     )).casefold()
-    shopapotheke = any(marker in text for marker in (
+    shopapotheke_erwaehnt = any(marker in text for marker in (
         "shop apotheke", "shopapotheke", "redcare pharmacy", "redcare",
         "mirakl.net", "mirakl",
     ))
-    if not shopapotheke:
+    if not ist_vertrauenswuerdiger_absender and not shopapotheke_erwaehnt:
         return ergebnis
 
     katalog_ids = {eintrag["klassifikation_id"] for eintrag in katalog}
+    aktuelle_id = str(ergebnis.get("klassifikation_id", ""))
+    anhaenge = [
+        str(name).casefold()
+        for name in mail.get("anhang_dateinamen", [])
+    ]
+    hat_auswertbaren_rechnungsanhang = any(
+        name.endswith((".pdf", ".xml", ".jpg", ".jpeg", ".png", ".gif", ".webp"))
+        for name in anhaenge
+    )
+    if (
+        aktuelle_id == "RECHNUNG_EINGANG"
+        and hat_auswertbaren_rechnungsanhang
+    ):
+        return ergebnis
+
     ist_bestellung = "com-" in text and any(marker in text for marker in (
         "bestellnummer", "zu versendende bestellung", "lieferadresse",
         "/mmp/shop/order/",
@@ -195,7 +231,7 @@ def marktplatz_zuordnung_absichern(
     if ist_bestellung and "SHOPAPOTHEKE_BESTELLUNG" in katalog_ids:
         abgesichert["klassifikation_id"] = "SHOPAPOTHEKE_BESTELLUNG"
         abgesichert["aktion_erforderlich"] = True
-    elif str(ergebnis.get("klassifikation_id", "")).startswith("AMAZON_"):
+    elif ist_vertrauenswuerdiger_absender or aktuelle_id.startswith("AMAZON_"):
         abgesichert["klassifikation_id"] = (
             "SHOPAPOTHEKE_WICHTIG"
             if "SHOPAPOTHEKE_WICHTIG" in katalog_ids

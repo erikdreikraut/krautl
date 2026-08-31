@@ -115,6 +115,61 @@ class KlassifizierungsPromptTest(unittest.TestCase):
         )
         self.assertEqual("UNGEKLAERT", ohne_shopklasse["klassifikation_id"])
 
+    def test_mirakl_mfa_kann_nicht_systemtechnik_bleiben(self):
+        ergebnis = marktplatz_zuordnung_absichern(
+            {"klassifikation_id": "SYSTEM_TECHNIK", "aktion_erforderlich": False},
+            {
+                "absender_name": "Mirakl SSO",
+                "absender_adresse": "no-reply@mirakl.net",
+                "betreff": "Mirakl: Multi-factor Authentication",
+                "text_auszug": "Please configure multi-factor authentication.",
+            },
+            [{"klassifikation_id": "SHOPAPOTHEKE_WICHTIG"}],
+        )
+        self.assertEqual("SHOPAPOTHEKE_WICHTIG", ergebnis["klassifikation_id"])
+        self.assertTrue(ergebnis["aktion_erforderlich"])
+
+    def test_mirakl_kontomeldung_kann_nicht_spam_bleiben(self):
+        ergebnis = marktplatz_zuordnung_absichern(
+            {"klassifikation_id": "SPAM_PHISHING", "aktion_erforderlich": False},
+            {
+                "absender_name": "Nagi Letaifa",
+                "absender_adresse": "seller-account-support@mirakl.com",
+                "betreff": "Your Seller Account: important update",
+            },
+            [{"klassifikation_id": "SHOPAPOTHEKE_WICHTIG"}],
+        )
+        self.assertEqual("SHOPAPOTHEKE_WICHTIG", ergebnis["klassifikation_id"])
+        self.assertTrue(ergebnis["aktion_erforderlich"])
+
+    def test_shopapotheke_rechnung_mit_anhang_bleibt_rechnung(self):
+        ergebnis = marktplatz_zuordnung_absichern(
+            {"klassifikation_id": "RECHNUNG_EINGANG", "aktion_erforderlich": False},
+            {
+                "absender_name": "SHOP APOTHEKE",
+                "absender_adresse": "noreply@shop-apotheke.com",
+                "betreff": "Ihre Rechnung",
+                "anhang_dateinamen": ["Rechnung-4711.pdf"],
+            },
+            [
+                {"klassifikation_id": "RECHNUNG_EINGANG"},
+                {"klassifikation_id": "SHOPAPOTHEKE_WICHTIG"},
+            ],
+        )
+        self.assertEqual("RECHNUNG_EINGANG", ergebnis["klassifikation_id"])
+
+    def test_blasse_mirakl_erwaehnung_aendert_fremden_absender_nicht(self):
+        ergebnis = marktplatz_zuordnung_absichern(
+            {"klassifikation_id": "LIEFERANT_DIVERSES"},
+            {
+                "absender_name": "Lieferant",
+                "absender_adresse": "kontakt@example.test",
+                "text_auszug": "Wir nutzen ebenfalls Mirakl.",
+            },
+            [{"klassifikation_id": "SHOPAPOTHEKE_WICHTIG"}],
+        )
+        self.assertEqual("LIEFERANT_DIVERSES", ergebnis["klassifikation_id"])
+
     def test_einkaufsbestaetigung_ist_keine_eingangsrechnung(self):
         self.assertIn("EINKAUF UND RECHNUNG ABGRENZEN", KLASSIFIZIERUNGS_SYSTEMPROMPT)
         ergebnis = einkaufszuordnung_absichern(
