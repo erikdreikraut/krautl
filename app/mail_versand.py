@@ -1,5 +1,6 @@
 """SMTP-Versand für manuell geprüfte und freigegebene Kundenantworten."""
 import asyncio
+import mimetypes
 import os
 import smtplib
 import ssl
@@ -106,7 +107,12 @@ def _antwort_betreff(betreff: str) -> str:
     return f"Re: {betreff}"
 
 
-def _synchron_senden(mail: Mail, antworttext: str, benutzer: dict) -> dict:
+def _synchron_senden(
+    mail: Mail,
+    antworttext: str,
+    benutzer: dict,
+    anhaenge: list[dict] | None = None,
+) -> dict:
     smtp = _smtp_einstellungen()
     empfaenger = antwortadresse(mail)
     nachricht = EmailMessage()
@@ -120,6 +126,22 @@ def _synchron_senden(mail: Mail, antworttext: str, benutzer: dict) -> dict:
         nachricht["In-Reply-To"] = mail.message_id
         nachricht["References"] = mail.message_id
     nachricht.set_content(antwort_mit_signatur(antworttext, benutzer))
+    for anhang in anhaenge or []:
+        dateiname = str(anhang["dateiname"])
+        mime_type = (
+            str(anhang.get("mime_type") or "")
+            or mimetypes.guess_type(dateiname)[0]
+            or "application/octet-stream"
+        )
+        haupttyp, trennzeichen, untertyp = mime_type.partition("/")
+        if not trennzeichen or not haupttyp or not untertyp:
+            haupttyp, untertyp = "application", "octet-stream"
+        nachricht.add_attachment(
+            anhang["inhalt"],
+            maintype=haupttyp,
+            subtype=untertyp,
+            filename=dateiname,
+        )
 
     kontext = ssl.create_default_context()
     if smtp["port"] == 465:
@@ -144,5 +166,12 @@ def _synchron_senden(mail: Mail, antworttext: str, benutzer: dict) -> dict:
     }
 
 
-async def antwort_senden(mail: Mail, antworttext: str, benutzer: dict) -> dict:
-    return await asyncio.to_thread(_synchron_senden, mail, antworttext, benutzer)
+async def antwort_senden(
+    mail: Mail,
+    antworttext: str,
+    benutzer: dict,
+    anhaenge: list[dict] | None = None,
+) -> dict:
+    return await asyncio.to_thread(
+        _synchron_senden, mail, antworttext, benutzer, anhaenge
+    )

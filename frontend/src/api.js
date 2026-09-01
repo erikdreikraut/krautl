@@ -161,11 +161,21 @@ export const api = {
     anfrage(`/mails/${mailId}/antwort`, { method: "POST" }),
   mailUebersetzen: (mailId) =>
     anfrage(`/mails/${mailId}/uebersetzung`, { method: "POST" }),
-  entwurfFreigeben: (id, finalerText) =>
-    anfrage(`/entwuerfe/${id}/freigeben`, {
+  entwurfFreigeben: (id, finalerText, anhaenge = []) => {
+    if (anhaenge.length > 0) {
+      const formular = new FormData();
+      formular.append("finaler_text", finalerText);
+      anhaenge.forEach((datei) => formular.append("anhaenge", datei, datei.name));
+      return anfrage(`/entwuerfe/${id}/freigeben-mit-anhaengen`, {
+        method: "POST",
+        body: formular,
+      });
+    }
+    return anfrage(`/entwuerfe/${id}/freigeben`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ finaler_text: finalerText }),
-    }),
+    });
+  },
   entwurfVerwerfen: (id) => anfrage(`/entwuerfe/${id}/verwerfen`, { method: "POST" }),
 };

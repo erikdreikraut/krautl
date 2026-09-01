@@ -4,7 +4,9 @@ import mimetypes
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
-from fastapi import FastAPI, Depends, HTTPException, Request, Response
+from fastapi import (
+    FastAPI, Depends, File, Form, HTTPException, Request, Response, UploadFile,
+)
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import case, delete, func, or_, select, update
@@ -53,6 +55,9 @@ from .uebersetzungen import (
 app = FastAPI(title="Krautl API")
 logger = logging.getLogger(__name__)
 
+MAX_ANTWORTANHAENGE = 10
+MAX_ANTWORTANHAENGE_BYTES = 18 * 1024 * 1024
+
 ERLAUBTE_AKTIONEN = {
     "BESTAETIGUNG_EINHOLEN",
     "MAIL_VERSCHIEBEN",
@@ -74,6 +79,55 @@ class KlassifikationAenderung(BaseModel):
 
 class EntwurfFreigabe(BaseModel):
     finaler_text: str
+
+
+def _sicherer_anhangname(rohname: str | None, position: int) -> str:
+    name = str(rohname or "").replace("\\", "/").rsplit("/", 1)[-1]
+    name = "".join(
+        zeichen for zeichen in name
+        if ord(zeichen) >= 32 and ord(zeichen) != 127
+    ).strip()
+    return name[:180] or f"anhang-{position}"
+
+
+async def _antwortanhaenge_einlesen(
+    dateien: list[UploadFile],
+) -> list[dict]:
+    ergebnis = []
+    gesamtgroesse = 0
+    try:
+        if len(dateien) > MAX_ANTWORTANHAENGE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Maximal {MAX_ANTWORTANHAENGE} Anhänge pro Antwort erlaubt",
+            )
+        for position, datei in enumerate(dateien, start=1):
+            dateiname = _sicherer_anhangname(datei.filename, position)
+            verbleibend = MAX_ANTWORTANHAENGE_BYTES - gesamtgroesse
+            inhalt = await datei.read(verbleibend + 1)
+            if len(inhalt) > verbleibend:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Anhänge dürfen zusammen höchstens 18 MB groß sein",
+                )
+            if not inhalt:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Der Anhang „{dateiname}“ ist leer",
+                )
+            gesamtgroesse += len(inhalt)
+            ergebnis.append({
+                "dateiname": dateiname,
+                "mime_type": (
+                    mimetypes.guess_type(dateiname)[0]
+                    or "application/octet-stream"
+                ),
+                "inhalt": inhalt,
+            })
+    finally:
+        for datei in dateien:
+            await datei.close()
+    return ergebnis
 
 
 class RechnungsstatusAenderung(BaseModel):
@@ -1658,6 +1712,36 @@ async def entwurf_freigeben(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
+    return await _entwurf_freigeben(
+        entwurf_id, freigabe, request, session, []
+    )
+
+
+@app.post("/entwuerfe/{entwurf_id}/freigeben-mit-anhaengen")
+async def entwurf_mit_anhaengen_freigeben(
+    entwurf_id: int,
+    request: Request,
+    finaler_text: str = Form(...),
+    anhaenge: list[UploadFile] | None = File(default=None),
+    session: AsyncSession = Depends(get_session),
+):
+    versand_anhaenge = await _antwortanhaenge_einlesen(anhaenge or [])
+    return await _entwurf_freigeben(
+        entwurf_id,
+        EntwurfFreigabe(finaler_text=finaler_text),
+        request,
+        session,
+        versand_anhaenge,
+    )
+
+
+async def _entwurf_freigeben(
+    entwurf_id: int,
+    freigabe: EntwurfFreigabe,
+    request: Request,
+    session: AsyncSession,
+    versand_anhaenge: list[dict],
+):
     entwurf = (await session.execute(
         select(Entwurf)
         .where(Entwurf.id == entwurf_id)
@@ -1772,7 +1856,7 @@ async def entwurf_freigeben(
 
     try:
         versandergebnis = await antwort_senden(
-            mail, versand_text, request.state.benutzer
+            mail, versand_text, request.state.benutzer, versand_anhaenge
         )
     except Exception as exc:
         try:
@@ -1827,7 +1911,16 @@ async def entwurf_freigeben(
                 else ""
             )
             + f"BCC an {versandergebnis['bcc']}; "
-            f"Message-ID {versandergebnis['message_id']}"
+            + (
+                f"Anhänge ({len(versand_anhaenge)}): "
+                + ", ".join(
+                    anhang["dateiname"] for anhang in versand_anhaenge
+                )
+                + "; "
+                if versand_anhaenge
+                else ""
+            )
+            + f"Message-ID {versandergebnis['message_id']}"
         ),
     ))
     if kundenservice:
@@ -1882,6 +1975,9 @@ async def entwurf_freigeben(
         "ki_pruefung": kundenservice,
         "versandsprache": mail.originalsprache,
         "abschlussstatus": abschlussstatus,
+        "anhaenge": [
+            anhang["dateiname"] for anhang in versand_anhaenge
+        ],
     }
 
 

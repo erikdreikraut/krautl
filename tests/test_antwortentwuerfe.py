@@ -1,6 +1,7 @@
 import os
 import unittest
 from datetime import datetime, timezone
+from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -8,11 +9,13 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_antwortentwuer
 os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 
 from sqlalchemy import select
+from fastapi import HTTPException, UploadFile
 
 from app.db import SessionLocal, engine
 from app.antworten import PRUEFUNGS_SYSTEMPROMPT, pruefergebnis_absichern
 from app.main import (
-    EntwurfFreigabe, entwurf_freigeben, liste_entwuerfe,
+    EntwurfFreigabe, _antwortanhaenge_einlesen, entwurf_freigeben,
+    entwurf_mit_anhaengen_freigeben, liste_entwuerfe,
     mail_antwort_beginnen, mail_antwortentwurf_erzeugen,
 )
 from app.aufgaben import wartende_aufgaben_ausfuehren
@@ -277,6 +280,66 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
                 entwurf.text_final_deutsch,
             )
             self.assertFalse(mail.im_krautl_posteingang)
+
+    async def test_freigabe_versendet_ausgewaehlten_anhang(self):
+        async with SessionLocal() as session:
+            entwurf = Entwurf(
+                mail_id=self.mail_id,
+                text_ki="Guten Tag,\n\nanbei die Unterlagen.",
+                status="wartet",
+            )
+            session.add(entwurf)
+            await session.commit()
+            entwurf_id = entwurf.id
+
+        versand = AsyncMock(return_value={
+            "message_id": "<anhang-test@dreikraut.de>",
+            "empfaenger": "ada@example.test",
+            "bcc": "info@erikschweitzer.de",
+        })
+        upload = UploadFile(
+            filename="../Unterlagen.pdf",
+            file=BytesIO(b"%PDF-1.7 test"),
+        )
+        with patch(
+            "app.main.antwort_vor_versand_pruefen",
+            AsyncMock(return_value={"freigabefaehig": True, "probleme": []}),
+        ), patch(
+            "app.main.antwort_senden", versand
+        ), patch(
+            "app.main.wissenszuwachs_nach_antwort_pruefen",
+            AsyncMock(return_value=None),
+        ), patch(
+            "app.main.bestaetigung_erfassen",
+            AsyncMock(return_value={"status": "bestaetigt"}),
+        ):
+            async with SessionLocal() as session:
+                ergebnis = await entwurf_mit_anhaengen_freigeben(
+                    entwurf_id,
+                    test_request(),
+                    "Guten Tag,\n\nanbei die Unterlagen.",
+                    [upload],
+                    session,
+                )
+
+        self.assertEqual(["Unterlagen.pdf"], ergebnis["anhaenge"])
+        versandanhaenge = versand.await_args.args[3]
+        self.assertEqual("Unterlagen.pdf", versandanhaenge[0]["dateiname"])
+        self.assertEqual("application/pdf", versandanhaenge[0]["mime_type"])
+        self.assertEqual(b"%PDF-1.7 test", versandanhaenge[0]["inhalt"])
+
+    async def test_zu_grosse_antwortanhaenge_werden_blockiert(self):
+        upload = UploadFile(
+            filename="zu-gross.txt",
+            file=BytesIO(b"12345"),
+        )
+        with patch("app.main.MAX_ANTWORTANHAENGE_BYTES", 4):
+            with self.assertRaises(HTTPException) as fehler:
+                await _antwortanhaenge_einlesen([upload])
+
+        self.assertEqual(413, fehler.exception.status_code)
+        self.assertIn("höchstens", fehler.exception.detail)
+        self.assertTrue(upload.file.closed)
 
     async def test_fremdsprachige_antwort_wird_erst_nach_freigabe_uebersetzt(self):
         async with SessionLocal() as session:

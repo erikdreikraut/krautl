@@ -93,6 +93,41 @@ class MailVersandTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "ungültig"):
                 _synchron_senden(mail, "Testantwort", self.erik)
 
+    def test_antwortanhaenge_werden_mit_dateiname_und_mime_type_versendet(self):
+        mail = Mail(
+            message_id="<anhang@example.test>",
+            postfach_id=1,
+            absender_name="Kunde",
+            absender_adresse="kunde@example.test",
+            betreff="Unterlagen",
+            text_auszug="Hallo",
+            empfangen_am=datetime.now(timezone.utc),
+        )
+        umgebung = {
+            "SMTP_SERVICE_HOST": "smtp.example.test",
+            "SMTP_SERVICE_PORT": "587",
+            "SMTP_SERVICE_USER": "service@dreikraut.de",
+            "SMTP_SERVICE_PASSWORD": "secret",
+        }
+        with patch.dict(os.environ, umgebung, clear=False), \
+             patch("app.mail_versand.smtplib.SMTP", _SmtpAttrappe):
+            _synchron_senden(
+                mail,
+                "Anbei die Unterlagen.",
+                self.erik,
+                [{
+                    "dateiname": "Hinweis.pdf",
+                    "mime_type": "application/pdf",
+                    "inhalt": b"%PDF-1.7 test",
+                }],
+            )
+
+        anhaenge = list(_SmtpAttrappe.nachricht.iter_attachments())
+        self.assertEqual(1, len(anhaenge))
+        self.assertEqual("Hinweis.pdf", anhaenge[0].get_filename())
+        self.assertEqual("application/pdf", anhaenge[0].get_content_type())
+        self.assertEqual(b"%PDF-1.7 test", anhaenge[0].get_payload(decode=True))
+
     def test_signatur_fuer_auszubildende(self):
         text = antwort_mit_signatur("Mit bestem Gruß", self.gursewak)
         self.assertEqual(

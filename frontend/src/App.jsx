@@ -30,6 +30,14 @@ const fontDisplay = { fontFamily: "'Source Serif 4', serif", fontWeight: 700 };
 const fontSerif = { fontFamily: "'Source Serif 4', serif" };
 const fontUI = { fontFamily: "'IBM Plex Sans', sans-serif" };
 const fontMono = { fontFamily: "'IBM Plex Mono', monospace" };
+const MAX_ANTWORTANHAENGE = 10;
+const MAX_ANTWORTANHAENGE_BYTES = 18 * 1024 * 1024;
+
+function lesbareDateigroesse(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
 
 // Feste Hauptkategorien-Namen kennen wir erst nach dem CSV-Import in die
 // klassifikation-Tabelle — deshalb Farbe deterministisch aus dem Namen
@@ -1050,11 +1058,35 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
 
 function EntwurfPanel({ entwurf, kiPruefung, originalsprache, onErledigt, onVersendet }) {
   const [text, setText] = useState(entwurf.text);
+  const [anhaenge, setAnhaenge] = useState([]);
   const [prueft, setPrueft] = useState(false);
   const [probleme, setProbleme] = useState([]);
   const [fehler, setFehler] = useState("");
   const [naechsterOhnePruefung, setNaechsterOhnePruefung] = useState(false);
   const [versanderfolg, setVersanderfolg] = useState(null);
+  const dateiEingabe = useRef(null);
+
+  function anhaengeAuswaehlen(event) {
+    const neueDateien = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (neueDateien.length === 0) return;
+    const auswahl = [...anhaenge, ...neueDateien];
+    if (auswahl.length > MAX_ANTWORTANHAENGE) {
+      setFehler(`Maximal ${MAX_ANTWORTANHAENGE} Anhänge pro Antwort erlaubt.`);
+      return;
+    }
+    const gesamtgroesse = auswahl.reduce((summe, datei) => summe + datei.size, 0);
+    if (gesamtgroesse > MAX_ANTWORTANHAENGE_BYTES) {
+      setFehler("Anhänge dürfen zusammen höchstens 18 MB groß sein.");
+      return;
+    }
+    setFehler("");
+    setAnhaenge(auswahl);
+  }
+
+  function anhangEntfernen(index) {
+    setAnhaenge((aktuell) => aktuell.filter((_, position) => position !== index));
+  }
 
   async function freigeben() {
     setPrueft(true);
@@ -1062,7 +1094,7 @@ function EntwurfPanel({ entwurf, kiPruefung, originalsprache, onErledigt, onVers
     setFehler("");
     setVersanderfolg(null);
     try {
-      const ergebnis = await api.entwurfFreigeben(entwurf.id, text);
+      const ergebnis = await api.entwurfFreigeben(entwurf.id, text, anhaenge);
       if (ergebnis.status === "pruefung_noetig") {
         setProbleme(ergebnis.probleme ?? ["Die Antwort benötigt noch eine Prüfung."]);
         setNaechsterOhnePruefung(Boolean(ergebnis.naechster_versuch_ohne_pruefung));
@@ -1071,11 +1103,13 @@ function EntwurfPanel({ entwurf, kiPruefung, originalsprache, onErledigt, onVers
           empfaenger: ergebnis.empfaenger,
           bcc: ergebnis.bcc,
           messageId: ergebnis.message_id,
+          anhaenge: ergebnis.anhaenge ?? [],
         });
         onVersendet({
           empfaenger: ergebnis.empfaenger,
           bcc: ergebnis.bcc,
           messageId: ergebnis.message_id,
+          anhaenge: ergebnis.anhaenge ?? [],
         });
         await onErledigt();
       }
@@ -1095,6 +1129,48 @@ function EntwurfPanel({ entwurf, kiPruefung, originalsprache, onErledigt, onVers
       <div style={{ ...fontMono, fontSize: "10.5px", color: tokens.amber, letterSpacing: "0.05em" }}>ANTWORTENTWURF · DEUTSCHE ARBEITSFASSUNG · WARTET AUF FREIGABE</div>
       <textarea value={text} onChange={(e) => setText(e.target.value)} className="mt-2 p-3 resize-y"
         style={{ ...fontSerif, fontSize: "14.5px", background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px", minHeight: "320px" }} />
+      <div className="flex items-center gap-2 mt-3 flex-wrap">
+        <input
+          ref={dateiEingabe}
+          type="file"
+          multiple
+          onChange={anhaengeAuswaehlen}
+          disabled={prueft || Boolean(versanderfolg)}
+          style={{ display: "none" }}
+        />
+        <button
+          type="button"
+          onClick={() => dateiEingabe.current?.click()}
+          disabled={prueft || Boolean(versanderfolg)}
+          className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-60"
+          style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised }}
+        >
+          <Paperclip size={13} /> Anhänge hinzufügen
+        </button>
+        <span style={{ ...fontUI, fontSize: "11.5px", color: tokens.inkMuted }}>
+          Maximal 10 Dateien, zusammen 18 MB
+        </span>
+      </div>
+      {anhaenge.length > 0 && (
+        <div className="mt-2 flex flex-col gap-1.5">
+          {anhaenge.map((datei, index) => (
+            <div key={`${datei.name}-${datei.lastModified}-${index}`} className="flex items-center justify-between gap-3 px-3 py-2" style={{ background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
+              <div className="flex items-center gap-2 min-w-0">
+                <Paperclip size={13} color={tokens.mossDeep} />
+                <span title={datei.name} className="truncate" style={{ ...fontUI, fontSize: "12.5px", color: tokens.ink }}>
+                  {datei.name}
+                </span>
+                <span style={{ ...fontUI, fontSize: "11.5px", color: tokens.inkMuted, whiteSpace: "nowrap" }}>
+                  {lesbareDateigroesse(datei.size)}
+                </span>
+              </div>
+              <button type="button" onClick={() => anhangEntfernen(index)} disabled={prueft} title="Anhang entfernen" className="p-1 disabled:opacity-60" style={{ color: tokens.rust }}>
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {probleme.length > 0 && (
         <div className="mt-3 px-3 py-2.5" style={{ background: tokens.amberPale, border: `1px solid ${tokens.amber}`, borderRadius: "6px" }}>
           <div style={{ ...fontUI, fontSize: "12.5px", fontWeight: 600, color: tokens.ink }}>
@@ -1126,6 +1202,7 @@ function EntwurfPanel({ entwurf, kiPruefung, originalsprache, onErledigt, onVers
           <div style={{ ...fontUI, fontSize: "12px", color: tokens.inkMuted, marginTop: "3px" }}>
             Empfänger: {versanderfolg.empfaenger}<br />
             BCC: {versanderfolg.bcc}<br />
+            {versanderfolg.anhaenge.length > 0 && <>Anhänge: {versanderfolg.anhaenge.join(", ")}<br /></>}
             SMTP-Nachrichten-ID: {versanderfolg.messageId}
           </div>
         </div>
