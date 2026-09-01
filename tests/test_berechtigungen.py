@@ -135,12 +135,12 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
                 request_fuer(SACHBEARBEITER), session
             )
 
-        self.assertEqual({"meine": 2, "alle": 2}, admin)
-        self.assertEqual({"meine": 1, "alle": 1}, sachbearbeiter)
+        self.assertEqual({"meine": 2, "alle": 0}, admin)
+        self.assertEqual({"meine": 1, "alle": 0}, sachbearbeiter)
 
     async def test_hoch_priorisierte_mails_stehen_vor_neueren_normalen_mails(self):
         async with SessionLocal() as session:
-            mails = await liste_mails(request_fuer(ADMIN), session, alle=True)
+            mails = await liste_mails(request_fuer(ADMIN), session, alle=False)
 
         self.assertEqual(
             ["Gesperrt", "Erlaubt"],
@@ -212,6 +212,9 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
             sachbearbeiter_mails = await liste_mails(
                 request_fuer(SACHBEARBEITER), session
             )
+            sachbearbeiter_alle = await liste_mails(
+                request_fuer(SACHBEARBEITER), session, alle=True
+            )
             mail = (await session.execute(
                 select(Mail).where(Mail.klassifikation_id == "KUNDE_TEST")
             )).scalar_one()
@@ -220,10 +223,9 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
             )).scalar_one()
 
         self.assertEqual(["Gesperrt"], [mail["betreff"] for mail in admin_mails])
-        self.assertEqual(
-            {"Erlaubt", "Gesperrt"}, {mail["betreff"] for mail in alle_mails}
-        )
+        self.assertEqual(["Erlaubt"], [mail["betreff"] for mail in alle_mails])
         self.assertEqual(["Erlaubt"], [mail["betreff"] for mail in sachbearbeiter_mails])
+        self.assertEqual([], sachbearbeiter_alle)
         self.assertFalse(mail.zustaendig_admin)
         self.assertTrue(mail.zustaendig_sachbearbeiter)
         self.assertTrue(mail.zustaendigkeit_manuell)
@@ -274,7 +276,7 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertIn("Erlaubt", [mail["betreff"] for mail in admin_meine])
-        self.assertIn("Erlaubt", [mail["betreff"] for mail in admin_alle])
+        self.assertNotIn("Erlaubt", [mail["betreff"] for mail in admin_alle])
         self.assertNotIn(
             "Erlaubt", [mail["betreff"] for mail in sachbearbeiter_meine]
         )

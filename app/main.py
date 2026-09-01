@@ -29,8 +29,8 @@ from .auth import (
 )
 from .berechtigungen import (
     ROLLE_SACHBEARBEITER, darf_klassifikation_sehen, darf_mail_sehen,
-    ist_admin, standard_zustaendigkeit, verweigerte_klassifikationen,
-    zustaendigkeitsfilter,
+    ist_admin, mailzugriffsfilter, standard_zustaendigkeit,
+    verweigerte_klassifikationen, zustaendigkeitsfilter,
 )
 from .models import (
     Aktionslog, Base, Mail, MailAufgabe, Postfach, Rechnung, FaqEintrag, FaqVorschlag,
@@ -969,7 +969,7 @@ async def liste_aktionslog(
             Mail.klassifikation_id.is_(None),
             ~Mail.klassifikation_id.in_(verweigert),
         ))
-    zustand = zustaendigkeitsfilter(request.state.benutzer, alle=True)
+    zustand = mailzugriffsfilter(request.state.benutzer)
     if zustand is not None:
         sichtbare_mail_bedingungen.append(zustand)
     if sichtbare_mail_bedingungen:
@@ -1092,7 +1092,7 @@ async def liste_rechnungen(request: Request, session: AsyncSession = Depends(get
             Mail.klassifikation_id.is_(None),
             ~Mail.klassifikation_id.in_(verweigert),
         ))
-    zustand = zustaendigkeitsfilter(request.state.benutzer, alle=True)
+    zustand = mailzugriffsfilter(request.state.benutzer)
     if zustand is not None:
         abfrage = abfrage.where(zustand)
     result = await session.execute(abfrage)
@@ -1484,7 +1484,7 @@ async def wissensvorschlaege_laden(
             Mail.klassifikation_id.is_(None),
             ~Mail.klassifikation_id.in_(verweigert),
         ))
-    zustand = zustaendigkeitsfilter(request.state.benutzer, alle=True)
+    zustand = mailzugriffsfilter(request.state.benutzer)
     if zustand is not None:
         abfrage = abfrage.where(zustand)
     return (await session.execute(abfrage)).scalars().all()
@@ -1570,7 +1570,7 @@ async def liste_faq_vorschlaege(
             Mail.klassifikation_id.is_(None),
             ~Mail.klassifikation_id.in_(verweigert),
         ))
-    zustand = zustaendigkeitsfilter(request.state.benutzer, alle=True)
+    zustand = mailzugriffsfilter(request.state.benutzer)
     if zustand is not None:
         abfrage = abfrage.where(zustand)
     result = await session.execute(abfrage)

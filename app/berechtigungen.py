@@ -1,6 +1,6 @@
 """Rollenbasierte Zugriffsprüfung für eingehende Mails."""
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 
 from .models import Mail, RollenMailzugriff
 
@@ -63,17 +63,39 @@ async def darf_mail_sehen(session, benutzer: dict, mail: Mail | None) -> bool:
     return True
 
 
-def zustaendigkeitsfilter(benutzer: dict, alle: bool = False):
-    """SQL-Filter für Arbeitslisten; None bedeutet uneingeschränkte Adminsicht."""
+def mailzugriffsfilter(benutzer: dict):
+    """SQL-Filter für alle Mails, auf die eine Rolle grundsätzlich zugreifen darf."""
     if ist_admin(benutzer):
-        return None if alle else Mail.zustaendig_admin.is_(True)
+        return None
     if benutzer.get("rolle") == ROLLE_SACHBEARBEITER:
-        if alle:
-            return or_(
-                Mail.zustaendigkeit_manuell.is_(False),
-                Mail.zustaendig_sachbearbeiter.is_(True),
-            )
-        return Mail.zustaendig_sachbearbeiter.is_(True)
+        return or_(
+            Mail.zustaendigkeit_manuell.is_(False),
+            Mail.zustaendig_sachbearbeiter.is_(True),
+        )
+    # Für unbekannte Rollen ist die Bedingung absichtlich unerfüllbar.
+    return Mail.id.is_(None)
+
+
+def zustaendigkeitsfilter(benutzer: dict, alle: bool = False):
+    """SQL-Filter für zwei überschneidungsfreie Arbeitslisten.
+
+    MEINE enthält die der eigenen Rolle zugeordneten Mails. ALLE MAILS ist
+    deren Gegenmenge innerhalb der grundsätzlich zugänglichen Mails.
+    """
+    if ist_admin(benutzer):
+        return (
+            Mail.zustaendig_admin.is_(False)
+            if alle
+            else Mail.zustaendig_admin.is_(True)
+        )
+    if benutzer.get("rolle") == ROLLE_SACHBEARBEITER:
+        meine = Mail.zustaendig_sachbearbeiter.is_(True)
+        if not alle:
+            return meine
+        return and_(
+            mailzugriffsfilter(benutzer),
+            Mail.zustaendig_sachbearbeiter.is_(False),
+        )
     # Für unbekannte Rollen ist die Bedingung absichtlich unerfüllbar.
     return Mail.id.is_(None)
 
