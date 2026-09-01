@@ -8,6 +8,7 @@ Aktion in der Krautl-Oberfläche.
 """
 import os
 import json
+import re
 from anthropic import Anthropic
 
 from .interne_aufgaben import ist_interne_aufgabenmail
@@ -86,7 +87,11 @@ gehören in AMAZON_STATUS. Ein bloßes Wort wie "Rechnung", "Invoice" oder
 die Rechnung tatsächlich als auswertbarer Anhang mitgesendet wurde, darf eine
 Amazon-Mail stattdessen RECHNUNG_EINGANG sein. Kritische Warnungen, Fristen,
 Kontoprobleme, Richtlinienverstöße oder Listing-Sperren gehören weiterhin
-in AMAZON_WICHTIG.
+in AMAZON_WICHTIG. AMAZON_STATUS ist immer eine anonyme, unpersönliche
+Systemmeldung. Sobald Amazon Erik in der Anrede persönlich mit seinem Vor-
+oder Nachnamen anspricht (zum Beispiel "Hallo Erik", "Sehr geehrter Herr
+Schweitzer" oder "Dear Mr. Schweitzer"), gehört die Nachricht zwingend in
+AMAZON_WICHTIG und darf nicht AMAZON_STATUS sein.
 
 AMAZON-KÄUFERNACHRICHTEN (Buyer-Seller Messaging):
 Nachrichten, die über Amazons anonymisiertes Käufer-Nachrichtensystem eingehen
@@ -293,7 +298,6 @@ def amazon_absender_zuordnung_absichern(
         not ist_amazon_absender
         or ist_kaeufernachricht_relay
         or "AMAZON_STATUS" not in katalog_ids
-        or aktuelle_id.startswith("AMAZON_")
     ):
         return ergebnis
 
@@ -306,6 +310,32 @@ def amazon_absender_zuordnung_absichern(
         for name in anhaenge
     )
     if aktuelle_id == "RECHNUNG_EINGANG" and hat_auswertbaren_rechnungsanhang:
+        return ergebnis
+
+    textanfang = str(mail.get("text_auszug", "")).casefold().lstrip()[:800]
+    persoenliche_anrede = re.search(
+        r"(?:^|\n)\s*"
+        r"(?:hallo|guten\s+tag|sehr\s+geehrter\s+herr|dear|hello|hi|"
+        r"bonjour|hola|ciao|buongiorno|estimado(?:\s+señor)?|"
+        r"cher(?:\s+monsieur)?|olá|prezado(?:\s+senhor)?)"
+        r"[\s,:;!-]+"
+        r"(?:(?:herr|mr\.?|monsieur|señor|signor|senhor)\s+)?"
+        r"(?:erik(?:\s+schweitzer)?|schweitzer)\b",
+        textanfang,
+    )
+    if persoenliche_anrede:
+        abgesichert = dict(ergebnis)
+        abgesichert["klassifikation_id"] = (
+            "AMAZON_WICHTIG"
+            if "AMAZON_WICHTIG" in katalog_ids
+            else "UNGEKLAERT"
+            if "UNGEKLAERT" in katalog_ids
+            else aktuelle_id
+        )
+        abgesichert["aktion_erforderlich"] = True
+        return abgesichert
+
+    if aktuelle_id.startswith("AMAZON_"):
         return ergebnis
 
     abgesichert = dict(ergebnis)

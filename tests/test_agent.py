@@ -56,6 +56,62 @@ class KlassifizierungsPromptTest(unittest.TestCase):
         )
         self.assertEqual("RECHNUNG_EINGANG", ergebnis["klassifikation_id"])
 
+    def test_persoenliche_amazon_anrede_ist_immer_wichtig(self):
+        self.assertIn(
+            "AMAZON_STATUS ist immer eine anonyme, unpersönliche",
+            KLASSIFIZIERUNGS_SYSTEMPROMPT,
+        )
+        katalog = [
+            {"klassifikation_id": "AMAZON_STATUS"},
+            {"klassifikation_id": "AMAZON_WICHTIG"},
+        ]
+        for anrede in (
+            "Hallo Erik,\n\nwir möchten mit Ihnen sprechen.",
+            "Sehr geehrter Herr Schweitzer,\n\nIhr Konto betreffend.",
+            "Dear Mr. Schweitzer,\n\nWe are contacting you directly.",
+        ):
+            with self.subTest(anrede=anrede):
+                ergebnis = amazon_absender_zuordnung_absichern(
+                    {
+                        "klassifikation_id": "AMAZON_STATUS",
+                        "aktion_erforderlich": False,
+                    },
+                    {
+                        "absender_name": "Amazon Seller Central",
+                        "absender_adresse": "sellercentral@amazon.de",
+                        "betreff": "Information zu Ihrem Verkäuferkonto",
+                        "text_auszug": anrede,
+                        "anhang_dateinamen": [],
+                    },
+                    katalog,
+                )
+                self.assertEqual(
+                    "AMAZON_WICHTIG", ergebnis["klassifikation_id"]
+                )
+                self.assertTrue(ergebnis["aktion_erforderlich"])
+
+    def test_anonyme_amazon_statusmail_bleibt_status(self):
+        ergebnis = amazon_absender_zuordnung_absichern(
+            {
+                "klassifikation_id": "AMAZON_STATUS",
+                "aktion_erforderlich": True,
+            },
+            {
+                "absender_name": "Amazon Seller Central",
+                "absender_adresse": "sellercentral@amazon.de",
+                "betreff": "Auszahlung veranlasst",
+                "text_auszug": (
+                    "Guten Tag,\n\nIhre Auszahlung wurde veranlasst."
+                ),
+                "anhang_dateinamen": [],
+            },
+            [
+                {"klassifikation_id": "AMAZON_STATUS"},
+                {"klassifikation_id": "AMAZON_WICHTIG"},
+            ],
+        )
+        self.assertEqual("AMAZON_STATUS", ergebnis["klassifikation_id"])
+
     def test_blasse_amazon_erwaehnung_aendert_kundenmail_nicht(self):
         ergebnis = amazon_absender_zuordnung_absichern(
             {"klassifikation_id": "KUNDE_REZENSION_FEEDBACK"},
