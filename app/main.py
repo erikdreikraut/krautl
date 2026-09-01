@@ -72,6 +72,7 @@ ERLAUBTE_AKTIONEN = {
 
 
 class KlassifikationAenderung(BaseModel):
+    beschreibung: str | None = Field(default=None, max_length=4000)
     zielpostfach: str | None = None
     zielordner: str | None = None
     aufgaben: list[str]
@@ -618,6 +619,16 @@ async def klassifikation_aktualisieren(
             detail=f"Unbekannte Aktion: {ungueltig[0]}",
         )
 
+    beschreibung_geaendert = aenderung.beschreibung is not None
+    if beschreibung_geaendert:
+        beschreibung = aenderung.beschreibung.strip()
+        if not beschreibung:
+            raise HTTPException(
+                status_code=422,
+                detail="Die Beschreibung darf nicht leer sein",
+            )
+        klassifikation.beschreibung = beschreibung
+
     zielpostfach = (aenderung.zielpostfach or "").strip() or None
     zielordner = (aenderung.zielordner or "").strip() or None
     klassifikation.zielpostfach = zielpostfach
@@ -650,7 +661,14 @@ async def klassifikation_aktualisieren(
         mail_id=None,
         ereignis="klassifikation_geaendert",
         ausgeloest_von=request.state.benutzer["name"],
-        detail=f"{klassifikation_id}: Ziel und Aufgabenplan aktualisiert",
+        detail=(
+            f"{klassifikation_id}: "
+            + (
+                "Beschreibung, Ziel und Aufgabenplan aktualisiert"
+                if beschreibung_geaendert
+                else "Ziel und Aufgabenplan aktualisiert"
+            )
+        ),
     ))
     await session.commit()
     return {"status": "gespeichert"}

@@ -170,8 +170,52 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             ["KUNDE_TEST"], [k["klassifikation_id"] for k in sichtbare]
         )
+        self.assertEqual("Erlaubt", erlaubt.beschreibung)
         self.assertEqual("Bearbeitet", erlaubt.zielordner)
         self.assertEqual(403, fehler.exception.status_code)
+
+    async def test_beschreibung_der_klassifikation_ist_editierbar(self):
+        aenderung = KlassifikationAenderung(
+            beschreibung="  Präzise neue Beschreibung für die KI.  ",
+            zielpostfach="service@dreikraut.de",
+            zielordner="INBOX",
+            aufgaben=[],
+        )
+        async with SessionLocal() as session:
+            await klassifikation_aktualisieren(
+                "KUNDE_TEST",
+                aenderung,
+                request_fuer(SACHBEARBEITER),
+                session,
+            )
+            klassifikation = await session.get(Klassifikation, "KUNDE_TEST")
+            log = (await session.execute(
+                select(Aktionslog).where(
+                    Aktionslog.ereignis == "klassifikation_geaendert"
+                )
+            )).scalar_one()
+
+        self.assertEqual(
+            "Präzise neue Beschreibung für die KI.",
+            klassifikation.beschreibung,
+        )
+        self.assertIn("Beschreibung", log.detail)
+
+    async def test_leere_klassifikationsbeschreibung_wird_abgelehnt(self):
+        aenderung = KlassifikationAenderung(
+            beschreibung="   ",
+            aufgaben=[],
+        )
+        async with SessionLocal() as session:
+            with self.assertRaises(HTTPException) as fehler:
+                await klassifikation_aktualisieren(
+                    "KUNDE_TEST",
+                    aenderung,
+                    request_fuer(SACHBEARBEITER),
+                    session,
+                )
+
+        self.assertEqual(422, fehler.exception.status_code)
 
     async def test_admin_kann_rollenzugriff_speichern(self):
         async with SessionLocal() as session:

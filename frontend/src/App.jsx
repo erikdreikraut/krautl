@@ -1531,6 +1531,7 @@ function EinstellungenMenu({ active, onWaehlen, istAdmin }) {
 
 function KlassifikationZeile({ klassifikation: k, onGespeichert }) {
   const fachlicheAufgaben = (k.aufgaben ?? []).map((a) => a.aufgabe_typ);
+  const [beschreibung, setBeschreibung] = useState(k.beschreibung ?? "");
   const [zielpostfach, setZielpostfach] = useState(k.zielpostfach ?? "");
   const [zielordner, setZielordner] = useState(k.zielordner ?? "");
   const [aufgaben, setAufgaben] = useState(fachlicheAufgaben);
@@ -1558,6 +1559,7 @@ function KlassifikationZeile({ klassifikation: k, onGespeichert }) {
     setMeldung("");
     try {
       await api.klassifikationSpeichern(k.klassifikation_id, {
+        beschreibung,
         zielpostfach,
         zielordner,
         aufgaben,
@@ -1578,7 +1580,14 @@ function KlassifikationZeile({ klassifikation: k, onGespeichert }) {
       </div>
       <div>
         <div style={{ ...fontSerif, fontSize: "14px", fontWeight: 600 }}>{k.hauptkategorie} · {k.unterkategorie}</div>
-        <div style={{ ...fontSerif, fontSize: "13px", color: tokens.inkMuted, marginTop: "2px" }}>{k.beschreibung}</div>
+        <textarea
+          value={beschreibung}
+          onChange={(e) => { setBeschreibung(e.target.value); setMeldung(""); }}
+          maxLength={4000}
+          rows={4}
+          aria-label={`Beschreibung für ${k.klassifikation_id}`}
+          style={{ ...fontSerif, fontSize: "13px", lineHeight: 1.4, color: tokens.ink, width: "100%", marginTop: "5px", padding: "7px 8px", resize: "vertical", background: tokens.paper, border: `1px solid ${tokens.line}`, borderRadius: "5px" }}
+        />
       </div>
       <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{k.standard_prio}</div>
       <div className="pr-3 flex flex-col gap-1.5">
