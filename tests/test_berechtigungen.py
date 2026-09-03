@@ -237,7 +237,7 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({"KUNDE_TEST": True, "RECHT_TEST": False}, rechte)
         self.assertEqual({"KUNDE_TEST": True, "RECHT_TEST": False}, mails)
 
-    async def test_manuelle_zuweisung_ist_exklusiv_und_filtert_die_arbeitsliste(self):
+    async def test_zuweisung_an_sachbearbeiter_entfernt_mail_aus_allen_sammellisten(self):
         async with SessionLocal() as session:
             erlaubte_mail = (await session.execute(
                 select(Mail).where(Mail.klassifikation_id == "KUNDE_TEST")
@@ -267,7 +267,7 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
             )).scalar_one()
 
         self.assertEqual(["Gesperrt"], [mail["betreff"] for mail in admin_mails])
-        self.assertEqual(["Erlaubt"], [mail["betreff"] for mail in alle_mails])
+        self.assertEqual([], alle_mails)
         self.assertEqual(["Erlaubt"], [mail["betreff"] for mail in sachbearbeiter_mails])
         self.assertEqual([], sachbearbeiter_alle)
         self.assertFalse(mail.zustaendig_admin)

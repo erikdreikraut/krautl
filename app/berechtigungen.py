@@ -80,11 +80,15 @@ def zustaendigkeitsfilter(benutzer: dict, alle: bool = False):
     """SQL-Filter für zwei überschneidungsfreie Arbeitslisten.
 
     MEINE enthält die der eigenen Rolle zugeordneten Mails. ALLE MAILS ist
-    deren Gegenmenge innerhalb der grundsätzlich zugänglichen Mails.
+    der gemeinsame Vorrat ohne jede manuelle Zuweisung und ohne Mails, die
+    bereits unter MEINE stehen.
     """
     if ist_admin(benutzer):
         return (
-            Mail.zustaendig_admin.is_(False)
+            and_(
+                Mail.zustaendigkeit_manuell.is_(False),
+                Mail.zustaendig_admin.is_(False),
+            )
             if alle
             else Mail.zustaendig_admin.is_(True)
         )
@@ -93,7 +97,7 @@ def zustaendigkeitsfilter(benutzer: dict, alle: bool = False):
         if not alle:
             return meine
         return and_(
-            mailzugriffsfilter(benutzer),
+            Mail.zustaendigkeit_manuell.is_(False),
             Mail.zustaendig_sachbearbeiter.is_(False),
         )
     # Für unbekannte Rollen ist die Bedingung absichtlich unerfüllbar.
