@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   Search, ChevronDown, CheckCircle2, PenLine, Paperclip, X,
   Inbox as InboxIcon, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
-  LogOut, ShieldCheck, Trash2, UserRound, Eye, ArrowLeft,
+  LogOut, ShieldCheck, Trash2, UserRound, Eye, ArrowLeft, Lock,
 } from "lucide-react";
 import { api } from "./api.js";
 import logo from "./assets/krautl-logo.png";
@@ -239,6 +239,34 @@ function MailAnzahlTag({ anzahl, aktiv }) {
       }}
     >
       {anzahl}
+    </span>
+  );
+}
+
+function MailReservierungsTag({ reservierung, benutzername }) {
+  if (!reservierung || reservierung.benutzername === benutzername) return null;
+  const name = RESERVIERUNG_KURZNAMEN[reservierung.benutzername]
+    || reservierung.name
+    || "ANDERE PERSON";
+  const hinweis = `Wird gerade von ${name} bearbeitet`;
+  return (
+    <span
+      role="status"
+      aria-label={hinweis}
+      title={hinweis}
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full whitespace-nowrap"
+      style={{
+        ...fontMono,
+        fontSize: "9px",
+        fontWeight: 700,
+        letterSpacing: "0.02em",
+        color: tokens.rust,
+        background: tokens.rustPale,
+        border: `1px solid ${tokens.rust}`,
+      }}
+    >
+      <Lock size={9} aria-hidden="true" />
+      GESPERRT · {String(name).toUpperCase()}
     </span>
   );
 }
@@ -1045,7 +1073,17 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
                 )}
               </div>
               <div style={{ ...fontSerif, fontSize: "13.5px" }}>{m.betreffDeutsch || m.betreff}</div>
-              <Konfidenz value={m.konfidenz} />
+              <div className="flex items-center justify-between gap-2">
+                <Konfidenz value={m.konfidenz} />
+                <MailReservierungsTag
+                  reservierung={
+                    lokaleReservierung?.mailId === m.id
+                      ? lokaleReservierung
+                      : m.reservierung
+                  }
+                  benutzername={benutzer.benutzername}
+                />
+              </div>
             </button>
           ))}
           {verfuegbareMails.length === 0 && (
