@@ -94,6 +94,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ rolle }),
     }),
+  mailNotizSpeichern: (mailId, text) =>
+    anfrage(`/mails/${mailId}/notiz`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    }),
   korrigiereKlassifikation: (mailId, neueKlassifikationId, notiz) =>
     postForm(`/mails/${mailId}/korrektur`, {
       neue_klassifikation_id: neueKlassifikationId,

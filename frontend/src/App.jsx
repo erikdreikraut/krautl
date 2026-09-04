@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   Search, ChevronDown, CheckCircle2, PenLine, Paperclip, X,
   Inbox as InboxIcon, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
-  LogOut, ShieldCheck, Trash2, UserRound, Eye, ArrowLeft, Lock,
+  LogOut, ShieldCheck, Trash2, UserRound, Eye, ArrowLeft, Lock, StickyNote,
 } from "lucide-react";
 import { api } from "./api.js";
 import logo from "./assets/krautl-logo.png";
@@ -187,6 +187,8 @@ const EREIGNIS_LABEL = {
   mail_uebersetzt: "Deutsche Arbeitsübersetzung erstellt",
   antwort_uebersetzung_fehlgeschlagen: "Antwortübersetzung fehlgeschlagen",
   mail_manuell_erledigt: "Manuell erledigt",
+  mail_notiz_gespeichert: "Mailnotiz gespeichert",
+  mail_notiz_geloescht: "Mailnotiz gelöscht",
   mail_geloescht: "Mail gelöscht",
   mail_loeschen_fehlgeschlagen: "Mail-Löschung fehlgeschlagen",
   mail_zugewiesen: "Mail zugewiesen",
@@ -550,6 +552,177 @@ function ZuweisenButton({ mail, onZugewiesen, deaktiviert = false }) {
         ]}
         onWaehlen={zuweisen}
       />
+    </div>
+  );
+}
+
+function MailNotizButton({ mail, onGespeichert, deaktiviert = false }) {
+  const [offen, setOffen] = useState(false);
+  const [text, setText] = useState(mail.notiz?.text || "");
+  const [speichert, setSpeichert] = useState(false);
+  const [fehler, setFehler] = useState("");
+  const container = useRef(null);
+  const notizVorhanden = Boolean(mail.notiz?.text);
+  const ursprungstext = mail.notiz?.text || "";
+
+  useEffect(() => {
+    setOffen(false);
+    setText(ursprungstext);
+    setFehler("");
+  }, [mail.id, ursprungstext]);
+
+  useEffect(() => {
+    if (!offen) return undefined;
+    const ausserhalbSchliessen = (ereignis) => {
+      if (!container.current?.contains(ereignis.target)) {
+        setText(ursprungstext);
+        setFehler("");
+        setOffen(false);
+      }
+    };
+    document.addEventListener("pointerdown", ausserhalbSchliessen);
+    return () => document.removeEventListener("pointerdown", ausserhalbSchliessen);
+  }, [offen, ursprungstext]);
+
+  async function speichern(neuerText = text) {
+    setSpeichert(true);
+    setFehler("");
+    try {
+      const ergebnis = await api.mailNotizSpeichern(mail.id, neuerText);
+      setText(ergebnis.notiz?.text || "");
+      setOffen(false);
+      await onGespeichert();
+    } catch (e) {
+      setFehler(e.message || "Notiz konnte nicht gespeichert werden.");
+    } finally {
+      setSpeichert(false);
+    }
+  }
+
+  async function loeschen() {
+    if (!window.confirm("Diese interne Notiz wirklich löschen?")) return;
+    await speichern("");
+  }
+
+  function schliessen() {
+    setText(ursprungstext);
+    setFehler("");
+    setOffen(false);
+  }
+
+  return (
+    <div ref={container} className="relative">
+      <button
+        type="button"
+        onClick={() => setOffen((alt) => !alt)}
+        title={
+          notizVorhanden
+            ? "Interne Notiz zu dieser Mail anzeigen"
+            : "Interne Notiz zu dieser Mail anlegen"
+        }
+        aria-haspopup="dialog"
+        aria-expanded={offen}
+        className="flex items-center gap-1.5 px-2.5 py-1.5"
+        style={{
+          ...AUSWAHL_BUTTON_STIL,
+          color: notizVorhanden ? "#fff" : tokens.inkMuted,
+          background: notizVorhanden ? "#D9251D" : tokens.paperRaised,
+          border: `1px solid ${notizVorhanden ? "#B51D17" : tokens.line}`,
+          fontWeight: notizVorhanden ? 700 : 400,
+        }}
+      >
+        <StickyNote size={12} />
+        Notizen
+      </button>
+      {offen && (
+        <div
+          role="dialog"
+          aria-label="Interne Mailnotiz"
+          className="absolute right-0 top-full mt-1 p-3 overflow-y-auto auswahl-menue"
+          style={{
+            width: "420px",
+            maxWidth: "calc(100vw - 24px)",
+            zIndex: 60,
+            background: tokens.paperRaised,
+            border: `1px solid ${tokens.line}`,
+            borderRadius: "7px",
+            boxShadow: "0 8px 22px rgba(36, 42, 31, 0.14)",
+          }}
+        >
+          <div style={{ ...fontUI, fontSize: "12.5px", fontWeight: 700, color: tokens.ink }}>
+            Interne Notiz zu dieser Mail
+          </div>
+          <textarea
+            autoFocus={!deaktiviert}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            readOnly={deaktiviert}
+            disabled={speichert}
+            maxLength={10000}
+            placeholder="Freitextnotiz eingeben …"
+            className="block w-full mt-2 p-2.5 resize-y disabled:opacity-70"
+            style={{
+              minHeight: "150px",
+              ...fontUI,
+              fontSize: "13px",
+              lineHeight: 1.45,
+              color: tokens.ink,
+              background: tokens.paper,
+              border: `1px solid ${tokens.line}`,
+              borderRadius: "6px",
+            }}
+          />
+          <div className="flex items-center justify-between gap-2 mt-1" style={{ ...fontUI, fontSize: "10.5px", color: tokens.inkMuted }}>
+            <span>
+              {mail.notiz?.bearbeitetVon
+                ? `Zuletzt von ${mail.notiz.bearbeitetVon} bearbeitet`
+                : "Nur intern sichtbar"}
+            </span>
+            <span>{text.length}/10.000</span>
+          </div>
+          {deaktiviert && (
+            <div className="mt-2" style={{ ...fontUI, fontSize: "11.5px", color: tokens.rust }}>
+              Die Notiz ist lesbar, kann während der Bearbeitung durch eine andere Person aber nicht geändert werden.
+            </div>
+          )}
+          {fehler && (
+            <div className="mt-2" role="alert" style={{ ...fontUI, fontSize: "11.5px", color: tokens.rust }}>
+              {fehler}
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-3 mt-3">
+            <div>
+              {notizVorhanden && !deaktiviert && (
+                <button
+                  type="button"
+                  onClick={loeschen}
+                  disabled={speichert}
+                  className="px-2.5 py-1.5 disabled:opacity-50"
+                  style={{ ...fontUI, fontSize: "11.5px", color: tokens.rust }}
+                >
+                  Notiz löschen
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={schliessen} className="px-2.5 py-1.5" style={AUSWAHL_BUTTON_STIL}>
+                {deaktiviert ? "Schließen" : "Abbrechen"}
+              </button>
+              {!deaktiviert && (
+                <button
+                  type="button"
+                  onClick={() => speichern()}
+                  disabled={speichert || text === ursprungstext}
+                  className="px-3 py-1.5 disabled:opacity-50"
+                  style={{ ...fontUI, fontSize: "11.5px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}
+                >
+                  {speichert ? "Speichert …" : "Speichern"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1121,6 +1294,7 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
                     deaktiviert={vonAnderemReserviert}
                   />
                   <ZuweisenButton mail={selected} onZugewiesen={aktionAbschliessen} deaktiviert={vonAnderemReserviert} />
+                  <MailNotizButton mail={selected} onGespeichert={onReload} deaktiviert={vonAnderemReserviert} />
                   <KategorieKorrektur
                     mail={selected}
                     katalog={katalog}
@@ -2329,6 +2503,12 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         })(),
         felder,
         anhaenge: m.anhang_dateinamen ?? [],
+        notiz: m.notiz ? {
+          text: m.notiz.text,
+          bearbeitetVon: m.notiz.bearbeitet_von,
+          erstelltAm: m.notiz.erstellt_am,
+          geaendertAm: m.notiz.geaendert_am,
+        } : null,
         reservierung: m.reservierung ? {
           benutzername: m.reservierung.benutzername,
           name: m.reservierung.name,

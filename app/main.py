@@ -33,7 +33,7 @@ from .berechtigungen import (
     verweigerte_klassifikationen, zustaendigkeitsfilter,
 )
 from .models import (
-    Aktionslog, Base, Mail, MailAufgabe, MailReservierung, Postfach, Rechnung,
+    Aktionslog, Base, Mail, MailAufgabe, MailNotiz, MailReservierung, Postfach, Rechnung,
     FaqEintrag, FaqVorschlag,
     Entwurf, Korrektur, Klassifikation, KlassifikationAufgabe, SystemStatus,
     Produkt, Produktfamilie, RollenMailzugriff, Wissenseintrag, WissensVorschlag,
@@ -143,6 +143,10 @@ class RollenMailzugriffAenderung(BaseModel):
 
 class MailZuweisung(BaseModel):
     rolle: str
+
+
+class MailNotizAenderung(BaseModel):
+    text: str = Field(default="", max_length=10000)
 
 
 class Anmeldung(BaseModel):
@@ -356,7 +360,11 @@ async def liste_mails(
             Klassifikation,
             Mail.klassifikation_id == Klassifikation.klassifikation_id,
         )
-        .options(selectinload(Mail.aufgaben), selectinload(Mail.postfach))
+        .options(
+            selectinload(Mail.aufgaben),
+            selectinload(Mail.postfach),
+            selectinload(Mail.notiz),
+        )
         .where(Mail.im_krautl_posteingang.is_(True))
         .order_by(
             case(
@@ -410,6 +418,16 @@ async def liste_mails(
             "reservierung": (
                 _reservierungsdaten(reservierungen_nach_mail_id[mail.id])
                 if mail.id in reservierungen_nach_mail_id
+                else None
+            ),
+            "notiz": (
+                {
+                    "text": mail.notiz.text,
+                    "bearbeitet_von": mail.notiz.bearbeitet_von,
+                    "erstellt_am": mail.notiz.erstellt_am,
+                    "geaendert_am": mail.notiz.geaendert_am,
+                }
+                if mail.notiz is not None
                 else None
             ),
             "zuweisbare_rollen": [
@@ -521,6 +539,65 @@ async def mail_reservierung_freigeben(
     )
     await session.commit()
     return {"status": "freigegeben"}
+
+
+@app.put("/mails/{mail_id}/notiz")
+async def mail_notiz_speichern(
+    mail_id: int,
+    aenderung: MailNotizAenderung,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """Speichert oder entfernt die dauerhafte interne Notiz einer Mail."""
+    mail = (await session.execute(
+        select(Mail).where(Mail.id == mail_id).with_for_update()
+    )).scalar_one_or_none()
+    await _mailzugriff_erfordern(session, request, mail)
+
+    text = aenderung.text.strip()
+    notiz = await session.get(MailNotiz, mail_id)
+    benutzername = request.state.benutzer["name"]
+    jetzt = datetime.now(timezone.utc)
+
+    if not text:
+        if notiz is not None:
+            await session.delete(notiz)
+            session.add(Aktionslog(
+                mail_id=mail.id,
+                ereignis="mail_notiz_geloescht",
+                ausgeloest_von=benutzername,
+                detail=f"Interne Mailnotiz entfernt; durch {benutzername}",
+            ))
+        await session.commit()
+        return {"status": "geloescht", "notiz": None}
+
+    if notiz is None:
+        notiz = MailNotiz(
+            mail_id=mail.id,
+            text=text,
+            bearbeitet_von=benutzername,
+            geaendert_am=jetzt,
+        )
+        session.add(notiz)
+    else:
+        notiz.text = text
+        notiz.bearbeitet_von = benutzername
+        notiz.geaendert_am = jetzt
+    session.add(Aktionslog(
+        mail_id=mail.id,
+        ereignis="mail_notiz_gespeichert",
+        ausgeloest_von=benutzername,
+        detail=f"Interne Mailnotiz gespeichert; durch {benutzername}",
+    ))
+    await session.commit()
+    return {
+        "status": "gespeichert",
+        "notiz": {
+            "text": notiz.text,
+            "bearbeitet_von": notiz.bearbeitet_von,
+            "geaendert_am": notiz.geaendert_am,
+        },
+    }
 
 
 @app.post("/mails/{mail_id}/uebersetzung")

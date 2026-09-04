@@ -139,6 +139,10 @@ class Mail(Base):
     aufgaben: Mapped[list["MailAufgabe"]] = relationship(
         back_populates="mail", order_by="MailAufgabe.position", cascade="all, delete-orphan"
     )
+    notiz: Mapped["MailNotiz | None"] = relationship(
+        back_populates="mail", uselist=False, cascade="all, delete-orphan",
+        single_parent=True,
+    )
 
 
 class MailReservierung(Base):
@@ -153,6 +157,23 @@ class MailReservierung(Base):
     letzter_kontakt: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), index=True
     )
+
+
+class MailNotiz(Base):
+    """Dauerhafte interne Freitextnotiz zu genau einer Mail."""
+    __tablename__ = "mail_notiz"
+
+    mail_id: Mapped[int] = mapped_column(
+        ForeignKey("mail.id", ondelete="CASCADE"), primary_key=True
+    )
+    text: Mapped[str] = mapped_column(Text)
+    bearbeitet_von: Mapped[str] = mapped_column(String(255))
+    erstellt_am: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    geaendert_am: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    mail: Mapped["Mail"] = relationship(back_populates="notiz")
 
 
 class MailAufgabe(Base):
