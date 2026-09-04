@@ -63,15 +63,17 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(daten),
     }),
-  aktionslog: ({ monat = "", tag = "", seite = 1, proSeite = 50 } = {}) => {
+  aktionslog: ({ monat = "", tag = "", ereignis = "", seite = 1, proSeite = 50 } = {}) => {
     const parameter = new URLSearchParams({
       seite: String(seite),
       pro_seite: String(proSeite),
     });
     if (monat) parameter.set("monat", monat);
     if (tag) parameter.set("tag", tag);
+    if (ereignis) parameter.set("ereignis", ereignis);
     return anfrage(`/aktionslog?${parameter.toString()}`);
   },
+  aktionslogMail: (mailId) => anfrage(`/aktionslog/mails/${mailId}`),
   rollenMailzugriff: () => anfrage("/rollen-mailzugriff"),
   rollenMailzugriffSpeichern: (rolle, klassifikationIds) =>
     anfrage(`/rollen-mailzugriff/${rolle}`, {

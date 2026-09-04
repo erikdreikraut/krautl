@@ -344,7 +344,8 @@ textarea {
   .action-log-row > :nth-child(2)::before { content: "EREIGNIS"; }
   .action-log-row > :nth-child(3)::before { content: "MAIL VON"; }
   .action-log-row > :nth-child(4)::before { content: "AUSGELÖST VON"; }
-  .action-log-row > :nth-child(5)::before { content: "DETAIL"; }
+  .action-log-row > :nth-child(5)::before { content: "MAIL"; }
+  .action-log-row > :nth-child(6)::before { content: "DETAIL"; }
 
   .knowledge-header {
     padding: 16px 12px 0 !important;

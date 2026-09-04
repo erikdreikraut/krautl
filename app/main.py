@@ -1155,6 +1155,7 @@ async def liste_aktionslog(
     session: AsyncSession = Depends(get_session),
     monat: str | None = None,
     tag: str | None = None,
+    ereignis: str | None = None,
     seite: int = 1,
     pro_seite: int = 50,
 ):
@@ -1194,7 +1195,7 @@ async def liste_aktionslog(
         else:
             ende = datetime(jahr, monatsnummer + 1, 1, tzinfo=berlin)
 
-    filterbedingungen = []
+    basisbedingungen = []
     verweigert = await verweigerte_klassifikationen(
         session, request.state.benutzer
     )
@@ -1207,6 +1208,9 @@ async def liste_aktionslog(
             "seiten": 1,
             "monat": monat,
             "tag": tag,
+            "ereignis": ereignis,
+            "monate": [],
+            "ereignisse": [],
         }
     sichtbare_mail_bedingungen = []
     if verweigert:
@@ -1219,15 +1223,50 @@ async def liste_aktionslog(
         sichtbare_mail_bedingungen.append(zustand)
     if sichtbare_mail_bedingungen:
         sichtbare_mail_ids = select(Mail.id).where(*sichtbare_mail_bedingungen)
-        filterbedingungen.append(or_(
+        basisbedingungen.append(or_(
             Aktionslog.mail_id.is_(None),
             Aktionslog.mail_id.in_(sichtbare_mail_ids),
         ))
+
+    ereignisse = list((await session.execute(
+        select(Aktionslog.ereignis)
+        .where(*basisbedingungen)
+        .distinct()
+        .order_by(Aktionslog.ereignis)
+    )).scalars().all())
+    fruehestes, spaetestes = (await session.execute(
+        select(
+            func.min(Aktionslog.erstellt_am),
+            func.max(Aktionslog.erstellt_am),
+        ).where(*basisbedingungen)
+    )).one()
+    monate = []
+    if fruehestes is not None and spaetestes is not None:
+        if fruehestes.tzinfo is None:
+            fruehestes = fruehestes.replace(tzinfo=timezone.utc)
+        if spaetestes.tzinfo is None:
+            spaetestes = spaetestes.replace(tzinfo=timezone.utc)
+        erster_monat = fruehestes.astimezone(berlin).date().replace(day=1)
+        laufender_monat = spaetestes.astimezone(berlin).date().replace(day=1)
+        while laufender_monat >= erster_monat:
+            monate.append(laufender_monat.strftime("%Y-%m"))
+            if laufender_monat.month == 1:
+                laufender_monat = laufender_monat.replace(
+                    year=laufender_monat.year - 1, month=12
+                )
+            else:
+                laufender_monat = laufender_monat.replace(
+                    month=laufender_monat.month - 1
+                )
+
+    filterbedingungen = list(basisbedingungen)
     if start is not None and ende is not None:
         filterbedingungen.extend([
             Aktionslog.erstellt_am >= start.astimezone(timezone.utc),
             Aktionslog.erstellt_am < ende.astimezone(timezone.utc),
         ])
+    if ereignis:
+        filterbedingungen.append(Aktionslog.ereignis == ereignis)
 
     gesamt = (await session.execute(
         select(func.count(Aktionslog.id)).where(*filterbedingungen)
@@ -1236,10 +1275,14 @@ async def liste_aktionslog(
     result = await session.execute(
         select(
             Aktionslog,
+            Mail.id,
             Mail.absender_name,
             Mail.absender_adresse,
+            Mail.betreff,
+            MailNotiz.mail_id,
         )
         .outerjoin(Mail, Aktionslog.mail_id == Mail.id)
+        .outerjoin(MailNotiz, MailNotiz.mail_id == Mail.id)
         .where(*filterbedingungen)
         .order_by(Aktionslog.erstellt_am.desc())
         .offset((seite - 1) * pro_seite)
@@ -1253,8 +1296,18 @@ async def liste_aktionslog(
                     for spalte in Aktionslog.__table__.columns
                 },
                 "mail_absender": absender_name or absender_adresse,
+                "mail_betreff": betreff,
+                "mail_verfuegbar": vorhandene_mail_id is not None,
+                "hat_notiz": notiz_mail_id is not None,
             }
-            for eintrag, absender_name, absender_adresse in result.all()
+            for (
+                eintrag,
+                vorhandene_mail_id,
+                absender_name,
+                absender_adresse,
+                betreff,
+                notiz_mail_id,
+            ) in result.all()
         ],
         "gesamt": gesamt,
         "seite": seite,
@@ -1262,6 +1315,51 @@ async def liste_aktionslog(
         "seiten": seiten,
         "monat": monat,
         "tag": tag,
+        "ereignis": ereignis,
+        "monate": monate,
+        "ereignisse": ereignisse,
+    }
+
+
+@app.get("/aktionslog/mails/{mail_id}")
+async def aktionslog_mail_ansehen(
+    mail_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """Liefert eine historische Mail ausschließlich zur Ansicht im Aktionslog."""
+    mail = (await session.execute(
+        select(Mail)
+        .options(selectinload(Mail.notiz), selectinload(Mail.postfach))
+        .where(Mail.id == mail_id)
+    )).scalar_one_or_none()
+    await _mailzugriff_erfordern(session, request, mail)
+    return {
+        "id": mail.id,
+        "message_id": mail.message_id,
+        "absender_name": mail.absender_name,
+        "absender_adresse": mail.absender_adresse,
+        "antwort_an_adresse": mail.antwort_an_adresse,
+        "betreff": mail.betreff,
+        "text_auszug": mail.text_auszug,
+        "originalsprache": mail.originalsprache,
+        "betreff_deutsch": mail.betreff_deutsch,
+        "text_deutsch": mail.text_deutsch,
+        "empfangen_am": mail.empfangen_am,
+        "klassifikation_id": mail.klassifikation_id,
+        "im_krautl_posteingang": mail.im_krautl_posteingang,
+        "quellpostfach": mail.postfach.adresse if mail.postfach else None,
+        "anhang_dateinamen": mail.anhang_dateinamen or [],
+        "notiz": (
+            {
+                "text": mail.notiz.text,
+                "bearbeitet_von": mail.notiz.bearbeitet_von,
+                "erstellt_am": mail.notiz.erstellt_am,
+                "geaendert_am": mail.notiz.geaendert_am,
+            }
+            if mail.notiz is not None
+            else None
+        ),
     }
 
 

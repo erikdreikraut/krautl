@@ -245,6 +245,16 @@ function MailAnzahlTag({ anzahl, aktiv }) {
   );
 }
 
+function formatMonatsauswahl(wert) {
+  if (!/^\d{4}-\d{2}$/.test(wert || "")) return wert || "";
+  const datum = new Date(`${wert}-01T12:00:00Z`);
+  return datum.toLocaleDateString("de-DE", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 function MailReservierungsTag({ reservierung, benutzername }) {
   if (!reservierung || reservierung.benutzername === benutzername) return null;
   const name = RESERVIERUNG_KURZNAMEN[reservierung.benutzername]
@@ -2079,14 +2089,182 @@ function KlassifikationenView({ katalog, onReload }) {
   );
 }
 
+function AktionslogMailDialog({ mailId, onSchliessen }) {
+  const [mail, setMail] = useState(null);
+  const [laedt, setLaedt] = useState(true);
+  const [fehler, setFehler] = useState("");
+
+  useEffect(() => {
+    let aktiv = true;
+    setMail(null);
+    setLaedt(true);
+    setFehler("");
+    api.aktionslogMail(mailId)
+      .then((daten) => {
+        if (aktiv) setMail(daten);
+      })
+      .catch((error) => {
+        if (aktiv) setFehler(error.message);
+      })
+      .finally(() => {
+        if (aktiv) setLaedt(false);
+      });
+    return () => { aktiv = false; };
+  }, [mailId]);
+
+  useEffect(() => {
+    const tastePruefen = (ereignis) => {
+      if (ereignis.key === "Escape") onSchliessen();
+    };
+    document.addEventListener("keydown", tastePruefen);
+    return () => document.removeEventListener("keydown", tastePruefen);
+  }, [onSchliessen]);
+
+  async function anhangAnsehen(index) {
+    const fenster = window.open("about:blank", "_blank");
+    if (fenster) fenster.opener = null;
+    try {
+      const datei = await api.mailAnhangLaden(mail.id, index);
+      const url = URL.createObjectURL(datei);
+      if (fenster) fenster.location.href = url;
+      else window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      if (fenster) fenster.close();
+      setFehler(error.message || "Anhang konnte nicht geöffnet werden.");
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 flex items-center justify-center p-4"
+      role="presentation"
+      onMouseDown={(ereignis) => {
+        if (ereignis.target === ereignis.currentTarget) onSchliessen();
+      }}
+      style={{ zIndex: 1200, background: "rgba(36, 42, 31, 0.48)" }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Mail aus dem Aktionslog"
+        className="w-full flex flex-col overflow-hidden"
+        style={{
+          maxWidth: "980px",
+          maxHeight: "92vh",
+          background: tokens.paper,
+          border: `1px solid ${tokens.line}`,
+          borderRadius: "10px",
+          boxShadow: "0 18px 55px rgba(36, 42, 31, 0.3)",
+        }}
+      >
+        <div className="flex items-start justify-between gap-4 px-5 py-4" style={{ background: tokens.paperRaised, borderBottom: `1px solid ${tokens.line}` }}>
+          <div>
+            <div style={{ ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em" }}>
+              MAIL-WIEDERANSICHT · NUR LESEN
+            </div>
+            <h3 style={{ ...fontDisplay, fontSize: "19px", marginTop: "4px" }}>
+              {mail?.betreff_deutsch || mail?.betreff || "Mail wird geladen …"}
+            </h3>
+            {mail && (
+              <div style={{ ...fontUI, fontSize: "12px", color: tokens.inkMuted, marginTop: "3px" }}>
+                {mail.absender_name || mail.absender_adresse}
+                {mail.absender_adresse && mail.absender_adresse !== mail.absender_name
+                  ? ` <${mail.absender_adresse}>`
+                  : ""}
+                {` · ${formatZeitpunkt(mail.empfangen_am)}`}
+              </div>
+            )}
+          </div>
+          <button type="button" onClick={onSchliessen} aria-label="Mailansicht schließen" className="p-2" style={{ color: tokens.inkMuted }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {laedt && (
+            <div className="px-5 py-8 text-center" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
+              Mail wird geladen …
+            </div>
+          )}
+          {fehler && (
+            <div className="m-4 px-4 py-3" role="alert" style={{ ...fontUI, fontSize: "12.5px", color: tokens.rust, background: tokens.rustPale, border: `1px solid ${tokens.rust}`, borderRadius: "6px" }}>
+              {fehler}
+            </div>
+          )}
+          {mail && (
+            <>
+              <div className="flex flex-wrap items-center gap-2 px-5 py-3" style={{ borderBottom: `1px solid ${tokens.line}` }}>
+                <Badge label={mail.klassifikation_id || "UNKLASSIFIZIERT"} color={tokens.moss} />
+                <span style={{ ...fontUI, fontSize: "11.5px", color: mail.im_krautl_posteingang ? tokens.mossDeep : tokens.inkMuted }}>
+                  {mail.im_krautl_posteingang ? "Noch im Krautl-Posteingang" : "Bereits aus dem Krautl-Posteingang entfernt"}
+                </span>
+                {mail.quellpostfach && (
+                  <span style={{ ...fontUI, fontSize: "11.5px", color: tokens.inkMuted }}>
+                    · {mail.quellpostfach}
+                  </span>
+                )}
+              </div>
+              {mail.notiz && (
+                <div className="mx-5 mt-4 p-3" style={{ background: tokens.rustPale, border: `1px solid ${tokens.rust}`, borderRadius: "7px" }}>
+                  <div className="flex items-center gap-1.5" style={{ ...fontUI, fontSize: "12px", fontWeight: 700, color: tokens.rust }}>
+                    <StickyNote size={13} /> Interne Notiz
+                  </div>
+                  <div className="mt-2" style={{ ...fontSerif, fontSize: "14px", lineHeight: 1.55, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                    {mail.notiz.text}
+                  </div>
+                  <div className="mt-2" style={{ ...fontUI, fontSize: "10.5px", color: tokens.inkMuted }}>
+                    Zuletzt von {mail.notiz.bearbeitet_von} bearbeitet · {formatZeitpunkt(mail.notiz.geaendert_am)}
+                  </div>
+                </div>
+              )}
+              {mail.text_deutsch && (
+                <div className="mx-5 mt-4 p-3" style={{ background: tokens.mossPale, border: `1px solid ${tokens.line}`, borderRadius: "7px" }}>
+                  <div style={{ ...fontMono, fontSize: "10px", color: tokens.mossDeep, letterSpacing: "0.05em" }}>
+                    DEUTSCHE ARBEITSÜBERSETZUNG
+                  </div>
+                  <div className="mt-2" style={{ ...fontSerif, fontSize: "14px", lineHeight: 1.55, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                    {mail.text_deutsch}
+                  </div>
+                </div>
+              )}
+              <MailInhalt
+                key={mail.id}
+                mail={{ id: mail.id, betreff: mail.betreff, snippet: mail.text_auszug }}
+              />
+              {(mail.anhang_dateinamen || []).length > 0 && (
+                <div className="px-5 py-4 flex flex-wrap gap-2" style={{ borderTop: `1px solid ${tokens.line}` }}>
+                  {mail.anhang_dateinamen.map((dateiname, index) => (
+                    <button
+                      type="button"
+                      key={`${dateiname}-${index}`}
+                      onClick={() => anhangAnsehen(index)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5"
+                      style={{ ...fontUI, fontSize: "12px", color: tokens.ink, background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}
+                    >
+                      <Paperclip size={12} /> {dateiname}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AktionslogView() {
   const [monat, setMonat] = useState("");
   const [tagImMonat, setTagImMonat] = useState("");
+  const [ereignis, setEreignis] = useState("");
   const [seite, setSeite] = useState(1);
   const [proSeite, setProSeite] = useState(50);
-  const [antwort, setAntwort] = useState({ eintraege: [], gesamt: 0, seite: 1, seiten: 1 });
+  const [antwort, setAntwort] = useState({ eintraege: [], gesamt: 0, seite: 1, seiten: 1, monate: [], ereignisse: [] });
   const [laedt, setLaedt] = useState(true);
   const [fehler, setFehler] = useState("");
+  const [ausgewaehlteMailId, setAusgewaehlteMailId] = useState(null);
 
   const tageImMonat = useMemo(() => {
     if (!monat) return 0;
@@ -2101,7 +2279,7 @@ function AktionslogView() {
     const tag = monat && tagImMonat
       ? `${monat}-${String(tagImMonat).padStart(2, "0")}`
       : "";
-    api.aktionslog({ monat, tag, seite, proSeite })
+    api.aktionslog({ monat, tag, ereignis, seite, proSeite })
       .then((daten) => {
         if (aktiv) setAntwort(daten);
       })
@@ -2112,7 +2290,7 @@ function AktionslogView() {
         if (aktiv) setLaedt(false);
       });
     return () => { aktiv = false; };
-  }, [monat, tagImMonat, seite, proSeite]);
+  }, [monat, tagImMonat, ereignis, seite, proSeite]);
 
   const eintraege = antwort.eintraege ?? [];
   const ersterEintrag = antwort.gesamt === 0 ? 0 : (antwort.seite - 1) * antwort.pro_seite + 1;
@@ -2129,16 +2307,33 @@ function AktionslogView() {
       <div className="action-log-filter flex items-end gap-3 mb-4" style={{ flexWrap: "wrap" }}>
         <label style={{ ...fontUI, fontSize: "11px", color: tokens.inkMuted }}>
           <span className="block mb-1">MONAT</span>
-          <input
-            type="month"
+          <select
             value={monat}
             onChange={(event) => {
               setMonat(event.target.value);
               setTagImMonat("");
               setSeite(1);
             }}
-            style={{ border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised, padding: "7px 9px", color: tokens.ink }}
-          />
+            style={{ minWidth: "165px", border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised, padding: "8px 9px", color: tokens.ink }}
+          >
+            <option value="">Alle Monate</option>
+            {(antwort.monate || []).map((wert) => (
+              <option key={wert} value={wert}>{formatMonatsauswahl(wert)}</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ ...fontUI, fontSize: "11px", color: tokens.inkMuted }}>
+          <span className="block mb-1">EREIGNIS</span>
+          <select
+            value={ereignis}
+            onChange={(event) => { setEreignis(event.target.value); setSeite(1); }}
+            style={{ minWidth: "215px", border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised, padding: "8px 9px", color: tokens.ink }}
+          >
+            <option value="">Alle Ereignisse</option>
+            {(antwort.ereignisse || []).map((wert) => (
+              <option key={wert} value={wert}>{EREIGNIS_LABEL[wert] ?? wert}</option>
+            ))}
+          </select>
         </label>
         <label style={{ ...fontUI, fontSize: "11px", color: tokens.inkMuted }}>
           <span className="block mb-1">TAG (OPTIONAL)</span>
@@ -2164,10 +2359,10 @@ function AktionslogView() {
             {[25, 50, 100, 200].map((anzahl) => <option key={anzahl} value={anzahl}>{anzahl}</option>)}
           </select>
         </label>
-        {(monat || tagImMonat) && (
+        {(monat || tagImMonat || ereignis) && (
           <button
             type="button"
-            onClick={() => { setMonat(""); setTagImMonat(""); setSeite(1); }}
+            onClick={() => { setMonat(""); setTagImMonat(""); setEreignis(""); setSeite(1); }}
             style={{ ...fontUI, fontSize: "12px", border: `1px solid ${tokens.line}`, borderRadius: "6px", padding: "8px 11px", background: tokens.paperRaised, color: tokens.inkMuted }}
           >
             Filter löschen
@@ -2182,17 +2377,44 @@ function AktionslogView() {
       )}
 
       <div className="action-log-table" style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
-        <div className="grid px-4 py-2.5 action-log-head" style={{ gridTemplateColumns: "1fr 1.35fr 1.45fr 1.1fr 2.3fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
-          <div>ZEIT</div><div>EREIGNIS</div><div>MAIL VON</div><div>AUSGELÖST VON</div><div>DETAIL</div>
+        <div className="grid px-4 py-2.5 action-log-head" style={{ gridTemplateColumns: "0.85fr 1.25fr 1.25fr 1fr 0.75fr 2.2fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
+          <div>ZEIT</div><div>EREIGNIS</div><div>MAIL VON</div><div>AUSGELÖST VON</div><div>MAIL</div><div>DETAIL</div>
         </div>
         {eintraege.map((e) => (
-          <div key={e.id} className="grid items-start px-4 py-3 action-log-row" style={{ gridTemplateColumns: "1fr 1.35fr 1.45fr 1.1fr 2.3fr", borderBottom: `1px solid ${tokens.line}` }}>
+          <div key={e.id} className="grid items-start px-4 py-3 action-log-row" style={{ gridTemplateColumns: "0.85fr 1.25fr 1.25fr 1fr 0.75fr 2.2fr", borderBottom: `1px solid ${tokens.line}` }}>
             <div style={{ ...fontMono, fontSize: "12px", color: tokens.inkMuted }}>{formatZeitpunkt(e.erstellt_am)}</div>
             <div>
               <Badge label={(EREIGNIS_LABEL[e.ereignis] ?? e.ereignis).toUpperCase()} color={farbeFuerEreignis(e.ereignis)} />
             </div>
             <div style={{ ...fontSerif, fontSize: "13.5px" }}>{e.mail_absender || "—"}</div>
             <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.ink }}>{e.ausgeloest_von || "Krautl"}</div>
+            <div className="flex items-center gap-1.5">
+              {e.mail_verfuegbar ? (
+                <button
+                  type="button"
+                  onClick={() => setAusgewaehlteMailId(e.mail_id)}
+                  title={`Mail ansehen${e.mail_betreff ? `: ${e.mail_betreff}` : ""}`}
+                  className="inline-flex items-center gap-1 px-2 py-1"
+                  style={{ ...fontUI, fontSize: "11px", color: tokens.mossDeep, background: tokens.mossPale, border: `1px solid ${tokens.moss}`, borderRadius: "5px" }}
+                >
+                  <Eye size={11} /> Ansehen
+                </button>
+              ) : (
+                <span style={{ ...fontUI, fontSize: "12px", color: tokens.inkMuted }}>—</span>
+              )}
+              {e.hat_notiz && (
+                <button
+                  type="button"
+                  onClick={() => setAusgewaehlteMailId(e.mail_id)}
+                  title="Mail mit interner Notiz anzeigen"
+                  aria-label="Interne Notiz vorhanden; Mail und Notiz anzeigen"
+                  className="inline-flex items-center justify-center rounded-full"
+                  style={{ width: "24px", height: "24px", color: "#fff", background: "#D9251D" }}
+                >
+                  <StickyNote size={11} />
+                </button>
+              )}
+            </div>
             <div style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, wordBreak: "break-word" }}>{e.detail}</div>
           </div>
         ))}
@@ -2230,6 +2452,12 @@ function AktionslogView() {
           </button>
         </div>
       </div>
+      {ausgewaehlteMailId != null && (
+        <AktionslogMailDialog
+          mailId={ausgewaehlteMailId}
+          onSchliessen={() => setAusgewaehlteMailId(null)}
+        />
+      )}
     </div>
   );
 }

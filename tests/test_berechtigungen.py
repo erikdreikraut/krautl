@@ -12,12 +12,12 @@ from app.berechtigungen import darf_mail_sehen
 from app.db import SessionLocal, engine
 from app.main import (
     KlassifikationAenderung, MailZuweisung, RollenMailzugriffAenderung,
-    klassifikation_aktualisieren, liste_aktionslog, liste_entwuerfe,
+    aktionslog_mail_ansehen, klassifikation_aktualisieren, liste_aktionslog, liste_entwuerfe,
     liste_klassifikationen, liste_mails, mail_antwortentwurf_erzeugen, mail_zaehler,
     mail_zustaendigkeit_aendern, rollen_mailzugriff_speichern,
 )
 from app.models import (
-    Aktionslog, Base, Entwurf, Klassifikation, Mail, Postfach,
+    Aktionslog, Base, Entwurf, Klassifikation, Mail, MailNotiz, Postfach,
     RollenMailzugriff,
 )
 
@@ -93,8 +93,13 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
                 await mail_antwortentwurf_erzeugen(
                     gesperrte_mail.id, request_fuer(SACHBEARBEITER), session
                 )
+            with self.assertRaises(HTTPException) as ansichtsfehler:
+                await aktionslog_mail_ansehen(
+                    gesperrte_mail.id, request_fuer(SACHBEARBEITER), session
+                )
         self.assertEqual(["Erlaubt"], [mail["betreff"] for mail in sichtbar])
         self.assertEqual(403, fehler.exception.status_code)
+        self.assertEqual(403, ansichtsfehler.exception.status_code)
 
     async def test_sachbearbeiter_kann_alle_erlaubten_statt_nur_meine_laden(self):
         async with SessionLocal() as session:
@@ -355,10 +360,22 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
                 ereignis="klassifiziert",
                 detail="KUNDE_TEST",
             ))
+            session.add(MailNotiz(
+                mail_id=mail.id,
+                text="Interner Prüfhinweis",
+                bearbeitet_von="Erik Schweitzer",
+                geaendert_am=datetime.now(timezone.utc),
+            ))
             await session.commit()
             antwort = await liste_aktionslog(request_fuer(ADMIN), session)
+            mailansicht = await aktionslog_mail_ansehen(
+                mail.id, request_fuer(ADMIN), session
+            )
 
         self.assertEqual("Test", antwort["eintraege"][0]["mail_absender"])
+        self.assertTrue(antwort["eintraege"][0]["mail_verfuegbar"])
+        self.assertTrue(antwort["eintraege"][0]["hat_notiz"])
+        self.assertEqual("Interner Prüfhinweis", mailansicht["notiz"]["text"])
 
     async def test_sachbearbeiter_sieht_nur_zulaessige_mailbezogene_logs(self):
         async with SessionLocal() as session:
@@ -431,12 +448,27 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
                 request_fuer(ADMIN), session,
                 monat="2026-02", tag="2026-02-02", pro_seite=25,
             )
+            bestaetigungen = await liste_aktionslog(
+                request_fuer(ADMIN), session,
+                ereignis="bestaetigt", pro_seite=25,
+            )
 
         self.assertEqual(27, februar["gesamt"])
         self.assertEqual(2, februar["seiten"])
         self.assertEqual(2, len(februar["eintraege"]))
         self.assertEqual(1, zweiter_februar["gesamt"])
         self.assertEqual("Zweiter Februar", zweiter_februar["eintraege"][0]["detail"])
+        self.assertEqual(2, bestaetigungen["gesamt"])
+        self.assertEqual(
+            {"bestaetigt"},
+            {eintrag["ereignis"] for eintrag in bestaetigungen["eintraege"]},
+        )
+        self.assertIn("2026-02", bestaetigungen["monate"])
+        self.assertIn("2026-03", bestaetigungen["monate"])
+        self.assertEqual(
+            {"bestaetigt", "klassifiziert"},
+            set(bestaetigungen["ereignisse"]),
+        )
 
 
 if __name__ == "__main__":
