@@ -2065,9 +2065,12 @@ function verwendeKrautlDaten(onNichtAngemeldet, benutzer, alleMails) {
   const [fehler, setFehler] = useState(null);
   const laufenderAbruf = useRef(null);
 
-  const laden = useCallback(async ({ imHintergrund = false } = {}) => {
+  const laden = useCallback(async ({
+    imHintergrund = false,
+    nachLaufendemAbruf = false,
+  } = {}) => {
     while (laufenderAbruf.current) {
-      if (imHintergrund) return laufenderAbruf.current;
+      if (imHintergrund && !nachLaufendemAbruf) return laufenderAbruf.current;
       await laufenderAbruf.current;
     }
 
@@ -2098,25 +2101,64 @@ function verwendeKrautlDaten(onNichtAngemeldet, benutzer, alleMails) {
     }
   }, [onNichtAngemeldet, benutzer, alleMails]);
 
+  const mailspalteLaden = useCallback(async () => {
+    if (document.visibilityState !== "visible") return undefined;
+    if (laufenderAbruf.current) return laufenderAbruf.current;
+
+    const abruf = (async () => {
+      try {
+        const [mails, mailZaehler] = await Promise.all([
+          api.mails(alleMails),
+          api.mailZaehler(),
+        ]);
+        setDaten((aktuell) => (
+          aktuell ? { ...aktuell, mails, mailZaehler } : aktuell
+        ));
+      } catch (e) {
+        if (e.status === 401) onNichtAngemeldet();
+        // Ein fehlgeschlagener Kurzabruf lässt die vorhandene Liste stehen.
+        // Der vollständige 30-Sekunden-Abruf versucht es erneut.
+      }
+    })();
+    laufenderAbruf.current = abruf;
+    try {
+      await abruf;
+    } finally {
+      if (laufenderAbruf.current === abruf) laufenderAbruf.current = null;
+    }
+    return undefined;
+  }, [onNichtAngemeldet, alleMails]);
+
   useEffect(() => {
     laden();
 
-    const intervall = window.setInterval(
-      () => laden({ imHintergrund: true }),
+    const vollstaendigesIntervall = window.setInterval(
+      () => {
+        if (document.visibilityState === "visible") {
+          laden({ imHintergrund: true, nachLaufendemAbruf: true });
+        }
+      },
       30_000,
     );
+    const mailspaltenIntervall = window.setInterval(
+      () => mailspalteLaden(),
+      10_000,
+    );
     const beiRueckkehr = () => {
-      if (document.visibilityState === "visible") laden({ imHintergrund: true });
+      if (document.visibilityState === "visible") {
+        laden({ imHintergrund: true, nachLaufendemAbruf: true });
+      }
     };
     document.addEventListener("visibilitychange", beiRueckkehr);
     window.addEventListener("focus", beiRueckkehr);
 
     return () => {
-      window.clearInterval(intervall);
+      window.clearInterval(vollstaendigesIntervall);
+      window.clearInterval(mailspaltenIntervall);
       document.removeEventListener("visibilitychange", beiRueckkehr);
       window.removeEventListener("focus", beiRueckkehr);
     };
-  }, [laden]);
+  }, [laden, mailspalteLaden]);
 
   return { daten, fehler, neuLaden: laden };
 }
