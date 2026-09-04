@@ -1156,6 +1156,7 @@ async def liste_aktionslog(
     monat: str | None = None,
     tag: str | None = None,
     ereignis: str | None = None,
+    suche: str | None = None,
     seite: int = 1,
     pro_seite: int = 50,
 ):
@@ -1165,6 +1166,11 @@ async def liste_aktionslog(
         raise HTTPException(
             status_code=422,
             detail="Einträge pro Seite müssen 25, 50, 100 oder 200 sein",
+        )
+    suchtext = (suche or "").strip()
+    if len(suchtext) > 200:
+        raise HTTPException(
+            status_code=422, detail="Der Suchbegriff darf höchstens 200 Zeichen lang sein"
         )
 
     berlin = ZoneInfo("Europe/Berlin")
@@ -1209,6 +1215,7 @@ async def liste_aktionslog(
             "monat": monat,
             "tag": tag,
             "ereignis": ereignis,
+            "suche": suchtext,
             "monate": [],
             "ereignisse": [],
         }
@@ -1267,6 +1274,21 @@ async def liste_aktionslog(
         ])
     if ereignis:
         filterbedingungen.append(Aktionslog.ereignis == ereignis)
+    if suchtext:
+        # Prozent- und Unterstrichzeichen sollen als normale Suchzeichen gelten,
+        # nicht als SQL-Wildcards. Der Unterselect hält die Zählabfrage schlank.
+        suchmuster = "%{}%".format(
+            suchtext
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        passende_mail_ids = select(Mail.id).where(or_(
+            Mail.absender_name.ilike(suchmuster, escape="\\"),
+            Mail.absender_adresse.ilike(suchmuster, escape="\\"),
+            Mail.betreff.ilike(suchmuster, escape="\\"),
+        ))
+        filterbedingungen.append(Aktionslog.mail_id.in_(passende_mail_ids))
 
     gesamt = (await session.execute(
         select(func.count(Aktionslog.id)).where(*filterbedingungen)
@@ -1296,6 +1318,8 @@ async def liste_aktionslog(
                     for spalte in Aktionslog.__table__.columns
                 },
                 "mail_absender": absender_name or absender_adresse,
+                "mail_absender_name": absender_name,
+                "mail_absender_adresse": absender_adresse,
                 "mail_betreff": betreff,
                 "mail_verfuegbar": vorhandene_mail_id is not None,
                 "hat_notiz": notiz_mail_id is not None,
@@ -1316,6 +1340,7 @@ async def liste_aktionslog(
         "monat": monat,
         "tag": tag,
         "ereignis": ereignis,
+        "suche": suchtext,
         "monate": monate,
         "ereignisse": ereignisse,
     }

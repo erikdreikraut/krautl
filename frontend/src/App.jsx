@@ -2259,6 +2259,8 @@ function AktionslogView() {
   const [monat, setMonat] = useState("");
   const [tagImMonat, setTagImMonat] = useState("");
   const [ereignis, setEreignis] = useState("");
+  const [suchbegriff, setSuchbegriff] = useState("");
+  const [aktiveSuche, setAktiveSuche] = useState("");
   const [seite, setSeite] = useState(1);
   const [proSeite, setProSeite] = useState(50);
   const [antwort, setAntwort] = useState({ eintraege: [], gesamt: 0, seite: 1, seiten: 1, monate: [], ereignisse: [] });
@@ -2273,13 +2275,21 @@ function AktionslogView() {
   }, [monat]);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setAktiveSuche(suchbegriff.trim());
+      setSeite(1);
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [suchbegriff]);
+
+  useEffect(() => {
     let aktiv = true;
     setLaedt(true);
     setFehler("");
     const tag = monat && tagImMonat
       ? `${monat}-${String(tagImMonat).padStart(2, "0")}`
       : "";
-    api.aktionslog({ monat, tag, ereignis, seite, proSeite })
+    api.aktionslog({ monat, tag, ereignis, suche: aktiveSuche, seite, proSeite })
       .then((daten) => {
         if (aktiv) setAntwort(daten);
       })
@@ -2290,7 +2300,7 @@ function AktionslogView() {
         if (aktiv) setLaedt(false);
       });
     return () => { aktiv = false; };
-  }, [monat, tagImMonat, ereignis, seite, proSeite]);
+  }, [monat, tagImMonat, ereignis, aktiveSuche, seite, proSeite]);
 
   const eintraege = antwort.eintraege ?? [];
   const ersterEintrag = antwort.gesamt === 0 ? 0 : (antwort.seite - 1) * antwort.pro_seite + 1;
@@ -2305,6 +2315,31 @@ function AktionslogView() {
       </p>
 
       <div className="action-log-filter flex items-end gap-3 mb-4" style={{ flexWrap: "wrap" }}>
+        <label style={{ ...fontUI, fontSize: "11px", color: tokens.inkMuted }}>
+          <span className="block mb-1">SUCHE</span>
+          <div className="flex items-center" style={{ minWidth: "290px", border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised }}>
+            <Search size={14} style={{ marginLeft: "9px", flexShrink: 0 }} />
+            <input
+              type="search"
+              value={suchbegriff}
+              onChange={(event) => setSuchbegriff(event.target.value)}
+              placeholder="Name, Mailadresse oder Betreff …"
+              aria-label="Aktionslog durchsuchen"
+              style={{ flex: 1, minWidth: 0, border: 0, outline: 0, background: "transparent", padding: "8px 7px", color: tokens.ink }}
+            />
+            {suchbegriff && (
+              <button
+                type="button"
+                onClick={() => { setSuchbegriff(""); setAktiveSuche(""); setSeite(1); }}
+                aria-label="Suche löschen"
+                title="Suche löschen"
+                style={{ padding: "7px", color: tokens.inkMuted }}
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+        </label>
         <label style={{ ...fontUI, fontSize: "11px", color: tokens.inkMuted }}>
           <span className="block mb-1">MONAT</span>
           <select
@@ -2359,10 +2394,10 @@ function AktionslogView() {
             {[25, 50, 100, 200].map((anzahl) => <option key={anzahl} value={anzahl}>{anzahl}</option>)}
           </select>
         </label>
-        {(monat || tagImMonat || ereignis) && (
+        {(monat || tagImMonat || ereignis || suchbegriff || aktiveSuche) && (
           <button
             type="button"
-            onClick={() => { setMonat(""); setTagImMonat(""); setEreignis(""); setSeite(1); }}
+            onClick={() => { setMonat(""); setTagImMonat(""); setEreignis(""); setSuchbegriff(""); setAktiveSuche(""); setSeite(1); }}
             style={{ ...fontUI, fontSize: "12px", border: `1px solid ${tokens.line}`, borderRadius: "6px", padding: "8px 11px", background: tokens.paperRaised, color: tokens.inkMuted }}
           >
             Filter löschen
@@ -2386,7 +2421,16 @@ function AktionslogView() {
             <div>
               <Badge label={(EREIGNIS_LABEL[e.ereignis] ?? e.ereignis).toUpperCase()} color={farbeFuerEreignis(e.ereignis)} />
             </div>
-            <div style={{ ...fontSerif, fontSize: "13.5px" }}>{e.mail_absender || "—"}</div>
+            <div>
+              <div style={{ ...fontSerif, fontSize: "13.5px" }}>
+                {e.mail_absender_name || e.mail_absender_adresse || "—"}
+              </div>
+              {e.mail_absender_adresse && e.mail_absender_adresse !== e.mail_absender_name && (
+                <div style={{ ...fontMono, fontSize: "10px", color: tokens.inkMuted, marginTop: "2px", overflowWrap: "anywhere" }}>
+                  {e.mail_absender_adresse}
+                </div>
+              )}
+            </div>
             <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.ink }}>{e.ausgeloest_von || "Krautl"}</div>
             <div className="flex items-center gap-1.5">
               {e.mail_verfuegbar ? (

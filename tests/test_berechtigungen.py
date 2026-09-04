@@ -373,9 +373,44 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual("Test", antwort["eintraege"][0]["mail_absender"])
+        self.assertEqual("Test", antwort["eintraege"][0]["mail_absender_name"])
+        self.assertEqual(
+            "test@example.test",
+            antwort["eintraege"][0]["mail_absender_adresse"],
+        )
         self.assertTrue(antwort["eintraege"][0]["mail_verfuegbar"])
         self.assertTrue(antwort["eintraege"][0]["hat_notiz"])
         self.assertEqual("Interner Prüfhinweis", mailansicht["notiz"]["text"])
+
+    async def test_aktionslog_sucht_in_absender_und_betreff(self):
+        async with SessionLocal() as session:
+            mail = (await session.execute(
+                select(Mail).where(Mail.klassifikation_id == "KUNDE_TEST")
+            )).scalar_one()
+            session.add(Aktionslog(
+                mail_id=mail.id,
+                ereignis="klassifiziert",
+                detail="KUNDE_TEST",
+            ))
+            await session.commit()
+
+            nach_name = await liste_aktionslog(
+                request_fuer(ADMIN), session, suche="tEsT"
+            )
+            nach_adresse = await liste_aktionslog(
+                request_fuer(ADMIN), session, suche="@example.test"
+            )
+            nach_betreff = await liste_aktionslog(
+                request_fuer(ADMIN), session, suche="laub"
+            )
+            ohne_treffer = await liste_aktionslog(
+                request_fuer(ADMIN), session, suche="nicht vorhanden"
+            )
+
+        self.assertEqual(1, nach_name["gesamt"])
+        self.assertEqual(1, nach_adresse["gesamt"])
+        self.assertEqual(1, nach_betreff["gesamt"])
+        self.assertEqual(0, ohne_treffer["gesamt"])
 
     async def test_sachbearbeiter_sieht_nur_zulaessige_mailbezogene_logs(self):
         async with SessionLocal() as session:
