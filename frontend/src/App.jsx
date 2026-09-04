@@ -32,6 +32,14 @@ const fontUI = { fontFamily: "'IBM Plex Sans', sans-serif" };
 const fontMono = { fontFamily: "'IBM Plex Mono', monospace" };
 const MAX_ANTWORTANHAENGE = 10;
 const MAX_ANTWORTANHAENGE_BYTES = 18 * 1024 * 1024;
+const MAIL_RESERVIERUNG_VERZOEGERUNG_MS = 3_000;
+const MAIL_RESERVIERUNG_HEARTBEAT_MS = 25_000;
+const RESERVIERUNG_KURZNAMEN = {
+  erik: "Erik",
+  gursewak: "Guri",
+  ludwig: "Ludwig",
+  aneta: "Aneta",
+};
 
 function lesbareDateigroesse(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -274,6 +282,10 @@ function AuswahlMenue({ label, title, icon: Icon, wert, optionen, onWaehlen, dea
     return () => document.removeEventListener("pointerdown", ausserhalbSchliessen);
   }, [offen]);
 
+  useEffect(() => {
+    if (deaktiviert) setOffen(false);
+  }, [deaktiviert]);
+
   return (
     <div ref={container} className="relative">
       <button
@@ -290,7 +302,7 @@ function AuswahlMenue({ label, title, icon: Icon, wert, optionen, onWaehlen, dea
         {label}
         <ChevronDown size={12} />
       </button>
-      {offen && (
+      {offen && !deaktiviert && (
         <div
           role="menu"
           className="absolute right-0 top-full mt-1 py-1 overflow-y-auto auswahl-menue"
@@ -318,7 +330,7 @@ function AuswahlMenue({ label, title, icon: Icon, wert, optionen, onWaehlen, dea
   );
 }
 
-function KategorieKorrektur({ mail, katalog, onKorrigiert, onMeldung }) {
+function KategorieKorrektur({ mail, katalog, onKorrigiert, onMeldung, deaktiviert = false }) {
   const [wird_gesendet, setWirdGesendet] = useState(false);
 
   async function korrigieren(neueId) {
@@ -337,9 +349,9 @@ function KategorieKorrektur({ mail, katalog, onKorrigiert, onMeldung }) {
   return (
     <AuswahlMenue
       label={wird_gesendet ? "Wird geändert …" : "Kategorie ändern"}
-      title="Mail einer anderen Kategorie zuordnen"
+      title={deaktiviert ? "Mail wird gerade von einer anderen Person bearbeitet" : "Mail einer anderen Kategorie zuordnen"}
       wert={mail.klassifikation_id ?? ""}
-      deaktiviert={wird_gesendet}
+      deaktiviert={deaktiviert || wird_gesendet}
       breite="390px"
       optionen={katalog.map((k) => ({
         value: k.klassifikation_id,
@@ -350,7 +362,7 @@ function KategorieKorrektur({ mail, katalog, onKorrigiert, onMeldung }) {
   );
 }
 
-function ErledigtButton({ mail, onErledigt, onMeldung }) {
+function ErledigtButton({ mail, onErledigt, onMeldung, deaktiviert = false }) {
   const [laeuft, setLaeuft] = useState(false);
 
   async function erledigen() {
@@ -373,9 +385,11 @@ function ErledigtButton({ mail, onErledigt, onMeldung }) {
   return (
     <button
       onClick={erledigen}
-      disabled={laeuft}
+      disabled={deaktiviert || laeuft}
       title={
-        mail.bestaetigungErforderlich
+        deaktiviert
+          ? "Mail wird gerade von einer anderen Person bearbeitet"
+          : mail.bestaetigungErforderlich
           ? "Pflichtschritt bestätigen und vorgesehenen Ablauf fortsetzen"
           : "Mail in Krautl als erledigt markieren"
       }
@@ -428,7 +442,7 @@ function StatusMeldung({ text, onSchliessen }) {
   );
 }
 
-function MailLoeschenButton({ mail, onGeloescht }) {
+function MailLoeschenButton({ mail, onGeloescht, deaktiviert = false }) {
   const [laeuft, setLaeuft] = useState(false);
   const [fehler, setFehler] = useState("");
 
@@ -454,8 +468,10 @@ function MailLoeschenButton({ mail, onGeloescht }) {
       {fehler && <span title={fehler} style={{ ...fontUI, fontSize: "11px", color: tokens.rust }}>Löschen fehlgeschlagen</span>}
       <button
         onClick={loeschen}
-        disabled={laeuft}
-        title={laeuft ? "Mail wird gelöscht …" : "Mail dauerhaft aus dem Postfach löschen"}
+        disabled={deaktiviert || laeuft}
+        title={deaktiviert
+          ? "Mail wird gerade von einer anderen Person bearbeitet"
+          : laeuft ? "Mail wird gelöscht …" : "Mail dauerhaft aus dem Postfach löschen"}
         aria-label="Mail löschen"
         className="flex items-center justify-center w-8 h-8 disabled:opacity-50"
         style={{ color: tokens.rust, border: `1px solid ${tokens.rust}`, borderRadius: "6px", background: tokens.rustPale }}
@@ -466,7 +482,7 @@ function MailLoeschenButton({ mail, onGeloescht }) {
   );
 }
 
-function ZuweisenButton({ mail, onZugewiesen }) {
+function ZuweisenButton({ mail, onZugewiesen, deaktiviert = false }) {
   const [laeuft, setLaeuft] = useState(false);
   const [fehler, setFehler] = useState("");
 
@@ -495,7 +511,7 @@ function ZuweisenButton({ mail, onZugewiesen }) {
         title={`Derzeit zuständig: ${mail.zustaendigkeitLabel}`}
         icon={UserRound}
         wert={aktuelleRolle}
-        deaktiviert={laeuft}
+        deaktiviert={deaktiviert || laeuft}
         optionen={[
           ...(mail.zuweisbareRollen.includes("admin")
             ? [{ value: "admin", label: "Erik (Admin)" }]
@@ -510,7 +526,7 @@ function ZuweisenButton({ mail, onZugewiesen }) {
   );
 }
 
-function AntwortAktionen({ mail, onErzeugt }) {
+function AntwortAktionen({ mail, onErzeugt, deaktiviert = false }) {
   const [laufendeAktion, setLaufendeAktion] = useState("");
   const [fehler, setFehler] = useState("");
   const istKundenservice = String(mail.kat || "").toUpperCase() === "KUNDENSERVICE";
@@ -535,7 +551,7 @@ function AntwortAktionen({ mail, onErzeugt }) {
       {istKundenservice && (
         <button
           onClick={() => ausfuehren("vorschlag")}
-          disabled={Boolean(laufendeAktion) || Boolean(mail.entwurf)}
+          disabled={deaktiviert || Boolean(laufendeAktion) || Boolean(mail.entwurf)}
           title="Antwortvorschlag mit dem dreikraut-Stilprofil erstellen"
           className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-50"
           style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: tokens.mossDeep, border: `1px solid ${tokens.moss}`, borderRadius: "6px" }}
@@ -545,7 +561,7 @@ function AntwortAktionen({ mail, onErzeugt }) {
       )}
       <button
         onClick={() => ausfuehren("antwort")}
-        disabled={Boolean(laufendeAktion) || Boolean(mail.entwurf)}
+        disabled={deaktiviert || Boolean(laufendeAktion) || Boolean(mail.entwurf)}
         title="Leeren Antwortentwurf ohne KI-Vorschlag öffnen"
         className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-50"
         style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}
@@ -651,7 +667,37 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
   const [lokalAusgeblendeteMailIds, setLokalAusgeblendeteMailIds] = useState(() => new Set());
   const [mobileDetailOffen, setMobileDetailOffen] = useState(false);
   const [statusMeldung, setStatusMeldung] = useState("");
+  const [istMobil, setIstMobil] = useState(
+    () => window.matchMedia("(max-width: 767px)").matches
+  );
+  const [fensterAktiv, setFensterAktiv] = useState(
+    () => document.visibilityState === "visible" && document.hasFocus()
+  );
+  const [lokaleReservierung, setLokaleReservierung] = useState(null);
   const gemeldeteAufgabenfehler = useRef(new Set());
+  const eigeneReservierungMailId = useRef(null);
+  const aktiveMailId = useRef(null);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const aktualisieren = () => setIstMobil(media.matches);
+    media.addEventListener("change", aktualisieren);
+    return () => media.removeEventListener("change", aktualisieren);
+  }, []);
+
+  useEffect(() => {
+    const aktualisieren = () => setFensterAktiv(
+      document.visibilityState === "visible" && document.hasFocus()
+    );
+    document.addEventListener("visibilitychange", aktualisieren);
+    window.addEventListener("focus", aktualisieren);
+    window.addEventListener("blur", aktualisieren);
+    return () => {
+      document.removeEventListener("visibilitychange", aktualisieren);
+      window.removeEventListener("focus", aktualisieren);
+      window.removeEventListener("blur", aktualisieren);
+    };
+  }, []);
 
   const verfuegbareMails = useMemo(
     () => mails.filter((mail) => !lokalAusgeblendeteMailIds.has(mail.id)),
@@ -677,7 +723,103 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
       })
     : kategorieGefiltert;
   const selected = verfuegbareMails.find((m) => m.id === selectedId) ?? sichtbar[0] ?? null;
+  const detailSichtbar = Boolean(selected && (!istMobil || mobileDetailOffen));
+  const aktuelleReservierung = lokaleReservierung?.mailId === selected?.id
+    ? lokaleReservierung
+    : selected?.reservierung;
+  const vonAnderemReserviert = Boolean(
+    aktuelleReservierung
+    && aktuelleReservierung.benutzername !== benutzer.benutzername
+  );
+  const reserviertVon = RESERVIERUNG_KURZNAMEN[
+    aktuelleReservierung?.benutzername
+  ] || aktuelleReservierung?.name || "einer anderen Person";
   const vorherigeMailIds = useRef(verfuegbareMails.map((m) => m.id));
+
+  const reservierungFreigeben = useCallback((mailId, perBeacon = false) => {
+    if (eigeneReservierungMailId.current !== mailId) return;
+    eigeneReservierungMailId.current = null;
+    setLokaleReservierung((aktuell) => (
+      aktuell?.mailId === mailId ? null : aktuell
+    ));
+    if (perBeacon) {
+      api.mailReservierungFreigebenBeacon(mailId);
+    } else {
+      api.mailReservierungFreigeben(mailId).catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    const mailId = selected?.id ?? null;
+    aktiveMailId.current = mailId;
+    setLokaleReservierung(null);
+    return () => {
+      if (mailId != null) reservierungFreigeben(mailId);
+    };
+  }, [selected?.id, reservierungFreigeben]);
+
+  useEffect(() => {
+    if (!selected || !detailSichtbar || !fensterAktiv) return undefined;
+    const mailId = selected.id;
+    const timer = window.setTimeout(async () => {
+      try {
+        const ergebnis = await api.mailReservieren(mailId);
+        if (aktiveMailId.current !== mailId) {
+          if (ergebnis.eigene) {
+            api.mailReservierungFreigeben(mailId).catch(() => {});
+          }
+          return;
+        }
+        setLokaleReservierung({ mailId, ...ergebnis });
+        eigeneReservierungMailId.current = ergebnis.eigene ? mailId : null;
+      } catch (fehler) {
+        if (aktiveMailId.current === mailId && fehler.status !== 409) {
+          setStatusMeldung(
+            `Bearbeitungsreservierung konnte nicht aktiviert werden: ${fehler.message}`
+          );
+        }
+      }
+    }, MAIL_RESERVIERUNG_VERZOEGERUNG_MS);
+    return () => window.clearTimeout(timer);
+  }, [selected?.id, detailSichtbar, fensterAktiv]);
+
+  useEffect(() => {
+    const mailId = selected?.id;
+    if (
+      !mailId
+      || !detailSichtbar
+      || !fensterAktiv
+      || eigeneReservierungMailId.current !== mailId
+      || !lokaleReservierung?.eigene
+    ) return undefined;
+
+    const intervall = window.setInterval(async () => {
+      try {
+        const ergebnis = await api.mailReservieren(mailId);
+        if (aktiveMailId.current !== mailId) return;
+        setLokaleReservierung({ mailId, ...ergebnis });
+        if (!ergebnis.eigene) eigeneReservierungMailId.current = null;
+      } catch {
+        // Ohne Lebenszeichen läuft die Reservierung serverseitig nach 90 s aus.
+      }
+    }, MAIL_RESERVIERUNG_HEARTBEAT_MS);
+    return () => window.clearInterval(intervall);
+  }, [
+    selected?.id,
+    detailSichtbar,
+    fensterAktiv,
+    lokaleReservierung?.mailId,
+    lokaleReservierung?.eigene,
+  ]);
+
+  useEffect(() => {
+    const beimSchliessen = () => {
+      const mailId = eigeneReservierungMailId.current;
+      if (mailId != null) reservierungFreigeben(mailId, true);
+    };
+    window.addEventListener("pagehide", beimSchliessen);
+    return () => window.removeEventListener("pagehide", beimSchliessen);
+  }, [reservierungFreigeben]);
 
   // Verschwindet die ausgewählte Mail aus der Liste (verschoben, gelöscht,
   // Zuständigkeit geändert …), auf den Nachfolger an ihrer alten Position
@@ -781,22 +923,33 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
   }, [selected, uebersetzungsstatus, uebersetzungStarten]);
 
   function mailOeffnen(id) {
+    if (selected?.id != null && selected.id !== id) {
+      reservierungFreigeben(selected.id);
+    }
     setSelectedId(id);
     setMobileDetailOffen(true);
   }
 
+  function detailSchliessen() {
+    if (selected?.id != null) reservierungFreigeben(selected.id);
+    setMobileDetailOffen(false);
+  }
+
   async function aktionAbschliessen() {
+    if (selected?.id != null) reservierungFreigeben(selected.id);
     setMobileDetailOffen(false);
     await onReload();
   }
 
   async function erledigenAbschliessen(mailId) {
+    reservierungFreigeben(mailId);
     setLokalAusgeblendeteMailIds((alt) => new Set([...alt, mailId]));
     setMobileDetailOffen(false);
     await onReload();
   }
 
   async function loeschenAbschliessen(mailId) {
+    reservierungFreigeben(mailId);
     setLokalAusgeblendeteMailIds((alt) => new Set([...alt, mailId]));
     setMobileDetailOffen(false);
     await onReload();
@@ -909,7 +1062,7 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
         {selected && (
           <>
             <div className="px-6 pt-5 pb-4 mail-detail-header" style={{ borderBottom: `1px solid ${tokens.line}` }}>
-              <button type="button" onClick={() => setMobileDetailOffen(false)} className="mobile-back-button items-center gap-1.5 mb-3 px-2.5 py-1.5" style={AUSWAHL_BUTTON_STIL}>
+              <button type="button" onClick={detailSchliessen} className="mobile-back-button items-center gap-1.5 mb-3 px-2.5 py-1.5" style={AUSWAHL_BUTTON_STIL}>
                 <ArrowLeft size={14} /> Zur Mail-Liste
               </button>
               <div className="flex items-center justify-between gap-3 mail-detail-toolbar">
@@ -927,15 +1080,17 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
                     mail={selected}
                     onErledigt={erledigenAbschliessen}
                     onMeldung={setStatusMeldung}
+                    deaktiviert={vonAnderemReserviert}
                   />
-                  <ZuweisenButton mail={selected} onZugewiesen={aktionAbschliessen} />
+                  <ZuweisenButton mail={selected} onZugewiesen={aktionAbschliessen} deaktiviert={vonAnderemReserviert} />
                   <KategorieKorrektur
                     mail={selected}
                     katalog={katalog}
                     onKorrigiert={onReload}
                     onMeldung={setStatusMeldung}
+                    deaktiviert={vonAnderemReserviert}
                   />
-                  <MailLoeschenButton mail={selected} onGeloescht={loeschenAbschliessen} />
+                  <MailLoeschenButton mail={selected} onGeloescht={loeschenAbschliessen} deaktiviert={vonAnderemReserviert} />
                 </div>
               </div>
               <h2 style={{ ...fontDisplay, fontSize: "19px", marginTop: "12px" }}>{selected.betreffDeutsch || selected.betreff}</h2>
@@ -957,17 +1112,35 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
                 </div>
               )}
             </div>
+            {vonAnderemReserviert && (
+              <div
+                className="px-6 py-3 flex items-center gap-2"
+                role="status"
+                style={{
+                  ...fontUI,
+                  fontSize: "12.5px",
+                  color: tokens.rust,
+                  background: tokens.rustPale,
+                  borderBottom: `1px solid ${tokens.line}`,
+                }}
+              >
+                <UserRound size={14} />
+                <strong>Wird gerade von {reserviertVon} bearbeitet.</strong>
+                <span>Du kannst die Mail ansehen, aber nicht bearbeiten.</span>
+              </div>
+            )}
             {selected.entwurf ? (
               <EntwurfPanel
                 key={selected.entwurf.id}
                 entwurf={selected.entwurf}
                 kiPruefung={String(selected.kat || "").toUpperCase() === "KUNDENSERVICE"}
                 originalsprache={selected.originalsprache}
-                onErledigt={onReload}
+                onErledigt={aktionAbschliessen}
                 onVersendet={(ergebnis) => setVersandbestaetigungen((alt) => ({
                   ...alt,
                   [selected.id]: ergebnis,
                 }))}
+                deaktiviert={vonAnderemReserviert}
               />
             ) : versandbestaetigungen[selected.id] ? (
               <div className="px-6 py-4" style={{ borderBottom: `1px solid ${tokens.line}` }}>
@@ -985,7 +1158,7 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
             ) : (
               <div className="px-6 py-4 flex flex-wrap items-center justify-between gap-3 antwort-bereich" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, borderBottom: `1px solid ${tokens.line}` }}>
                 <span>Noch keine Antwort begonnen.</span>
-                <AntwortAktionen mail={selected} onErzeugt={onReload} />
+                <AntwortAktionen mail={selected} onErzeugt={onReload} deaktiviert={vonAnderemReserviert} />
               </div>
             )}
             {selected.uebersetzung ? (
@@ -1005,7 +1178,7 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
                     : "Deutsche Arbeitsübersetzung wird erstellt …"}
                 </div>
                 {uebersetzungsstatus[selected.id]?.status === "fehler" && (
-                  <button type="button" onClick={() => uebersetzungStarten(selected)} className="px-2.5 py-1.5" style={AUSWAHL_BUTTON_STIL}>
+                  <button type="button" onClick={() => uebersetzungStarten(selected)} disabled={vonAnderemReserviert} className="px-2.5 py-1.5 disabled:opacity-50" style={AUSWAHL_BUTTON_STIL}>
                     Erneut versuchen
                   </button>
                 )}
@@ -1056,7 +1229,10 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
   );
 }
 
-function EntwurfPanel({ entwurf, kiPruefung, originalsprache, onErledigt, onVersendet }) {
+function EntwurfPanel({
+  entwurf, kiPruefung, originalsprache, onErledigt, onVersendet,
+  deaktiviert = false,
+}) {
   const [text, setText] = useState(entwurf.text);
   const [anhaenge, setAnhaenge] = useState([]);
   const [prueft, setPrueft] = useState(false);
@@ -1127,7 +1303,7 @@ function EntwurfPanel({ entwurf, kiPruefung, originalsprache, onErledigt, onVers
   return (
     <div className="px-6 py-4 flex flex-col entwurf-panel" style={{ borderBottom: `1px solid ${tokens.line}` }}>
       <div style={{ ...fontMono, fontSize: "10.5px", color: tokens.amber, letterSpacing: "0.05em" }}>ANTWORTENTWURF · DEUTSCHE ARBEITSFASSUNG · WARTET AUF FREIGABE</div>
-      <textarea value={text} onChange={(e) => setText(e.target.value)} className="mt-2 p-3 resize-y"
+      <textarea value={text} onChange={(e) => setText(e.target.value)} disabled={deaktiviert} className="mt-2 p-3 resize-y disabled:opacity-70"
         style={{ ...fontSerif, fontSize: "14.5px", background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px", minHeight: "320px" }} />
       <div className="flex items-center gap-2 mt-3 flex-wrap">
         <input
@@ -1135,13 +1311,13 @@ function EntwurfPanel({ entwurf, kiPruefung, originalsprache, onErledigt, onVers
           type="file"
           multiple
           onChange={anhaengeAuswaehlen}
-          disabled={prueft || Boolean(versanderfolg)}
+          disabled={deaktiviert || prueft || Boolean(versanderfolg)}
           style={{ display: "none" }}
         />
         <button
           type="button"
           onClick={() => dateiEingabe.current?.click()}
-          disabled={prueft || Boolean(versanderfolg)}
+          disabled={deaktiviert || prueft || Boolean(versanderfolg)}
           className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-60"
           style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised }}
         >
@@ -1164,7 +1340,7 @@ function EntwurfPanel({ entwurf, kiPruefung, originalsprache, onErledigt, onVers
                   {lesbareDateigroesse(datei.size)}
                 </span>
               </div>
-              <button type="button" onClick={() => anhangEntfernen(index)} disabled={prueft} title="Anhang entfernen" className="p-1 disabled:opacity-60" style={{ color: tokens.rust }}>
+              <button type="button" onClick={() => anhangEntfernen(index)} disabled={deaktiviert || prueft} title="Anhang entfernen" className="p-1 disabled:opacity-60" style={{ color: tokens.rust }}>
                 <X size={14} />
               </button>
             </div>
@@ -1208,14 +1384,14 @@ function EntwurfPanel({ entwurf, kiPruefung, originalsprache, onErledigt, onVers
         </div>
       )}
       <div className="flex items-center gap-2 mt-3">
-        <button onClick={freigeben} disabled={prueft || Boolean(versanderfolg)} className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-60" style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}>
+        <button onClick={freigeben} disabled={deaktiviert || prueft || Boolean(versanderfolg)} className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-60" style={{ ...fontUI, fontSize: "13px", fontWeight: 600, color: "#fff", background: tokens.moss, borderRadius: "6px" }}>
           <Check size={13} /> {prueft
             ? (!kiPruefung || naechsterOhnePruefung ? "Antwort wird versendet …" : "Antwort wird geprüft …")
             : (versanderfolg
               ? "An Mailserver übergeben"
               : (naechsterOhnePruefung ? "Trotzdem senden" : "Antwort freigeben"))}
         </button>
-        <button onClick={verwerfen} className="flex items-center gap-1.5 px-3 py-2" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
+        <button onClick={verwerfen} disabled={deaktiviert} className="flex items-center gap-1.5 px-3 py-2 disabled:opacity-60" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
           <X size={13} /> Verwerfen
         </button>
       </div>
@@ -2073,6 +2249,12 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         })(),
         felder,
         anhaenge: m.anhang_dateinamen ?? [],
+        reservierung: m.reservierung ? {
+          benutzername: m.reservierung.benutzername,
+          name: m.reservierung.name,
+          letzterKontakt: m.reservierung.letzter_kontakt,
+          laeuftAb: m.reservierung.laeuft_ab,
+        } : null,
         entwurf: entwurfRoh ? { id: entwurfRoh.id, text: entwurfRoh.text_ki } : null,
       };
     });

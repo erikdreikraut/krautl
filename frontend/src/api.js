@@ -50,6 +50,12 @@ export const api = {
   health: () => anfrage("/health"),
   mails: (alle = false) => anfrage(alle ? "/mails?alle=true" : "/mails"),
   mailZaehler: () => anfrage("/mails/zaehler"),
+  mailReservieren: (mailId) =>
+    anfrage(`/mails/${mailId}/reservierung`, { method: "POST" }),
+  mailReservierungFreigeben: (mailId) =>
+    anfrage(`/mails/${mailId}/reservierung/freigeben`, { method: "POST" }),
+  mailReservierungFreigebenBeacon: (mailId) =>
+    navigator.sendBeacon(`${BASIS}/mails/${mailId}/reservierung/freigeben`),
   klassifikationen: () => anfrage("/klassifikationen"),
   klassifikationSpeichern: (klassifikationId, daten) =>
     anfrage(`/klassifikationen/${klassifikationId}`, {

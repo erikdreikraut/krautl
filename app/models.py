@@ -141,6 +141,20 @@ class Mail(Base):
     )
 
 
+class MailReservierung(Base):
+    """Kurzlebige, automatisch erneuerte Bearbeitungsreservierung einer Mail."""
+    __tablename__ = "mail_reservierung"
+
+    mail_id: Mapped[int] = mapped_column(
+        ForeignKey("mail.id", ondelete="CASCADE"), primary_key=True
+    )
+    benutzername: Mapped[str] = mapped_column(String(100), index=True)
+    bearbeiter_name: Mapped[str] = mapped_column(String(255))
+    letzter_kontakt: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+
+
 class MailAufgabe(Base):
     """Konkreter, unveränderlicher Aufgabenplan einer einzelnen Mail."""
     __tablename__ = "mail_aufgabe"

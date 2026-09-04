@@ -33,7 +33,8 @@ from .berechtigungen import (
     verweigerte_klassifikationen, zustaendigkeitsfilter,
 )
 from .models import (
-    Aktionslog, Base, Mail, MailAufgabe, Postfach, Rechnung, FaqEintrag, FaqVorschlag,
+    Aktionslog, Base, Mail, MailAufgabe, MailReservierung, Postfach, Rechnung,
+    FaqEintrag, FaqVorschlag,
     Entwurf, Korrektur, Klassifikation, KlassifikationAufgabe, SystemStatus,
     Produkt, Produktfamilie, RollenMailzugriff, Wissenseintrag, WissensVorschlag,
 )
@@ -57,6 +58,7 @@ logger = logging.getLogger(__name__)
 
 MAX_ANTWORTANHAENGE = 10
 MAX_ANTWORTANHAENGE_BYTES = 18 * 1024 * 1024
+MAIL_RESERVIERUNG_ABLAUF_SEKUNDEN = 90
 
 ERLAUBTE_AKTIONEN = {
     "BESTAETIGUNG_EINHOLEN",
@@ -237,7 +239,22 @@ async def aktueller_benutzer(request: Request):
 
 
 @app.post("/auth/logout")
-async def logout(response: Response):
+async def logout(
+    request: Request,
+    response: Response,
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        await session.execute(
+            delete(MailReservierung).where(
+                MailReservierung.benutzername
+                == request.state.benutzer["benutzername"]
+            )
+        )
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        logger.warning("Mailreservierung beim Abmelden nicht freigegeben", exc_info=True)
     response.delete_cookie(COOKIE_NAME, path="/")
     return {"status": "abgemeldet"}
 
@@ -252,6 +269,46 @@ async def _mailzugriff_erfordern(session, request: Request, mail: Mail | None):
         raise HTTPException(status_code=404, detail="Mail nicht gefunden")
     if not await darf_mail_sehen(session, request.state.benutzer, mail):
         raise HTTPException(status_code=403, detail="Kein Zugriff auf diese Mailart")
+
+
+def _reservierung_ist_aktiv(
+    reservierung: MailReservierung,
+    jetzt: datetime | None = None,
+) -> bool:
+    jetzt = jetzt or datetime.now(timezone.utc)
+    letzter_kontakt = reservierung.letzter_kontakt
+    if letzter_kontakt.tzinfo is None:
+        letzter_kontakt = letzter_kontakt.replace(tzinfo=timezone.utc)
+    return letzter_kontakt >= jetzt - timedelta(
+        seconds=MAIL_RESERVIERUNG_ABLAUF_SEKUNDEN
+    )
+
+
+def _reservierungsdaten(reservierung: MailReservierung) -> dict:
+    letzter_kontakt = reservierung.letzter_kontakt
+    if letzter_kontakt.tzinfo is None:
+        letzter_kontakt = letzter_kontakt.replace(tzinfo=timezone.utc)
+    return {
+        "benutzername": reservierung.benutzername,
+        "name": reservierung.bearbeiter_name,
+        "letzter_kontakt": letzter_kontakt,
+        "laeuft_ab": letzter_kontakt + timedelta(
+            seconds=MAIL_RESERVIERUNG_ABLAUF_SEKUNDEN
+        ),
+    }
+
+
+async def _eigene_mailreservierung_freigeben(
+    session: AsyncSession,
+    mail_id: int,
+    benutzername: str,
+) -> None:
+    await session.execute(
+        delete(MailReservierung).where(
+            MailReservierung.mail_id == mail_id,
+            MailReservierung.benutzername == benutzername,
+        )
+    )
 
 
 @app.on_event("startup")
@@ -320,6 +377,21 @@ async def liste_mails(
         abfrage = abfrage.where(zustand)
     result = await session.execute(abfrage)
     mails = result.scalars().all()
+    reservierungen_nach_mail_id = {}
+    if mails:
+        ablaufgrenze = datetime.now(timezone.utc) - timedelta(
+            seconds=MAIL_RESERVIERUNG_ABLAUF_SEKUNDEN
+        )
+        reservierungen = (await session.execute(
+            select(MailReservierung).where(
+                MailReservierung.mail_id.in_([mail.id for mail in mails]),
+                MailReservierung.letzter_kontakt >= ablaufgrenze,
+            )
+        )).scalars().all()
+        reservierungen_nach_mail_id = {
+            reservierung.mail_id: reservierung
+            for reservierung in reservierungen
+        }
     fuer_sachbearbeiter_verweigert = await verweigerte_klassifikationen(
         session, {"rolle": ROLLE_SACHBEARBEITER}
     )
@@ -334,6 +406,11 @@ async def liste_mails(
             "bestaetigung_erforderlich": any(
                 a.aufgabe_typ == "BESTAETIGUNG_EINHOLEN" and a.status == "wartet"
                 for a in mail.aufgaben
+            ),
+            "reservierung": (
+                _reservierungsdaten(reservierungen_nach_mail_id[mail.id])
+                if mail.id in reservierungen_nach_mail_id
+                else None
             ),
             "zuweisbare_rollen": [
                 "admin",
@@ -381,6 +458,69 @@ async def mail_zaehler(
     else:
         meine = alle
     return {"meine": meine, "alle": alle}
+
+
+@app.post("/mails/{mail_id}/reservierung")
+async def mail_reservieren(
+    mail_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """Reserviert eine drei Sekunden lang geöffnete Mail bzw. erneuert sie."""
+    mail = await session.get(Mail, mail_id)
+    await _mailzugriff_erfordern(session, request, mail)
+    if not mail.im_krautl_posteingang:
+        raise HTTPException(status_code=409, detail="Mail ist bereits erledigt")
+
+    jetzt = datetime.now(timezone.utc)
+    benutzer = request.state.benutzer
+    reservierung = await session.get(MailReservierung, mail_id)
+    if (
+        reservierung is not None
+        and _reservierung_ist_aktiv(reservierung, jetzt)
+        and reservierung.benutzername != benutzer["benutzername"]
+    ):
+        return {
+            "status": "reserviert",
+            "eigene": False,
+            **_reservierungsdaten(reservierung),
+        }
+
+    if reservierung is None:
+        reservierung = MailReservierung(
+            mail_id=mail_id,
+            benutzername=benutzer["benutzername"],
+            bearbeiter_name=benutzer["name"],
+            letzter_kontakt=jetzt,
+        )
+        session.add(reservierung)
+    else:
+        reservierung.benutzername = benutzer["benutzername"]
+        reservierung.bearbeiter_name = benutzer["name"]
+        reservierung.letzter_kontakt = jetzt
+
+    await session.commit()
+    return {
+        "status": "reserviert",
+        "eigene": True,
+        **_reservierungsdaten(reservierung),
+    }
+
+
+@app.post("/mails/{mail_id}/reservierung/freigeben")
+async def mail_reservierung_freigeben(
+    mail_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """Gibt ausschließlich die eigene Reservierung frei; der Aufruf ist idempotent."""
+    await _eigene_mailreservierung_freigeben(
+        session,
+        mail_id,
+        request.state.benutzer["benutzername"],
+    )
+    await session.commit()
+    return {"status": "freigegeben"}
 
 
 @app.post("/mails/{mail_id}/uebersetzung")
@@ -689,6 +829,10 @@ async def mail_bestaetigen(
         raise HTTPException(status_code=404, detail="Mail nicht gefunden")
     if ergebnis["status"] == "keine_bestaetigung_offen":
         raise HTTPException(status_code=409, detail="Für diese Mail wartet keine Bestätigung")
+    await _eigene_mailreservierung_freigeben(
+        session, mail_id, request.state.benutzer["benutzername"]
+    )
+    await session.commit()
     return ergebnis
 
 
@@ -729,6 +873,9 @@ async def mail_erledigen(
             f"unverändert; durch {request.state.benutzer['name']}"
         ),
     ))
+    await _eigene_mailreservierung_freigeben(
+        session, mail.id, request.state.benutzer["benutzername"]
+    )
     await session.commit()
     return {"status": "erledigt", "imap_unveraendert": True}
 
@@ -912,6 +1059,9 @@ async def mail_loeschen(
             )
         ),
     ))
+    await _eigene_mailreservierung_freigeben(
+        session, mail.id, request.state.benutzer["benutzername"]
+    )
     await session.commit()
     if imap_fehler is not None:
         return {
