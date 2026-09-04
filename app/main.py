@@ -1156,6 +1156,7 @@ async def liste_aktionslog(
     monat: str | None = None,
     tag: str | None = None,
     ereignis: str | None = None,
+    klassifikation: str | None = None,
     suche: str | None = None,
     seite: int = 1,
     pro_seite: int = 50,
@@ -1215,9 +1216,11 @@ async def liste_aktionslog(
             "monat": monat,
             "tag": tag,
             "ereignis": ereignis,
+            "klassifikation": klassifikation,
             "suche": suchtext,
             "monate": [],
             "ereignisse": [],
+            "klassifikationen": [],
         }
     sichtbare_mail_bedingungen = []
     if verweigert:
@@ -1240,6 +1243,16 @@ async def liste_aktionslog(
         .where(*basisbedingungen)
         .distinct()
         .order_by(Aktionslog.ereignis)
+    )).scalars().all())
+    klassifikationen = list((await session.execute(
+        select(Mail.klassifikation_id)
+        .join(Aktionslog, Aktionslog.mail_id == Mail.id)
+        .where(
+            *basisbedingungen,
+            Mail.klassifikation_id.is_not(None),
+        )
+        .distinct()
+        .order_by(Mail.klassifikation_id)
     )).scalars().all())
     fruehestes, spaetestes = (await session.execute(
         select(
@@ -1274,6 +1287,13 @@ async def liste_aktionslog(
         ])
     if ereignis:
         filterbedingungen.append(Aktionslog.ereignis == ereignis)
+    if klassifikation:
+        passende_klassifikation_ids = select(Mail.id).where(
+            Mail.klassifikation_id == klassifikation
+        )
+        filterbedingungen.append(
+            Aktionslog.mail_id.in_(passende_klassifikation_ids)
+        )
     if suchtext:
         # Prozent- und Unterstrichzeichen sollen als normale Suchzeichen gelten,
         # nicht als SQL-Wildcards. Der Unterselect hält die Zählabfrage schlank.
@@ -1301,6 +1321,7 @@ async def liste_aktionslog(
             Mail.absender_name,
             Mail.absender_adresse,
             Mail.betreff,
+            Mail.klassifikation_id,
             MailNotiz.mail_id,
         )
         .outerjoin(Mail, Aktionslog.mail_id == Mail.id)
@@ -1321,6 +1342,7 @@ async def liste_aktionslog(
                 "mail_absender_name": absender_name,
                 "mail_absender_adresse": absender_adresse,
                 "mail_betreff": betreff,
+                "mail_klassifikation": mail_klassifikation,
                 "mail_verfuegbar": vorhandene_mail_id is not None,
                 "hat_notiz": notiz_mail_id is not None,
             }
@@ -1330,6 +1352,7 @@ async def liste_aktionslog(
                 absender_name,
                 absender_adresse,
                 betreff,
+                mail_klassifikation,
                 notiz_mail_id,
             ) in result.all()
         ],
@@ -1340,9 +1363,11 @@ async def liste_aktionslog(
         "monat": monat,
         "tag": tag,
         "ereignis": ereignis,
+        "klassifikation": klassifikation,
         "suche": suchtext,
         "monate": monate,
         "ereignisse": ereignisse,
+        "klassifikationen": klassifikationen,
     }
 
 

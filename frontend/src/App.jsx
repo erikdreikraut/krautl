@@ -2259,11 +2259,12 @@ function AktionslogView() {
   const [monat, setMonat] = useState("");
   const [tagImMonat, setTagImMonat] = useState("");
   const [ereignis, setEreignis] = useState("");
+  const [klassifikation, setKlassifikation] = useState("");
   const [suchbegriff, setSuchbegriff] = useState("");
   const [aktiveSuche, setAktiveSuche] = useState("");
   const [seite, setSeite] = useState(1);
   const [proSeite, setProSeite] = useState(50);
-  const [antwort, setAntwort] = useState({ eintraege: [], gesamt: 0, seite: 1, seiten: 1, monate: [], ereignisse: [] });
+  const [antwort, setAntwort] = useState({ eintraege: [], gesamt: 0, seite: 1, seiten: 1, monate: [], ereignisse: [], klassifikationen: [] });
   const [laedt, setLaedt] = useState(true);
   const [fehler, setFehler] = useState("");
   const [ausgewaehlteMailId, setAusgewaehlteMailId] = useState(null);
@@ -2289,7 +2290,7 @@ function AktionslogView() {
     const tag = monat && tagImMonat
       ? `${monat}-${String(tagImMonat).padStart(2, "0")}`
       : "";
-    api.aktionslog({ monat, tag, ereignis, suche: aktiveSuche, seite, proSeite })
+    api.aktionslog({ monat, tag, ereignis, klassifikation, suche: aktiveSuche, seite, proSeite })
       .then((daten) => {
         if (aktiv) setAntwort(daten);
       })
@@ -2300,7 +2301,7 @@ function AktionslogView() {
         if (aktiv) setLaedt(false);
       });
     return () => { aktiv = false; };
-  }, [monat, tagImMonat, ereignis, aktiveSuche, seite, proSeite]);
+  }, [monat, tagImMonat, ereignis, klassifikation, aktiveSuche, seite, proSeite]);
 
   const eintraege = antwort.eintraege ?? [];
   const ersterEintrag = antwort.gesamt === 0 ? 0 : (antwort.seite - 1) * antwort.pro_seite + 1;
@@ -2371,6 +2372,19 @@ function AktionslogView() {
           </select>
         </label>
         <label style={{ ...fontUI, fontSize: "11px", color: tokens.inkMuted }}>
+          <span className="block mb-1">MAIL-KLASSIFIKATION</span>
+          <select
+            value={klassifikation}
+            onChange={(event) => { setKlassifikation(event.target.value); setSeite(1); }}
+            style={{ minWidth: "230px", border: `1px solid ${tokens.line}`, borderRadius: "6px", background: tokens.paperRaised, padding: "8px 9px", color: tokens.ink }}
+          >
+            <option value="">Alle Klassifikationen</option>
+            {(antwort.klassifikationen || []).map((wert) => (
+              <option key={wert} value={wert}>{wert}</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ ...fontUI, fontSize: "11px", color: tokens.inkMuted }}>
           <span className="block mb-1">TAG (OPTIONAL)</span>
           <select
             value={tagImMonat}
@@ -2394,10 +2408,10 @@ function AktionslogView() {
             {[25, 50, 100, 200].map((anzahl) => <option key={anzahl} value={anzahl}>{anzahl}</option>)}
           </select>
         </label>
-        {(monat || tagImMonat || ereignis || suchbegriff || aktiveSuche) && (
+        {(monat || tagImMonat || ereignis || klassifikation || suchbegriff || aktiveSuche) && (
           <button
             type="button"
-            onClick={() => { setMonat(""); setTagImMonat(""); setEreignis(""); setSuchbegriff(""); setAktiveSuche(""); setSeite(1); }}
+            onClick={() => { setMonat(""); setTagImMonat(""); setEreignis(""); setKlassifikation(""); setSuchbegriff(""); setAktiveSuche(""); setSeite(1); }}
             style={{ ...fontUI, fontSize: "12px", border: `1px solid ${tokens.line}`, borderRadius: "6px", padding: "8px 11px", background: tokens.paperRaised, color: tokens.inkMuted }}
           >
             Filter löschen
@@ -2412,11 +2426,11 @@ function AktionslogView() {
       )}
 
       <div className="action-log-table" style={{ border: `1px solid ${tokens.line}`, borderRadius: "8px", overflow: "hidden", background: tokens.paperRaised }}>
-        <div className="grid px-4 py-2.5 action-log-head" style={{ gridTemplateColumns: "0.85fr 1.25fr 1.25fr 1fr 0.75fr 2.2fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
-          <div>ZEIT</div><div>EREIGNIS</div><div>MAIL VON</div><div>AUSGELÖST VON</div><div>MAIL</div><div>DETAIL</div>
+        <div className="grid px-4 py-2.5 action-log-head" style={{ gridTemplateColumns: "0.75fr 1.1fr 1.2fr 1.25fr 1fr 0.7fr 2fr", ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em", borderBottom: `1px solid ${tokens.line}` }}>
+          <div>ZEIT</div><div>EREIGNIS</div><div>MAIL VON</div><div>KLASSIFIKATION</div><div>AUSGELÖST VON</div><div>MAIL</div><div>DETAIL</div>
         </div>
         {eintraege.map((e) => (
-          <div key={e.id} className="grid items-start px-4 py-3 action-log-row" style={{ gridTemplateColumns: "0.85fr 1.25fr 1.25fr 1fr 0.75fr 2.2fr", borderBottom: `1px solid ${tokens.line}` }}>
+          <div key={e.id} className="grid items-start px-4 py-3 action-log-row" style={{ gridTemplateColumns: "0.75fr 1.1fr 1.2fr 1.25fr 1fr 0.7fr 2fr", borderBottom: `1px solid ${tokens.line}` }}>
             <div style={{ ...fontMono, fontSize: "12px", color: tokens.inkMuted }}>{formatZeitpunkt(e.erstellt_am)}</div>
             <div>
               <Badge label={(EREIGNIS_LABEL[e.ereignis] ?? e.ereignis).toUpperCase()} color={farbeFuerEreignis(e.ereignis)} />
@@ -2430,6 +2444,11 @@ function AktionslogView() {
                   {e.mail_absender_adresse}
                 </div>
               )}
+            </div>
+            <div>
+              {e.mail_klassifikation
+                ? <Badge label={e.mail_klassifikation} color={farbeFuerKategorie(e.mail_klassifikation)} />
+                : <span style={{ ...fontUI, fontSize: "12px", color: tokens.inkMuted }}>—</span>}
             </div>
             <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.ink }}>{e.ausgeloest_von || "Krautl"}</div>
             <div className="flex items-center gap-1.5">

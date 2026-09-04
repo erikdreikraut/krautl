@@ -378,6 +378,10 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
             "test@example.test",
             antwort["eintraege"][0]["mail_absender_adresse"],
         )
+        self.assertEqual(
+            "KUNDE_TEST", antwort["eintraege"][0]["mail_klassifikation"]
+        )
+        self.assertEqual(["KUNDE_TEST"], antwort["klassifikationen"])
         self.assertTrue(antwort["eintraege"][0]["mail_verfuegbar"])
         self.assertTrue(antwort["eintraege"][0]["hat_notiz"])
         self.assertEqual("Interner Prüfhinweis", mailansicht["notiz"]["text"])
@@ -439,12 +443,23 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
             antwort = await liste_aktionslog(
                 request_fuer(SACHBEARBEITER), session
             )
+            nach_klassifikation = await liste_aktionslog(
+                request_fuer(SACHBEARBEITER), session,
+                klassifikation="KUNDE_TEST",
+            )
+            verborgene_klassifikation = await liste_aktionslog(
+                request_fuer(SACHBEARBEITER), session,
+                klassifikation="RECHT_TEST",
+            )
 
         self.assertEqual(2, antwort["gesamt"])
         self.assertEqual(
             {"Sichtbar", "Global sichtbar"},
             {eintrag["detail"] for eintrag in antwort["eintraege"]},
         )
+        self.assertEqual(["KUNDE_TEST"], antwort["klassifikationen"])
+        self.assertEqual(1, nach_klassifikation["gesamt"])
+        self.assertEqual(0, verborgene_klassifikation["gesamt"])
 
     async def test_aktionslog_filtert_nach_monat_und_tag_und_paginiert(self):
         async with SessionLocal() as session:

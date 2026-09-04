@@ -63,7 +63,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(daten),
     }),
-  aktionslog: ({ monat = "", tag = "", ereignis = "", suche = "", seite = 1, proSeite = 50 } = {}) => {
+  aktionslog: ({ monat = "", tag = "", ereignis = "", klassifikation = "", suche = "", seite = 1, proSeite = 50 } = {}) => {
     const parameter = new URLSearchParams({
       seite: String(seite),
       pro_seite: String(proSeite),
@@ -71,6 +71,7 @@ export const api = {
     if (monat) parameter.set("monat", monat);
     if (tag) parameter.set("tag", tag);
     if (ereignis) parameter.set("ereignis", ereignis);
+    if (klassifikation) parameter.set("klassifikation", klassifikation);
     if (suche) parameter.set("suche", suche);
     return anfrage(`/aktionslog?${parameter.toString()}`);
   },
