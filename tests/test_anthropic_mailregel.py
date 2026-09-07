@@ -50,8 +50,15 @@ class AnthropicMailregelTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("info@dreikraut.de", klassifikation.zielpostfach)
         self.assertEqual("service-Technik", klassifikation.zielordner)
         self.assertEqual("MAIL_VERSCHIEBEN", klassifikation.aktion_id)
+        self.assertIn(
+            "invoice+statements@email.anthropic.com",
+            klassifikation.beschreibung,
+        )
         self.assertEqual(
-            1, klassifikation.beschreibung.count("mail.anthropic.com")
+            1,
+            klassifikation.beschreibung.count(
+                "invoice+statements@email.anthropic.com"
+            ),
         )
         self.assertEqual(
             ["BESTAETIGUNG_EINHOLEN", "MAIL_VERSCHIEBEN"],

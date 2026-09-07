@@ -132,11 +132,18 @@ von CountX und vom Steuerberater Kineke gehören unabhängig vom konkreten Betre
 in RECHT_STEUERN. Steuerliche Nachrichten sind nicht RECHT_BEHOERDE, wenn die
 speziellere Steuer-Kategorie vorhanden ist.
 
+ANTHROPIC-ABRECHNUNG:
+Nachrichten von der exakten Absenderadresse
+invoice+statements@email.anthropic.com sind Rechnungen beziehungsweise
+Abrechnungsbelege und gehören zwingend in RECHNUNG_EINGANG, sofern diese ID
+im Katalog vorhanden ist. Diese Ausnahme hat Vorrang vor der Zuordnung
+technischer Anthropic-Nachrichten.
+
 VERTRAUENSWÜRDIGE TECHNIK-ABSENDER:
-Nachrichten von einer Absenderadresse der Domain mail.anthropic.com sind kein
-Spam. Sie gehören immer in SYSTEM_TECHNIK, sofern diese ID im Katalog
-vorhanden ist. Betreff, Inhalt oder Spam-Score dürfen diese feste
-Absenderzuordnung nicht überstimmen.
+Andere Nachrichten von einer Absenderadresse der exakten Domain
+mail.anthropic.com sind kein Spam. Sie gehören immer in SYSTEM_TECHNIK,
+sofern diese ID im Katalog vorhanden ist. Betreff, Inhalt oder Spam-Score
+dürfen diese feste Absenderzuordnung nicht überstimmen.
 
 INTERNE AUFGABENHINWEISE:
 Automatisch erzeugte Mails von einer echten Absenderadresse der Domain
@@ -179,6 +186,8 @@ KLASSIFIZIERUNGS_TOOL = {
         ],
     },
 }
+
+ANTHROPIC_RECHNUNGSABSENDER = "invoice+statements@email.anthropic.com"
 
 
 def marktplatz_zuordnung_absichern(
@@ -263,6 +272,27 @@ def technik_absender_zuordnung_absichern(
     abgesichert = dict(ergebnis)
     abgesichert["klassifikation_id"] = "SYSTEM_TECHNIK"
     abgesichert["aktion_erforderlich"] = True
+    return abgesichert
+
+
+def anthropic_rechnungszuordnung_absichern(
+    ergebnis: dict, mail: dict, katalog: list[dict]
+) -> dict:
+    """Behandelt Anthropics eindeutigen Abrechnungsabsender als Rechnung."""
+    absender = str(mail.get("absender_adresse", "")).strip().casefold()
+    katalog_ids = {eintrag["klassifikation_id"] for eintrag in katalog}
+    if (
+        absender != ANTHROPIC_RECHNUNGSABSENDER
+        or "RECHNUNG_EINGANG" not in katalog_ids
+    ):
+        return ergebnis
+
+    abgesichert = dict(ergebnis)
+    abgesichert["klassifikation_id"] = "RECHNUNG_EINGANG"
+    abgesichert["aktion_erforderlich"] = True
+    abgesichert["sicherheit"] = max(
+        float(abgesichert.get("sicherheit") or 0.0), 0.99
+    )
     return abgesichert
 
 
@@ -507,6 +537,9 @@ Spam-Score: {mail.get('spam_score', 'nicht vorhanden')}
                 ergebnis, mail, katalog
             )
             ergebnis = technik_absender_zuordnung_absichern(
+                ergebnis, mail, katalog
+            )
+            ergebnis = anthropic_rechnungszuordnung_absichern(
                 ergebnis, mail, katalog
             )
             ergebnis = amazon_absender_zuordnung_absichern(

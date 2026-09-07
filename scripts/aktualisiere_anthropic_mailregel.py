@@ -16,9 +16,15 @@ from app.models import Klassifikation, KlassifikationAufgabe, MailAufgabe
 KLASSIFIKATION_ID = "SYSTEM_TECHNIK"
 ZIELPOSTFACH = "info@dreikraut.de"
 ZIELORDNER = "service-Technik"
-REGELTEXT = (
+ALTER_REGELTEXT = (
     " Nachrichten von Absenderadressen der Domain mail.anthropic.com "
     "gehören immer hierher und sind kein Spam."
+)
+REGELTEXT = (
+    " Andere Nachrichten von Absenderadressen der exakten Domain "
+    "mail.anthropic.com gehören hierher und sind kein Spam. Die eindeutige "
+    "Abrechnungsadresse invoice+statements@email.anthropic.com ist davon "
+    "ausgenommen und gehört in RECHNUNG_EINGANG."
 )
 
 
@@ -30,7 +36,13 @@ async def aktualisiere(session) -> dict:
             "importieren."
         )
 
-    if "mail.anthropic.com" not in klassifikation.beschreibung.casefold():
+    if ALTER_REGELTEXT in klassifikation.beschreibung:
+        klassifikation.beschreibung = klassifikation.beschreibung.replace(
+            ALTER_REGELTEXT, REGELTEXT
+        )
+    elif "invoice+statements@email.anthropic.com" not in (
+        klassifikation.beschreibung.casefold()
+    ):
         klassifikation.beschreibung = (
             klassifikation.beschreibung.rstrip() + REGELTEXT
         )

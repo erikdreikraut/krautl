@@ -4,7 +4,9 @@ import unittest
 os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 
 from app.agent import (
+    ANTHROPIC_RECHNUNGSABSENDER,
     KLASSIFIZIERUNGS_SYSTEMPROMPT,
+    anthropic_rechnungszuordnung_absichern,
     amazon_absender_zuordnung_absichern,
     ebay_verkaufszuordnung_absichern,
     einkaufszuordnung_absichern,
@@ -338,7 +340,7 @@ class KlassifizierungsPromptTest(unittest.TestCase):
 
     def test_anthropic_systemmail_ist_niemals_spam(self):
         self.assertIn("mail.anthropic.com", KLASSIFIZIERUNGS_SYSTEMPROMPT)
-        self.assertIn("kein\nSpam", KLASSIFIZIERUNGS_SYSTEMPROMPT)
+        self.assertIn("kein Spam", KLASSIFIZIERUNGS_SYSTEMPROMPT)
         ergebnis = technik_absender_zuordnung_absichern(
             {
                 "klassifikation_id": "SPAM_WERBUNG",
@@ -352,6 +354,32 @@ class KlassifizierungsPromptTest(unittest.TestCase):
         )
         self.assertEqual("SYSTEM_TECHNIK", ergebnis["klassifikation_id"])
         self.assertTrue(ergebnis["aktion_erforderlich"])
+
+    def test_anthropic_abrechnungsabsender_ist_zwingend_rechnung(self):
+        self.assertIn("ANTHROPIC-ABRECHNUNG", KLASSIFIZIERUNGS_SYSTEMPROMPT)
+        ergebnis = anthropic_rechnungszuordnung_absichern(
+            {
+                "klassifikation_id": "SYSTEM_TECHNIK",
+                "aktion_erforderlich": False,
+                "sicherheit": 0.95,
+            },
+            {"absender_adresse": ANTHROPIC_RECHNUNGSABSENDER.upper()},
+            [
+                {"klassifikation_id": "SYSTEM_TECHNIK"},
+                {"klassifikation_id": "RECHNUNG_EINGANG"},
+            ],
+        )
+        self.assertEqual("RECHNUNG_EINGANG", ergebnis["klassifikation_id"])
+        self.assertTrue(ergebnis["aktion_erforderlich"])
+        self.assertEqual(0.99, ergebnis["sicherheit"])
+
+    def test_aehnlicher_anthropic_absender_wird_nicht_zur_rechnung(self):
+        ergebnis = anthropic_rechnungszuordnung_absichern(
+            {"klassifikation_id": "SYSTEM_TECHNIK"},
+            {"absender_adresse": "invoice@email.anthropic.com.example.org"},
+            [{"klassifikation_id": "RECHNUNG_EINGANG"}],
+        )
+        self.assertEqual("SYSTEM_TECHNIK", ergebnis["klassifikation_id"])
 
     def test_nur_echte_anthropic_maildomain_wird_bevorzugt(self):
         ergebnis = technik_absender_zuordnung_absichern(
