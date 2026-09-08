@@ -79,19 +79,22 @@ Der Zahlungsstatus beschreibt ausschließlich, ob dreikraut jetzt selbst Geld
 Ein Fälligkeitsdatum, eine IBAN oder allgemeine Bankangaben allein beweisen noch
 keine offene Zahlung. Umgekehrt darf eine normale Rechnung nicht als erledigt gelten,
 wenn nur ein Zahlungsziel oder eine Aufforderung zur Überweisung genannt wird.
+Die bloße Nennung einer möglichen Zahlungsart wie PayPal, Kreditkarte oder SEPA
+belegt weder eine bereits erfolgte noch eine automatische Zahlung. Erst eine klare
+Aussage über Einzug, Belastung oder Zahlungseingang ist dafür ausreichend.
 Suche besonders nach Formulierungen wie "verrechnet", "aufgerechnet", "vom Guthaben
 abgezogen", "einbehalten", "Auszahlung", "Lastschrift", "bereits bezahlt" und
 "bitte überweisen". Trage im Zahlungshinweis den konkreten Beleg und möglichst die
 Seite ein, auf der er steht."""
 
 AUTOMATISCHE_ZAHLUNGSBELEGE = (
-    "automatisch", "lastschrift", "bankeinzug", "einzugsverfahren", "sepa",
-    "kreditkarte", "paypal", "abgebucht", "belastet", "guthaben", "verrechnet",
-    "aufgerechnet", "abgezogen", "einbehalten", "saldiert", "auszahlung",
+    "automatisch", "lastschrift", "bankeinzug", "einzugsverfahren",
+    "sepa-lastschrift", "abgebucht", "belastet", "verrechnet", "aufgerechnet",
+    "abgezogen", "einbehalten", "saldiert", "wird eingezogen",
     # Viele Rechnungen/Belege internationaler Anbieter (Stripe, AWS, Amazon
     # Business ...) sind englisch — dieselben Signale auch auf Englisch.
-    "automatic payment", "direct debit", "credit card", "charged", "auto-pay",
-    "autopay", "payout", "offset against", "deducted from",
+    "automatic payment", "direct debit", "charged", "auto-pay", "autopay",
+    "offset against", "deducted from", "will be debited",
 )
 BEZAHLT_BELEGE = (
     "bereits bezahlt", "bezahlt", "beglichen", "zahlung erhalten", "quittung",
@@ -102,6 +105,13 @@ GUTSCHRIFT_BELEGE = (
     "gutschrift", "rückerstattung", "erstattung",
     "credit note", "refund", "credited",
 )
+OFFENE_ZAHLUNGSBELEGE = (
+    "bitte überweisen", "bitte ueberweisen", "bitte leisten sie die zahlung",
+    "leisten sie die zahlung", "zahlung erforderlich", "überweisung nötig",
+    "ueberweisung noetig", "manuelle überweisung", "manuelle ueberweisung",
+    "please pay", "payment is due", "payment due", "please remit",
+    "amount due", "balance due",
+)
 
 
 def _hat_positiven_beleg(text: str, belege: tuple[str, ...]) -> bool:
@@ -110,6 +120,12 @@ def _hat_positiven_beleg(text: str, belege: tuple[str, ...]) -> bool:
     for beleg in belege:
         start = 0
         while (position := text.find(beleg, start)) >= 0:
+            # Kein Treffer mitten in einem anderen Wort: "paid" darf etwa
+            # nicht das Gegenteil "unpaid" als Zahlungsbeleg erscheinen lassen.
+            zeichen_davor = text[position - 1] if position > 0 else ""
+            if zeichen_davor.isalnum() or zeichen_davor == "_":
+                start = position + len(beleg)
+                continue
             davor = text[max(0, position - 60):position]
             if not re.search(r"\b(?:nicht|kein\w*|ohne|not|no|without|unpaid)\b(?:\s+\w+){0,4}\s*$", davor):
                 return True
@@ -127,14 +143,33 @@ def _zahlungsstatus_absichern(daten: dict) -> dict:
         status = "unklar"
 
     hat_automatik = _hat_positiven_beleg(hinweis, AUTOMATISCHE_ZAHLUNGSBELEGE)
+    hat_bezahlt = _hat_positiven_beleg(hinweis, BEZAHLT_BELEGE)
+    hat_gutschrift = _hat_positiven_beleg(hinweis, GUTSCHRIFT_BELEGE)
+    hat_offene_aufforderung = _hat_positiven_beleg(
+        hinweis, OFFENE_ZAHLUNGSBELEGE
+    )
     if status == "offen" and hat_automatik:
         status = "automatisch"
     elif status == "automatisch" and not hat_automatik:
-        status = "unklar"
-    elif status == "bezahlt" and not _hat_positiven_beleg(hinweis, BEZAHLT_BELEGE):
-        status = "unklar"
-    elif status == "gutschrift" and not _hat_positiven_beleg(hinweis, GUTSCHRIFT_BELEGE):
-        status = "unklar"
+        status = "offen" if hat_offene_aufforderung else "unklar"
+    elif status == "bezahlt" and not hat_bezahlt:
+        status = (
+            "offen"
+            if hat_offene_aufforderung and not hat_automatik
+            else "unklar"
+        )
+    elif status == "gutschrift" and not hat_gutschrift:
+        status = (
+            "offen"
+            if hat_offene_aufforderung and not hat_automatik
+            else "unklar"
+        )
+    elif (
+        status == "unklar"
+        and hat_offene_aufforderung
+        and not (hat_automatik or hat_bezahlt or hat_gutschrift)
+    ):
+        status = "offen"
     daten["zahlungsstatus"] = status
     return daten
 

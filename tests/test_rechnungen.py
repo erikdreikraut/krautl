@@ -98,6 +98,37 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
         })
         self.assertEqual("offen", daten["zahlungsstatus"])
 
+    def test_paypal_als_zahlungsoption_ist_keine_erledigte_zahlung(self):
+        hinweis = (
+            "Mailtext und PDF (S. 1): Der Rechnungsbetrag ist spätestens zum "
+            "21.09.2026 fällig. Bitte leisten Sie die Zahlung von 595,00 EUR "
+            "mit einer der folgenden Zahlungsmöglichkeiten: Überweisung oder "
+            "PayPal-Zahlung. Kein Zahlungseingang oder Lastschriftmandat vermerkt."
+        )
+        for falscher_status in ("offen", "automatisch", "bezahlt"):
+            with self.subTest(status=falscher_status):
+                daten = _zahlungsstatus_absichern({
+                    "zahlungsstatus": falscher_status,
+                    "zahlungshinweis": hinweis,
+                })
+                self.assertEqual("offen", daten["zahlungsstatus"])
+
+    def test_eindeutiger_paypal_einzug_bleibt_automatisch(self):
+        daten = _zahlungsstatus_absichern({
+            "zahlungsstatus": "automatisch",
+            "zahlungshinweis": (
+                "Der Rechnungsbetrag wurde automatisch über PayPal abgebucht."
+            ),
+        })
+        self.assertEqual("automatisch", daten["zahlungsstatus"])
+
+    def test_unpaid_ist_kein_beleg_fuer_bezahlt(self):
+        daten = _zahlungsstatus_absichern({
+            "zahlungsstatus": "bezahlt",
+            "zahlungshinweis": "The invoice is unpaid. Please pay the amount due.",
+        })
+        self.assertEqual("offen", daten["zahlungsstatus"])
+
     async def test_rechnungsansicht_laed_original_aus_verschobener_mail(self):
         async with SessionLocal() as session:
             mail = await session.get(Mail, self.mail_id)
