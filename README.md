@@ -141,9 +141,9 @@ getrennt und versucht zusätzlich, die Nachricht dauerhaft aus IMAP zu löschen.
   prüft Claude den finalen Text auf Vollständigkeit und offene Prüfhinweise.
   Die Prüfung darf denselben Entwurf höchstens zweimal blockieren; der dritte
   ausdrückliche Freigabeversuch versendet ohne eine weitere KI-Prüfung.
-  Die Antwort wird an die Absenderadresse der Kundenmail gesendet.
-  `info@erikschweitzer.de` erhält ausschließlich eine BCC-Kontrollkopie. Dafür müssen
-  `SMTP_SERVICE_HOST`, `SMTP_SERVICE_PORT`, `SMTP_SERVICE_USER` und
+  Die Antwort wird ausschließlich an die Absenderadresse der Kundenmail
+  gesendet. Dafür müssen `SMTP_SERVICE_HOST`, `SMTP_SERVICE_PORT`,
+  `SMTP_SERVICE_USER` und
   `SMTP_SERVICE_PASSWORD` gesetzt sein.
 - Alle fachlichen API-Funktionen erfordern eine persönliche Krautl-Anmeldung.
   `erik` ist Admin; `gursewak`, `ludwig` und `aneta` gehören zur

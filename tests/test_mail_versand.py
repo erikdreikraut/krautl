@@ -37,7 +37,7 @@ class MailVersandTest(unittest.TestCase):
     gursewak = {"name": "Gursewak Singh", "titel": "Auszubildender"}
     aneta = {"name": "Aneta", "titel": None}
 
-    def test_antwort_geht_an_kunden_und_kontrolladresse_nur_in_bcc(self):
+    def test_antwort_geht_ausschliesslich_an_den_kunden(self):
         mail = Mail(
             message_id="<kunde@example.test>",
             postfach_id=1,
@@ -61,15 +61,12 @@ class MailVersandTest(unittest.TestCase):
             "echter-kunde@example.test",
             _SmtpAttrappe.nachricht["To"],
         )
-        self.assertEqual(
-            "info@erikschweitzer.de",
-            _SmtpAttrappe.nachricht["Bcc"],
-        )
+        self.assertIsNone(_SmtpAttrappe.nachricht["Bcc"])
         self.assertEqual("Re: Testfrage", _SmtpAttrappe.nachricht["Subject"])
         self.assertNotIn("TEST", _SmtpAttrappe.nachricht["Subject"])
         self.assertIn("\nErik Schweitzer\n-- \ndreikraut e.K.\n", _SmtpAttrappe.nachricht.get_content())
         self.assertEqual("echter-kunde@example.test", ergebnis["empfaenger"])
-        self.assertEqual("info@erikschweitzer.de", ergebnis["bcc"])
+        self.assertNotIn("bcc", ergebnis)
         self.assertTrue(ergebnis["message_id"].startswith("<"))
 
     def test_ungueltige_kundenadresse_wird_vor_smtp_blockiert(self):

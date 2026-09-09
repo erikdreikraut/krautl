@@ -1372,7 +1372,6 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
                   </div>
                   <div style={{ ...fontUI, fontSize: "12px", color: tokens.inkMuted, marginTop: "3px" }}>
                     Empfänger: {versandbestaetigungen[selected.id].empfaenger}<br />
-                    BCC: {versandbestaetigungen[selected.id].bcc}<br />
                     SMTP-Nachrichten-ID: {versandbestaetigungen[selected.id].messageId}
                   </div>
                 </div>
@@ -1499,13 +1498,11 @@ function EntwurfPanel({
       } else {
         setVersanderfolg({
           empfaenger: ergebnis.empfaenger,
-          bcc: ergebnis.bcc,
           messageId: ergebnis.message_id,
           anhaenge: ergebnis.anhaenge ?? [],
         });
         onVersendet({
           empfaenger: ergebnis.empfaenger,
-          bcc: ergebnis.bcc,
           messageId: ergebnis.message_id,
           anhaenge: ergebnis.anhaenge ?? [],
         });
@@ -1599,7 +1596,6 @@ function EntwurfPanel({
           </div>
           <div style={{ ...fontUI, fontSize: "12px", color: tokens.inkMuted, marginTop: "3px" }}>
             Empfänger: {versanderfolg.empfaenger}<br />
-            BCC: {versanderfolg.bcc}<br />
             {versanderfolg.anhaenge.length > 0 && <>Anhänge: {versanderfolg.anhaenge.join(", ")}<br /></>}
             SMTP-Nachrichten-ID: {versanderfolg.messageId}
           </div>
@@ -1619,8 +1615,8 @@ function EntwurfPanel({
       </div>
       <div style={{ ...fontUI, fontSize: "11.5px", color: tokens.inkMuted, marginTop: "8px" }}>
         {kiPruefung
-          ? "Vor dem Versand prüft die KI die Antwort auf offene Punkte. Die Antwort geht an den Absender der Kundenmail, eine Kontrollkopie per BCC an info@erikschweitzer.de."
-          : "Diese Antwort wird ohne inhaltliche KI-Prüfung an den Absender versendet. Eine Kontrollkopie geht per BCC an info@erikschweitzer.de."}
+          ? "Vor dem Versand prüft die KI die Antwort auf offene Punkte. Die Antwort geht an den Absender der Kundenmail."
+          : "Diese Antwort wird ohne inhaltliche KI-Prüfung an den Absender versendet."}
         {originalsprache && !istDeutscheSprache(originalsprache)
           ? ` Du bearbeitest ausschließlich die deutsche Arbeitsfassung. Unmittelbar vor dem Versand übersetzt Krautl sie automatisch in ${originalsprache}.`
           : ""}

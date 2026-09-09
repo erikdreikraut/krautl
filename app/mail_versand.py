@@ -10,7 +10,6 @@ from email.utils import make_msgid, parseaddr
 from .models import Mail
 
 
-BCC_EMPFAENGER = "info@erikschweitzer.de"
 GEMEINSAME_SIGNATUR = "-- \n" + """\
 dreikraut e.K.
 Gräfrather Str. 74a
@@ -118,7 +117,6 @@ def _synchron_senden(
     nachricht = EmailMessage()
     nachricht["From"] = smtp["user"]
     nachricht["To"] = empfaenger
-    nachricht["Bcc"] = BCC_EMPFAENGER
     nachricht["Subject"] = _antwort_betreff(mail.betreff)
     absender_domain = smtp["user"].partition("@")[2] or None
     nachricht["Message-ID"] = make_msgid(domain=absender_domain)
@@ -162,7 +160,6 @@ def _synchron_senden(
     return {
         "message_id": nachricht["Message-ID"],
         "empfaenger": empfaenger,
-        "bcc": BCC_EMPFAENGER,
     }
 
 

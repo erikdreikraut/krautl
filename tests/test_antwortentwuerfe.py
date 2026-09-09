@@ -166,7 +166,6 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         versand = AsyncMock(return_value={
             "message_id": "<manuell-1@dreikraut.de>",
             "empfaenger": "ada@example.test",
-            "bcc": "info@erikschweitzer.de",
         })
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
              patch("app.main.wissenszuwachs_nach_antwort_pruefen", wissenspruefung), \
@@ -233,7 +232,7 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("wartet", entwurf.status)
             self.assertIn("Entwurf", log.detail)
 
-    async def test_freigabe_prueft_und_sendet_an_kunden_mit_bcc(self):
+    async def test_freigabe_prueft_und_sendet_an_kunden(self):
         async with SessionLocal() as session:
             entwurf = Entwurf(
                 mail_id=self.mail_id,
@@ -248,7 +247,6 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         versand = AsyncMock(return_value={
             "message_id": "<test-1@dreikraut.de>",
             "empfaenger": "ada@example.test",
-            "bcc": "info@erikschweitzer.de",
         })
         abschluss = AsyncMock(return_value={"status": "bestaetigt"})
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
@@ -265,7 +263,7 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("versendet", ergebnis["status"])
         self.assertEqual("ada@example.test", ergebnis["empfaenger"])
-        self.assertEqual("info@erikschweitzer.de", ergebnis["bcc"])
+        self.assertNotIn("bcc", ergebnis)
         self.assertEqual("bestaetigt", ergebnis["abschlussstatus"])
         versand.assert_awaited_once()
         abschluss.assert_awaited_once_with(self.mail_id, "Erik Schweitzer")
@@ -295,7 +293,6 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         versand = AsyncMock(return_value={
             "message_id": "<anhang-test@dreikraut.de>",
             "empfaenger": "ada@example.test",
-            "bcc": "info@erikschweitzer.de",
         })
         upload = UploadFile(
             filename="../Unterlagen.pdf",
@@ -361,7 +358,6 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         versand = AsyncMock(return_value={
             "message_id": "<test-en@dreikraut.de>",
             "empfaenger": "ada@example.test",
-            "bcc": "info@erikschweitzer.de",
         })
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
              patch("app.main.antwort_in_originalsprache_uebersetzen", uebersetzung), \
@@ -405,7 +401,6 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         versand = AsyncMock(return_value={
             "message_id": "<test-2@dreikraut.de>",
             "empfaenger": "ada@example.test",
-            "bcc": "info@erikschweitzer.de",
         })
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
              patch("app.main.wissenszuwachs_nach_antwort_pruefen", AsyncMock(return_value=None)), \
@@ -444,7 +439,6 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         versand = AsyncMock(return_value={
             "message_id": "<test-3@dreikraut.de>",
             "empfaenger": "ada@example.test",
-            "bcc": "info@erikschweitzer.de",
         })
         ergebnisse = []
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \

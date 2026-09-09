@@ -19,9 +19,7 @@ from .antworten import (
     antwort_vor_versand_pruefen, antwortentwurf_speichern,
     ist_kundenservice_mail, manuellen_antwortentwurf_speichern,
 )
-from .mail_versand import (
-    BCC_EMPFAENGER, antwort_mit_signatur, antwort_senden, antwortadresse,
-)
+from .mail_versand import antwort_mit_signatur, antwort_senden, antwortadresse
 from .imap_client import lade_postfaecher, mail_loeschen as mail_imap_loeschen
 from .auth import (
     BENUTZER, COOKIE_NAME, SESSION_DAUER_SEKUNDEN, anmelden, oeffentliche_daten,
@@ -2158,7 +2156,6 @@ async def _entwurf_freigeben(
         return {
             "status": "bereits_versendet",
             "empfaenger": empfaenger,
-            "bcc": BCC_EMPFAENGER,
         }
 
     finaler_text = freigabe.finaler_text.strip()
@@ -2309,7 +2306,6 @@ async def _entwurf_freigeben(
                 if not ist_deutsche_sprache(mail.originalsprache)
                 else ""
             )
-            + f"BCC an {versandergebnis['bcc']}; "
             + (
                 f"Anhänge ({len(versand_anhaenge)}): "
                 + ", ".join(
@@ -2368,7 +2364,6 @@ async def _entwurf_freigeben(
     return {
         "status": "versendet",
         "empfaenger": versandergebnis["empfaenger"],
-        "bcc": versandergebnis["bcc"],
         "message_id": versandergebnis["message_id"],
         "pruefung_uebersprungen": pruefung_uebersprungen,
         "ki_pruefung": kundenservice,
