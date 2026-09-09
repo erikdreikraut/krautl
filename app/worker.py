@@ -1,12 +1,7 @@
-"""
-Hintergrund-Job: ruft neue Mails aus allen konfigurierten Postfächern ab,
-klassifiziert sie über den Agent und schreibt sie in die Datenbank.
-
-Läuft im selben Prozess wie die API (siehe main.py) — es gibt aktuell keinen
-separaten Worker-Container in docker-compose.yml.
-"""
+"""Mail-Abruf und Klassifizierung für den separaten Worker-Container."""
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 
 from sqlalchemy import func, select
 
@@ -95,7 +90,10 @@ async def _mail_existiert(session, message_id: str) -> bool:
     return result.scalar_one_or_none() is not None
 
 
-async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
+async def postfach_abrufen_und_klassifizieren(
+    config: PostfachConfig,
+    fortschritt: Callable[[str], Awaitable[None]] | None = None,
+) -> int:
     """Ruft neue Mails eines Postfachs ab, klassifiziert und speichert sie.
     Legt den geordneten Aufgabenplan der Klassifikation an. Blockierende
     Bestätigungen werden später über die Oberfläche erledigt."""
@@ -119,6 +117,8 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
             )).scalar_one_or_none()
 
     rohmails = await asyncio.to_thread(neue_mails_abrufen, config, "INBOX", letzte_uid)
+    if fortschritt:
+        await fortschritt(f"{config.funktion}: Postfach abgerufen")
     if not rohmails:
         return 0
 
@@ -136,7 +136,11 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
         gueltige_ids = {k["klassifikation_id"] for k in katalog}
         beispiele = await _beispiele_laden(session)
 
-        for roh in rohmails:
+        for position, roh in enumerate(rohmails, start=1):
+            if fortschritt:
+                await fortschritt(
+                    f"{config.funktion}: Mail {position} von {len(rohmails)} wird verarbeitet"
+                )
             geparst = parse_eml(roh["eml"])
             if await _mail_existiert(session, geparst["message_id"]):
                 continue
@@ -238,7 +242,11 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
 
     # Nicht blockierende Aufgaben (derzeit Rechnungsverarbeitung) beginnen
     # direkt nach dem sicheren Speichern der Mail. Bestätigungen bleiben stehen.
-    for mail_id in neue_mail_ids:
+    for position, mail_id in enumerate(neue_mail_ids, start=1):
+        if fortschritt:
+            await fortschritt(
+                f"{config.funktion}: Automatik {position} von {len(neue_mail_ids)} wird ausgeführt"
+            )
         try:
             await wartende_aufgaben_ausfuehren(mail_id)
         except Exception:
@@ -247,19 +255,35 @@ async def postfach_abrufen_und_klassifizieren(config: PostfachConfig) -> int:
     return gespeichert
 
 
-async def alle_postfaecher_abrufen() -> dict:
+async def alle_postfaecher_abrufen(
+    fortschritt: Callable[[str], Awaitable[None]] | None = None,
+) -> dict:
     gesamt = 0
     fehler = []
+    erfolgreiche_postfaecher = 0
     configs = lade_postfaecher()
     if not configs:
-        return {"mails": 0, "fehler": ["Keine vollständigen IMAP-Postfächer konfiguriert"]}
+        return {
+            "mails": 0,
+            "fehler": ["Keine vollständigen IMAP-Postfächer konfiguriert"],
+            "postfaecher": 0,
+            "erfolgreiche_postfaecher": 0,
+        }
     for config in configs:
         try:
-            anzahl = await postfach_abrufen_und_klassifizieren(config)
+            if fortschritt:
+                await fortschritt(f"{config.funktion}: Abruf beginnt")
+            anzahl = await postfach_abrufen_und_klassifizieren(config, fortschritt)
             gesamt += anzahl
+            erfolgreiche_postfaecher += 1
             if anzahl:
                 logger.info("%s: %d neue Mail(s) klassifiziert", config.funktion, anzahl)
         except Exception as exc:
             fehler.append(f"{config.funktion}: {exc}")
             logger.exception("Abruf für Postfach %s fehlgeschlagen", config.funktion)
-    return {"mails": gesamt, "fehler": fehler}
+    return {
+        "mails": gesamt,
+        "fehler": fehler,
+        "postfaecher": len(configs),
+        "erfolgreiche_postfaecher": erfolgreiche_postfaecher,
+    }

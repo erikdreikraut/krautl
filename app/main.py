@@ -330,12 +330,18 @@ async def health(session: AsyncSession = Depends(get_session)):
     if letzter_lauf and letzter_lauf.tzinfo is None:
         letzter_lauf = letzter_lauf.replace(tzinfo=timezone.utc)
     alter = (jetzt - letzter_lauf).total_seconds() if letzter_lauf else None
+    lebenszeichen_aktuell = alter is not None and alter < 300
+    worker_status = worker.status if worker else "noch_nicht_gestartet"
     return {
         "status": "ok",
         "datenbank": "ok",
         "mail_worker": {
-            "aktiv": alter is not None and alter < 300,
-            "status": worker.status if worker else "noch_nicht_gestartet",
+            # "laeuft" beschreibt nur das technische Lebenszeichen. "aktiv"
+            # ist absichtlich strenger und darf nur nach einem vollständig
+            # erfolgreichen Abruf grün in der Oberfläche erscheinen.
+            "laeuft": lebenszeichen_aktuell,
+            "aktiv": lebenszeichen_aktuell and worker_status == "ok",
+            "status": worker_status,
             "letzter_lauf": letzter_lauf,
             "letzter_erfolg": worker.letzter_erfolg if worker else None,
             "letzter_fehler": worker.letzter_fehler if worker else None,

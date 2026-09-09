@@ -2844,6 +2844,37 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
 
   const entwuerfeOffen = daten.entwuerfe.length;
   const offeneRechnungen = daten.rechnungen.filter((r) => ["offen", "unklar"].includes(r.zahlungsstatus)).length;
+  const workerAnzeige = (() => {
+    const worker = daten.health.mail_worker;
+    if (worker.aktiv) {
+      return {
+        text: `Mailabruf aktiv · ${formatZeit(worker.letzter_lauf)} Uhr`,
+        farbe: tokens.mossDeep,
+        punkt: tokens.moss,
+      };
+    }
+    if (worker.laeuft && ["fehler", "teilweise_fehlerhaft"].includes(worker.status)) {
+      return {
+        text: `Mailabruf gestört · ${formatZeit(worker.letzter_lauf)} Uhr`,
+        farbe: tokens.rust,
+        punkt: tokens.rust,
+      };
+    }
+    if (worker.laeuft) {
+      return {
+        text: `Mailabruf läuft · ${formatZeit(worker.letzter_lauf)} Uhr`,
+        farbe: tokens.amber,
+        punkt: tokens.amber,
+      };
+    }
+    return {
+      text: worker.letzter_lauf
+        ? `Mailabruf nicht aktiv · ${formatZeit(worker.letzter_lauf)} Uhr`
+        : "Mailabruf nicht aktiv",
+      farbe: tokens.rust,
+      punkt: tokens.rust,
+    };
+  })();
 
   return (
     <div className="w-full h-full flex flex-col krautl-app" style={{ background: tokens.paper, minHeight: "640px", color: tokens.ink }}>
@@ -2868,17 +2899,15 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
             style={{
               ...fontUI,
               fontSize: "12px",
-              color: daten.health.mail_worker.aktiv ? tokens.mossDeep : tokens.rust,
+              color: workerAnzeige.farbe,
               borderRight: `1px solid ${tokens.line}`,
             }}
           >
             <span
               className="inline-block w-2 h-2 rounded-full"
-              style={{ background: daten.health.mail_worker.aktiv ? tokens.moss : tokens.rust }}
+              style={{ background: workerAnzeige.punkt }}
             />
-            {daten.health.mail_worker.aktiv
-              ? `Mailabruf aktiv · ${formatZeit(daten.health.mail_worker.letzter_lauf)} Uhr`
-              : "Mailabruf nicht aktiv"}
+            {workerAnzeige.text}
           </span>
           <PenLine className="header-drafts-icon" size={13} style={{ color: tokens.amber }} />
           <span className="header-drafts-text" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{entwuerfeOffen} Entwürfe warten auf Freigabe</span>

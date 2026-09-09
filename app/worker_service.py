@@ -41,6 +41,34 @@ async def _status_speichern(
         await session.commit()
 
 
+async def _abruf_mit_lebenszeichen() -> dict:
+    """Speichert Lebenszeichen an tatsächlichen Fortschrittspunkten."""
+    async def lebenszeichen(detail: str) -> None:
+        await _status_speichern("laeuft", detail=detail)
+
+    await lebenszeichen("Postfächer werden abgerufen")
+    return await alle_postfaecher_abrufen(lebenszeichen)
+
+
+def _status_fuer_ergebnis(ergebnis: dict) -> dict:
+    if ergebnis["fehler"]:
+        alle_fehlgeschlagen = (
+            ergebnis.get("erfolgreiche_postfaecher", 0) == 0
+        )
+        return {
+            "status": "fehler" if alle_fehlgeschlagen else "teilweise_fehlerhaft",
+            "erfolgreich": False,
+            "fehler": True,
+            "detail": "; ".join(ergebnis["fehler"])[:2000],
+        }
+    return {
+        "status": "ok",
+        "erfolgreich": True,
+        "fehler": False,
+        "detail": f"{ergebnis['mails']} neue Mail(s)",
+    }
+
+
 async def main() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -51,20 +79,9 @@ async def main() -> None:
     while True:
         beginn = time.monotonic()
         try:
-            ergebnis = await alle_postfaecher_abrufen()
-            if ergebnis["fehler"]:
-                await _status_speichern(
-                    "teilweise_fehlerhaft",
-                    erfolgreich=True,
-                    fehler=True,
-                    detail="; ".join(ergebnis["fehler"])[:2000],
-                )
-            else:
-                await _status_speichern(
-                    "ok",
-                    erfolgreich=True,
-                    detail=f"{ergebnis['mails']} neue Mail(s)",
-                )
+            ergebnis = await _abruf_mit_lebenszeichen()
+            status = _status_fuer_ergebnis(ergebnis)
+            await _status_speichern(**status)
         except Exception as exc:
             logger.exception("Kompletter Mail-Abruf fehlgeschlagen")
             await _status_speichern("fehler", fehler=True, detail=str(exc)[:2000])

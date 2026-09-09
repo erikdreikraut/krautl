@@ -13,6 +13,13 @@ class BetriebsschutzTest(unittest.TestCase):
         self.assertIn("healthcheck:", frontend)
         self.assertIn("http://127.0.0.1/", frontend)
 
+    def test_worker_hat_lebenszeichen_healthcheck(self):
+        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+        worker = compose.split("  worker:\n", 1)[1].split("\n  frontend:", 1)[0]
+        self.assertIn("healthcheck:", worker)
+        self.assertIn("mail_worker", worker)
+        self.assertIn("['laeuft']", worker)
+
     def test_waechter_prueft_den_vollstaendigen_verbund(self):
         waechter = (ROOT / "scripts" / "krautl_guardian.sh").read_text(
             encoding="utf-8"

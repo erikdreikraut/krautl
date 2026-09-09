@@ -85,9 +85,10 @@ erfasst, wenn Betterbird oder eine serverseitige Regel sie vor dem nächsten
 Minutenabruf bereits als gelesen markiert.
 
 Der aktuelle Zustand ist über `/api/health` beziehungsweise intern über
-`http://127.0.0.1:8000/health` sichtbar. `mail_worker.aktiv` ist nur dann
-`true`, wenn innerhalb der letzten fünf Minuten ein Abruf-Lebenszeichen
-gespeichert wurde.
+`http://127.0.0.1:8000/health` sichtbar. `mail_worker.laeuft` zeigt ein
+höchstens fünf Minuten altes technisches Lebenszeichen. `mail_worker.aktiv`
+ist nur nach einem ebenso aktuellen, vollständig erfolgreichen Abruf `true`;
+Abruffehler erscheinen dadurch nicht mehr irreführend als grüner Zustand.
 
 ### Automatische Wiederherstellung auf dem Produktivserver
 
@@ -96,8 +97,8 @@ aber einen entfernten oder bei einem Deployment nicht angelegten Container
 nicht zurückbringen. Ergänzend prüft deshalb ein systemd-Timer alle zwei
 Minuten die Dienste `db`, `app`, `worker` und `frontend`. Fehlende oder
 gestoppte Dienste werden mit Docker Compose wiederhergestellt; als `unhealthy`
-markierte Dienste werden neu gestartet. Das Frontend besitzt dafür einen
-eigenen HTTP-Healthcheck.
+markierte Dienste werden neu gestartet. Frontend und Mail-Worker besitzen
+dafür eigene Healthchecks; ein festhängender Worker wird so ebenfalls erkannt.
 
 Der Wächter wird auf dem Server einmalig installiert:
 

@@ -41,6 +41,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; daten=json.load(urllib.request.urlopen('http://app:8000/health', timeout=5)); worker=daten['mail_worker']; assert worker['laeuft'] and worker['status'] != 'fehler'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
 
   frontend:
     build: ./frontend
