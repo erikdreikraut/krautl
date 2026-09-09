@@ -98,6 +98,21 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
         })
         self.assertEqual("offen", daten["zahlungsstatus"])
 
+    def test_nicht_umgesetzter_lastschrifteinzug_mit_aufforderung_ist_offen(self):
+        hinweis = (
+            "Mailtext (Biedermann, Geschäftsführer): Lastschrifteinzug durch "
+            "HVB und Postbank bislang nicht umgesetzt; explizite "
+            "Zahlungsaufforderung: bitte ich Sie die Rechnungen zu begleichen "
+            "per Überweisung. Rechnung enthält keine Zahlungsbestätigung."
+        )
+        for falscher_status in ("offen", "automatisch", "unklar"):
+            with self.subTest(status=falscher_status):
+                daten = _zahlungsstatus_absichern({
+                    "zahlungsstatus": falscher_status,
+                    "zahlungshinweis": hinweis,
+                })
+                self.assertEqual("offen", daten["zahlungsstatus"])
+
     def test_paypal_als_zahlungsoption_ist_keine_erledigte_zahlung(self):
         hinweis = (
             "Mailtext und PDF (S. 1): Der Rechnungsbetrag ist spätestens zum "

@@ -82,6 +82,11 @@ wenn nur ein Zahlungsziel oder eine Aufforderung zur Überweisung genannt wird.
 Die bloße Nennung einer möglichen Zahlungsart wie PayPal, Kreditkarte oder SEPA
 belegt weder eine bereits erfolgte noch eine automatische Zahlung. Erst eine klare
 Aussage über Einzug, Belastung oder Zahlungseingang ist dafür ausreichend.
+Verneinte, abgelehnte oder noch nicht eingerichtete Zahlungsautomatiken sind niemals
+ein Automatik-Beleg. Formulierungen wie "Lastschrifteinzug bislang nicht umgesetzt",
+"Lastschrift nicht eingerichtet" oder "Einzug fehlgeschlagen" bedeuten gerade das
+Gegenteil. Wird zugleich zum Begleichen oder Überweisen aufgefordert, ist der Status
+"offen" und nicht "automatisch" oder "unklar".
 Suche besonders nach Formulierungen wie "verrechnet", "aufgerechnet", "vom Guthaben
 abgezogen", "einbehalten", "Auszahlung", "Lastschrift", "bereits bezahlt" und
 "bitte überweisen". Trage im Zahlungshinweis den konkreten Beleg und möglichst die
@@ -109,8 +114,22 @@ OFFENE_ZAHLUNGSBELEGE = (
     "bitte überweisen", "bitte ueberweisen", "bitte leisten sie die zahlung",
     "leisten sie die zahlung", "zahlung erforderlich", "überweisung nötig",
     "ueberweisung noetig", "manuelle überweisung", "manuelle ueberweisung",
+    "zu begleichen",
     "please pay", "payment is due", "payment due", "please remit",
     "amount due", "balance due",
+)
+
+NEGIERTE_BELEG_FOLGE = re.compile(
+    r"^[^.;\n]{0,90}\b(?:nicht|nie|niemals|not|never)\b"
+    r"(?:\s+\w+){0,4}\s+"
+    r"(?:umgesetzt|eingerichtet|aktiviert|ausgeführt|durchgeführt|erfolgt|"
+    r"vorgenommen|abgebucht|eingezogen|belastet|verrechnet|aufgerechnet|"
+    r"bestätigt|möglich|implemented|activated|processed|completed|received|"
+    r"charged|debited|offset|available)\b"
+)
+FEHLGESCHLAGENE_BELEG_FOLGE = re.compile(
+    r"^[^.;\n]{0,90}\b(?:fehlgeschlagen|gescheitert|abgelehnt|storniert|"
+    r"failed|rejected|cancelled|canceled)\b"
 )
 
 
@@ -127,7 +146,17 @@ def _hat_positiven_beleg(text: str, belege: tuple[str, ...]) -> bool:
                 start = position + len(beleg)
                 continue
             davor = text[max(0, position - 60):position]
-            if not re.search(r"\b(?:nicht|kein\w*|ohne|not|no|without|unpaid)\b(?:\s+\w+){0,4}\s*$", davor):
+            danach = text[position + len(beleg):position + len(beleg) + 120]
+            vorher_verneint = re.search(
+                r"\b(?:nicht|kein\w*|ohne|not|no|without|unpaid)\b"
+                r"(?:\s+\w+){0,4}\s*$",
+                davor,
+            )
+            nachher_verneint = (
+                NEGIERTE_BELEG_FOLGE.search(danach)
+                or FEHLGESCHLAGENE_BELEG_FOLGE.search(danach)
+            )
+            if not (vorher_verneint or nachher_verneint):
                 return True
             start = position + len(beleg)
     return False
