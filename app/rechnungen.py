@@ -61,6 +61,10 @@ nicht nur Kontext. Viele Zahlungsdienstleister (z. B. Stripe, PayPal) verschicke
 Zahlungsstatus ausschließlich im Mailtext ("Paid", "Payment method", "bezahlt am ..."),
 während ein eventueller Anhang nur die reine Rechnung ohne Zahlungsvermerk zeigt. Ein
 klarer Zahlungsbeleg im Mailtext zählt genauso wie einer im Dokument.
+Insbesondere ist eine Aussage wie "Zahlung wurde bereits per PayPal abgewickelt"
+eine Bestätigung der abgeschlossenen Zahlung und damit "bezahlt". Die bloße Angabe
+"Zahlungsart: PayPal" oder eine Auswahlmöglichkeit PayPal bleibt dagegen ohne
+solche Abschlussaussage kein Zahlungsnachweis.
 
 Der Zahlungsstatus beschreibt ausschließlich, ob dreikraut jetzt selbst Geld
 überweisen muss:
@@ -103,6 +107,11 @@ AUTOMATISCHE_ZAHLUNGSBELEGE = (
 )
 BEZAHLT_BELEGE = (
     "bereits bezahlt", "bezahlt", "beglichen", "zahlung erhalten", "quittung",
+    "zahlung wurde bereits per paypal abgewickelt",
+    "zahlung bereits per paypal abgewickelt",
+    "bezahlung wurde bereits per paypal abgewickelt",
+    "payment has already been processed via paypal",
+    "payment was processed via paypal",
     "paid", "payment received", "payment confirmed", "successfully charged",
     "receipt for your payment",
 )
@@ -177,7 +186,13 @@ def _zahlungsstatus_absichern(daten: dict) -> dict:
     hat_offene_aufforderung = _hat_positiven_beleg(
         hinweis, OFFENE_ZAHLUNGSBELEGE
     )
-    if status == "offen" and hat_automatik:
+    # Ein ausdrücklicher Nachweis einer bereits abgeschlossenen Zahlung ist
+    # stärker als die vom Modell gewählte Statusbezeichnung. Das korrigiert
+    # insbesondere "automatisch"/"unklar" bei bereits per PayPal abgewickelten
+    # Zahlungen, ohne eine bloße PayPal-Zahlungsoption aufzuwerten.
+    if hat_bezahlt:
+        status = "bezahlt"
+    elif status == "offen" and hat_automatik:
         status = "automatisch"
     elif status == "automatisch" and not hat_automatik:
         status = "offen" if hat_offene_aufforderung else "unklar"

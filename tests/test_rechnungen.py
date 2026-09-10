@@ -128,6 +128,20 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
                 })
                 self.assertEqual("offen", daten["zahlungsstatus"])
 
+    def test_bereits_per_paypal_abgewickelte_zahlung_ist_bezahlt(self):
+        hinweis = (
+            "Rechnung (Seite 1): Bezahlung durch: PayPal – Zahlung wurde "
+            "bereits per PayPal abgewickelt, kein manueller "
+            "Überweisungsauftrag erforderlich."
+        )
+        for falscher_status in ("offen", "automatisch", "bezahlt", "unklar"):
+            with self.subTest(status=falscher_status):
+                daten = _zahlungsstatus_absichern({
+                    "zahlungsstatus": falscher_status,
+                    "zahlungshinweis": hinweis,
+                })
+                self.assertEqual("bezahlt", daten["zahlungsstatus"])
+
     def test_eindeutiger_paypal_einzug_bleibt_automatisch(self):
         daten = _zahlungsstatus_absichern({
             "zahlungsstatus": "automatisch",
