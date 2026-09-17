@@ -16,6 +16,7 @@ from app.main import liste_rechnungen
 from app.models import Base, Mail, Postfach, Rechnung
 from app.rechnungen import (
     _bild_mime_type,
+    _ist_rechnung_verwertbar,
     _zahlungsstatus_absichern,
     rechnungsdatei_aus_mail_laden,
     rechnung_aus_rohdaten_verarbeiten,
@@ -257,6 +258,36 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
                     await rechnung_aus_rohdaten_verarbeiten(session, mail, EML)
 
         dropbox_client.assert_not_called()
+
+    async def test_ausdruecklich_erkannte_agb_werden_nicht_als_rechnung_angelegt(self):
+        analyse = {
+            "ist_rechnung": True,
+            "aussteller": "Hamburger Gewürz-Mühle Hermann Schulz GmbH",
+            "rechnungsnummer": "260134",
+            "rechnungsdatum": "",
+            "faellig_am": "",
+            "bruttobetrag": None,
+            "waehrung": "EUR",
+            "zahlungsstatus": "unklar",
+            "zahlungshinweis": (
+                "Der Anhang enthält ausschließlich die Allgemeinen "
+                "Verkaufsbedingungen (3 Seiten), keine eigentliche Rechnung "
+                "mit Betrag, Datum oder Zahlungsangaben."
+            ),
+        }
+        self.assertFalse(_ist_rechnung_verwertbar(analyse))
+        dropbox_client = MagicMock()
+        with patch("app.rechnungen._analysiere", return_value=analyse), \
+             patch("app.rechnungen._dropbox_client", dropbox_client):
+            async with SessionLocal() as session:
+                mail = await session.get(Mail, self.mail_id)
+                with self.assertRaisesRegex(RuntimeError, "keine Rechnung"):
+                    await rechnung_aus_rohdaten_verarbeiten(session, mail, EML)
+
+        dropbox_client.assert_not_called()
+        async with SessionLocal() as session:
+            rechnungen = (await session.execute(select(Rechnung))).scalars().all()
+        self.assertEqual([], rechnungen)
 
     async def test_fehlendes_rechnungsdatum_nutzt_nachvollziehbar_eingangsdatum(self):
         analyse = {
