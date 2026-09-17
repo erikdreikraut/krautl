@@ -44,6 +44,32 @@ JVBERi0xLjQ=\r
 --x--\r
 """
 
+EML_ZWEI_ANHAENGE = b"""From: Lieferant <rechnung@example.test>\r
+To: einkauf@dreikraut.de\r
+Subject: Rechnung 4711\r
+Message-ID: <rechnung-zwei@example.test>\r
+MIME-Version: 1.0\r
+Content-Type: multipart/mixed; boundary=x\r
+\r
+--x\r
+Content-Type: text/plain; charset=utf-8\r
+\r
+Ihre Rechnung.\r
+--x\r
+Content-Type: application/pdf\r
+Content-Disposition: attachment; filename=rechnung.pdf\r
+Content-Transfer-Encoding: base64\r
+\r
+JVBERi0xLjQ=\r
+--x\r
+Content-Type: application/pdf\r
+Content-Disposition: attachment; filename=anlage.pdf\r
+Content-Transfer-Encoding: base64\r
+\r
+JVBERi0xLjU=\r
+--x--\r
+"""
+
 
 class RechnungenTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -219,6 +245,73 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
             rechnungen = (await session.execute(select(Rechnung))).scalars().all()
             self.assertEqual(1, len(rechnungen))
             self.assertEqual("offen", rechnungen[0].zahlungsstatus)
+
+    async def test_zwei_anhaenge_derselben_rechnung_werden_zusammengefuehrt(self):
+        netto = {
+            "ist_rechnung": True, "aussteller": "VGL Publishing AG",
+            "rechnungsnummer": "S26-17875772483926",
+            "rechnungsdatum": "2026-08-24", "faellig_am": "2026-09-07",
+            "bruttobetrag": 219.07, "waehrung": "EUR", "zahlungsstatus": "offen",
+            "zahlungshinweis": "Bitte überweisen Sie den offenen Betrag.",
+        }
+        brutto = {
+            **netto,
+            "bruttobetrag": 260.69,
+            "zahlungshinweis": "Gesamtbetrag einschließlich Umsatzsteuer: 260,69 EUR.",
+        }
+        dbx = MagicMock()
+        with patch("app.rechnungen._analysiere", side_effect=[netto, brutto]), \
+             patch("app.rechnungen._dropbox_client", return_value=dbx):
+            async with SessionLocal() as session:
+                mail = await session.get(Mail, self.mail_id)
+                ergebnis = await rechnung_aus_rohdaten_verarbeiten(
+                    session, mail, EML_ZWEI_ANHAENGE
+                )
+                await session.commit()
+
+        self.assertEqual(1, len(ergebnis["rechnungen"]))
+        self.assertEqual(2, dbx.files_upload.call_count)
+        pfade = [aufruf.args[1] for aufruf in dbx.files_upload.call_args_list]
+        self.assertEqual(2, len(set(pfade)))
+        async with SessionLocal() as session:
+            rechnungen = (await session.execute(select(Rechnung))).scalars().all()
+        self.assertEqual(1, len(rechnungen))
+        self.assertEqual(260.69, rechnungen[0].bruttobetrag)
+        self.assertEqual("offen", rechnungen[0].zahlungsstatus)
+        self.assertEqual(2, len(rechnungen[0].dateipfade))
+
+    async def test_spaetere_mahnung_aktualisiert_automatik_dublette_auf_offen(self):
+        rechnung = {
+            "ist_rechnung": True, "aussteller": "VGL Publishing AG",
+            "rechnungsnummer": "S26-17875772483926",
+            "rechnungsdatum": "2026-08-24", "faellig_am": "2026-09-07",
+            "bruttobetrag": 260.69, "waehrung": "EUR",
+            "zahlungsstatus": "automatisch",
+            "zahlungshinweis": "Der Betrag wird per Lastschrift eingezogen.",
+        }
+        mahnung = {
+            **rechnung,
+            "zahlungsstatus": "offen",
+            "zahlungshinweis": "Die Rechnung ist überfällig. Bitte überweisen Sie innerhalb von 7 Tagen.",
+        }
+        dbx = MagicMock()
+        with patch("app.rechnungen._analysiere", side_effect=[rechnung, mahnung]), \
+             patch("app.rechnungen._dropbox_client", return_value=dbx):
+            async with SessionLocal() as session:
+                mail = await session.get(Mail, self.mail_id)
+                await rechnung_aus_rohdaten_verarbeiten(session, mail, EML)
+                await session.commit()
+            async with SessionLocal() as session:
+                mail = await session.get(Mail, self.mail_id)
+                ergebnis = await rechnung_aus_rohdaten_verarbeiten(session, mail, EML)
+                await session.commit()
+
+        self.assertTrue(ergebnis["rechnungen"][0]["dublette"])
+        self.assertEqual(1, dbx.files_upload.call_count)
+        async with SessionLocal() as session:
+            gespeichert = (await session.execute(select(Rechnung))).scalar_one()
+        self.assertEqual("offen", gespeichert.zahlungsstatus)
+        self.assertIn("überfällig", gespeichert.zahlungshinweis)
 
     async def test_historischer_lauf_kann_direkten_eingangsordner_nutzen(self):
         analyse = {

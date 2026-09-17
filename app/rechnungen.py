@@ -60,6 +60,8 @@ Setze "ist_rechnung" auf false, wenn der Anhang ausdrücklich nur aus Allgemeine
 Geschäfts- oder Verkaufsbedingungen, einem Lieferschein, einer Übersendungsnotiz oder
 einer sonstigen Begleitunterlage ohne eigentliche Rechnung besteht. Erfinde in diesem
 Fall keine Rechnungsnummer aus einer Bestell-, Kunden- oder Referenznummer.
+Wenn ein Dokument Netto- und Bruttobetrag nennt, ist als "bruttobetrag" stets der
+Gesamtbetrag einschließlich Umsatzsteuer anzugeben, nicht die Nettosumme.
 
 Der mitgelieferte Mailtext ist eine ebenso verbindliche Quelle wie der Anhang selbst,
 nicht nur Kontext. Viele Zahlungsdienstleister (z. B. Stripe, PayPal) verschicken den
@@ -278,6 +280,103 @@ def _dublettenschluessel(daten: dict) -> str:
     return hashlib.sha256("|".join(teile).encode("utf-8")).hexdigest()
 
 
+def _vergleichswert(wert) -> str:
+    return re.sub(r"[^\w]", "", str(wert or "").casefold(), flags=re.UNICODE)
+
+
+def _rechnungsidentitaet(daten: dict) -> str:
+    """Verbindet mehrere Anhänge, die erkennbar dieselbe Rechnung betreffen."""
+    aussteller = _vergleichswert(daten.get("aussteller"))
+    nummer = _vergleichswert(daten.get("rechnungsnummer"))
+    datum = str(daten.get("rechnungsdatum") or "")[:10]
+    waehrung = str(daten.get("waehrung") or "EUR").upper().strip()
+    if aussteller and nummer:
+        return f"rechnung|{aussteller}|{nummer}|{datum}|{waehrung}"
+    return f"beleg|{_dublettenschluessel(daten)}"
+
+
+def _vereinige_rechnungsdaten(vorhanden: dict, neu: dict) -> dict:
+    """Führt Analyseergebnisse mehrerer Anhänge derselben Rechnung zusammen."""
+    ergebnis = dict(vorhanden)
+    for feld in (
+        "aussteller", "rechnungsnummer", "rechnungsdatum", "faellig_am", "waehrung"
+    ):
+        if not ergebnis.get(feld) and neu.get(feld):
+            ergebnis[feld] = neu[feld]
+
+    betraege = []
+    for wert in (ergebnis.get("bruttobetrag"), neu.get("bruttobetrag")):
+        try:
+            if wert is not None:
+                betraege.append(float(wert))
+        except (TypeError, ValueError):
+            pass
+    if betraege:
+        # Bei identischer Rechnungsnummer und identischem Datum ist der größere
+        # Betrag regelmäßig der Bruttobetrag und der kleinere die Nettosumme.
+        ergebnis["bruttobetrag"] = max(betraege)
+
+    hinweise = []
+    for hinweis in (
+        ergebnis.get("zahlungshinweis"), neu.get("zahlungshinweis")
+    ):
+        if hinweis and hinweis not in hinweise:
+            hinweise.append(hinweis)
+    ergebnis["zahlungshinweis"] = " | ".join(hinweise)
+
+    stati = {
+        str(ergebnis.get("zahlungsstatus") or "unklar").casefold(),
+        str(neu.get("zahlungsstatus") or "unklar").casefold(),
+    }
+    if "offen" in stati:
+        ergebnis["zahlungsstatus"] = "offen"
+    elif len(stati) > 1 and "unklar" not in stati:
+        ergebnis["zahlungsstatus"] = "unklar"
+    elif neu.get("zahlungsstatus"):
+        ergebnis["zahlungsstatus"] = neu["zahlungsstatus"]
+    return _zahlungsstatus_absichern(ergebnis)
+
+
+async def _bestehende_rechnung_finden(session, daten: dict, schluessel: str):
+    bestehend = (await session.execute(
+        select(Rechnung).where(Rechnung.dublettenschluessel == schluessel)
+    )).scalar_one_or_none()
+    if bestehend:
+        return bestehend
+
+    nummer = str(daten.get("rechnungsnummer") or "").strip()
+    if not nummer:
+        return None
+    kandidaten = (await session.execute(
+        select(Rechnung).where(Rechnung.rechnungsnummer == nummer)
+    )).scalars().all()
+    aussteller = _vergleichswert(daten.get("aussteller"))
+    datum = _datum(daten.get("rechnungsdatum"))
+    passende = [
+        rechnung for rechnung in kandidaten
+        if _vergleichswert(rechnung.aussteller) == aussteller
+        and (
+            datum is None
+            or rechnung.rechnungsdatum is None
+            or rechnung.rechnungsdatum.date() == datum.date()
+        )
+    ]
+    return max(passende, key=lambda r: r.bruttobetrag or 0, default=None)
+
+
+def _bestehende_rechnung_aktualisieren(rechnung: Rechnung, daten: dict) -> None:
+    """Übernimmt belastbare neue Mahnungsinformationen in eine Dublette."""
+    neuer_status = str(daten.get("zahlungsstatus") or "unklar").casefold()
+    if neuer_status == "offen" and rechnung.zahlungsstatus in {"automatisch", "unklar"}:
+        rechnung.zahlungsstatus = "offen"
+    neuer_hinweis = str(daten.get("zahlungshinweis") or "").strip()
+    if neuer_hinweis and neuer_hinweis not in (rechnung.zahlungshinweis or ""):
+        rechnung.zahlungshinweis = " | ".join(filter(None, [
+            rechnung.zahlungshinweis,
+            neuer_hinweis,
+        ]))
+
+
 def _dropbox_client():
     refresh = os.getenv("DROPBOX_REFRESH_TOKEN")
     if refresh:
@@ -488,8 +587,9 @@ async def rechnung_aus_rohdaten_verarbeiten(
         daten = await asyncio.to_thread(_analysiere, anhang, mail)
         if not _ist_rechnung_verwertbar(daten):
             continue
-        schluessel = _dublettenschluessel(daten)
-        gruppe = gruppen.setdefault(schluessel, {"daten": daten, "anhaenge": []})
+        identitaet = _rechnungsidentitaet(daten)
+        gruppe = gruppen.setdefault(identitaet, {"daten": daten, "anhaenge": []})
+        gruppe["daten"] = _vereinige_rechnungsdaten(gruppe["daten"], daten)
         if anhang["sha256"] not in {a["sha256"] for a in gruppe["anhaenge"]}:
             gruppe["anhaenge"].append(anhang)
 
@@ -501,8 +601,9 @@ async def rechnung_aus_rohdaten_verarbeiten(
     # von der Dropbox-Verbindung und erzeugen keinen unnoetigen API-Aufruf.
     dbx = await asyncio.to_thread(_dropbox_client)
 
-    for schluessel, gruppe in gruppen.items():
+    for gruppe in gruppen.values():
         daten = gruppe["daten"]
+        schluessel = _dublettenschluessel(daten)
         rechnungsdatum = _datum(daten.get("rechnungsdatum"))
         if not rechnungsdatum:
             # Eine Rechnung ohne sicher lesbares Datum darf beim historischen
@@ -522,9 +623,9 @@ async def rechnung_aus_rohdaten_verarbeiten(
             daten["zahlungshinweis"] = " ".join(filter(None, [
                 daten.get("zahlungshinweis"), ersatzhinweis,
             ]))
-        bestehend = (await session.execute(
-            select(Rechnung).where(Rechnung.dublettenschluessel == schluessel)
-        )).scalar_one_or_none()
+        bestehend = await _bestehende_rechnung_finden(session, daten, schluessel)
+        if bestehend:
+            _bestehende_rechnung_aktualisieren(bestehend, daten)
         if bestehend and not dubletten_erneut_ablegen:
             verarbeitet.append({"id": bestehend.id, "dublette": True})
             continue
