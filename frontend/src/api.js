@@ -119,8 +119,8 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ zahlungsstatus }),
     }),
-  rechnungDateiLaden: (rechnungId) =>
-    dateiAnfrage(`/rechnungen/${rechnungId}/datei`),
+  rechnungDateiUrl: (rechnungId) =>
+    `${BASIS}/rechnungen/${rechnungId}/datei`,
 
   faq: () => anfrage("/faq"),
   wissensbasis: () => anfrage("/wissensbasis"),

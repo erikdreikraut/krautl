@@ -1642,21 +1642,14 @@ function RechnungenView({ rechnungen, onReload }) {
     await onReload();
   }
 
-  async function rechnungAnsehen(rechnung) {
-    const fenster = window.open("about:blank", "_blank");
-    if (fenster) fenster.opener = null;
-    try {
-      const datei = await api.rechnungDateiLaden(rechnung.id);
-      const url = URL.createObjectURL(datei);
-      if (fenster) {
-        fenster.location.href = url;
-      } else {
-        window.open(url, "_blank", "noopener,noreferrer");
-      }
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (fehler) {
-      if (fenster) fenster.close();
-      window.alert(fehler.message || "Rechnung konnte nicht geöffnet werden.");
+  function rechnungAnsehen(rechnung) {
+    const fenster = window.open(
+      api.rechnungDateiUrl(rechnung.id),
+      "_blank",
+      "noopener,noreferrer",
+    );
+    if (!fenster) {
+      window.alert("Rechnung konnte nicht geöffnet werden. Bitte Pop-ups für Krautl erlauben.");
     }
   }
 

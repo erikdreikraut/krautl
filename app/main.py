@@ -2,6 +2,7 @@ import asyncio
 import logging
 import mimetypes
 from datetime import date, datetime, timedelta, timezone
+from pathlib import PurePosixPath
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 from fastapi import (
@@ -1604,12 +1605,18 @@ async def rechnungsdatei_ansehen(
         ) from exc
 
     medientyp = mimetypes.guess_type(dateiname)[0] or "application/octet-stream"
+    downloadname = (
+        PurePosixPath(rechnung.dateipfad).name
+        if rechnung.dateipfad
+        else dateiname
+    )
     return Response(
         content=inhalt,
         media_type=medientyp,
         headers={
             "Content-Disposition": (
-                "inline; filename*=UTF-8''" + quote(dateiname, safe="")
+                "inline; filename=\"rechnung.pdf\"; filename*=UTF-8''"
+                + quote(downloadname, safe="")
             ),
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
