@@ -174,6 +174,22 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
             "zahlungshinweis": "Gutschrift. Zahlungsart: PayPal",
         })["zahlungsstatus"])
 
+    def test_ebay_zahlart_ist_bezahlt_aber_marktplatznennung_reicht_nicht(self):
+        for hinweis in ('Zahlart "ebay"', "Zahlungsart: EBAY", "Payment method: eBay"):
+            for status in ("unklar", "offen", "automatisch", "bezahlt"):
+                with self.subTest(hinweis=hinweis, status=status):
+                    self.assertEqual("bezahlt", _zahlungsstatus_absichern({
+                        "zahlungsstatus": status, "zahlungshinweis": hinweis,
+                    })["zahlungsstatus"])
+        self.assertEqual("offen", _zahlungsstatus_absichern({
+            "zahlungsstatus": "offen",
+            "zahlungshinweis": "Kauf auf eBay. Zahlart: Überweisung. Bitte überweisen.",
+        })["zahlungsstatus"])
+        self.assertEqual("gutschrift", _zahlungsstatus_absichern({
+            "zahlungsstatus": "gutschrift",
+            "zahlungshinweis": "Gutschrift. Zahlart: ebay",
+        })["zahlungsstatus"])
+
     def test_bereits_per_paypal_abgewickelte_zahlung_ist_bezahlt(self):
         hinweis = (
             "Rechnung (Seite 1): Bezahlung durch: PayPal – Zahlung wurde "
