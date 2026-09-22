@@ -68,10 +68,13 @@ nicht nur Kontext. Viele Zahlungsdienstleister (z. B. Stripe, PayPal) verschicke
 Zahlungsstatus ausschließlich im Mailtext ("Paid", "Payment method", "bezahlt am ..."),
 während ein eventueller Anhang nur die reine Rechnung ohne Zahlungsvermerk zeigt. Ein
 klarer Zahlungsbeleg im Mailtext zählt genauso wie einer im Dokument.
-Insbesondere ist eine Aussage wie "Zahlung wurde bereits per PayPal abgewickelt"
-eine Bestätigung der abgeschlossenen Zahlung und damit "bezahlt". Die bloße Angabe
-"Zahlungsart: PayPal" oder eine Auswahlmöglichkeit PayPal bleibt dagegen ohne
-solche Abschlussaussage kein Zahlungsnachweis.
+Verbindliche Geschäftsregel für dreikraut: Nennt die Rechnung PayPal als ihre
+Zahlungsart (z. B. "Zahlart: PAYPAL", "Zahlungsart: PayPal" oder "Payment method:
+PayPal"), gilt sie als "bezahlt". Eine nachträgliche Zahlung per PayPal gibt es
+bei dreikraut nicht. Eine zusätzliche Zahlungsbestätigung ist dafür nicht nötig;
+Bankverbindung oder allgemeines Zahlungsziel ändern daran nichts. Halte die
+konkrete PayPal-Zahlart im Zahlungshinweis fest. Eine bloße Aufzählung allgemein
+angebotener Zahlungsoptionen ist keine Angabe der gewählten Zahlungsart.
 
 Der Zahlungsstatus beschreibt ausschließlich, ob dreikraut jetzt selbst Geld
 überweisen muss:
@@ -90,7 +93,7 @@ Der Zahlungsstatus beschreibt ausschließlich, ob dreikraut jetzt selbst Geld
 Ein Fälligkeitsdatum, eine IBAN oder allgemeine Bankangaben allein beweisen noch
 keine offene Zahlung. Umgekehrt darf eine normale Rechnung nicht als erledigt gelten,
 wenn nur ein Zahlungsziel oder eine Aufforderung zur Überweisung genannt wird.
-Die bloße Nennung einer möglichen Zahlungsart wie PayPal, Kreditkarte oder SEPA
+Die bloße Nennung einer möglichen Zahlungsart wie Kreditkarte oder SEPA
 belegt weder eine bereits erfolgte noch eine automatische Zahlung. Erst eine klare
 Aussage über Einzug, Belastung oder Zahlungseingang ist dafür ausreichend.
 Verneinte, abgelehnte oder noch nicht eingerichtete Zahlungsautomatiken sind niemals
@@ -194,6 +197,16 @@ def _hat_positiven_beleg(text: str, belege: tuple[str, ...]) -> bool:
     return False
 
 
+def _paypal_zahlart(hinweis: str) -> bool:
+    """Erkennt PayPal als angegebene Zahlungsart, nicht als beliebige Option."""
+    return bool(re.search(
+        r"\b(?:zahlart|zahlungsart|zahlungsweise|zahlungsmethode|payment method|"
+        r"bezahlung durch)\s*[:=\-–]?\s*"
+        r"[\"'„“”»«]*\s*paypal\b",
+        hinweis,
+    ))
+
+
 def _zahlungsstatus_absichern(daten: dict) -> dict:
     """Verhindert, dass unbelegte Erledigt-Einstufungen unsichtbar werden."""
     daten = dict(daten)
@@ -202,6 +215,10 @@ def _zahlungsstatus_absichern(daten: dict) -> dict:
     erlaubt = {"offen", "automatisch", "bezahlt", "gutschrift", "unklar"}
     if status not in erlaubt:
         status = "unklar"
+
+    if status != "gutschrift" and _paypal_zahlart(hinweis):
+        daten["zahlungsstatus"] = "bezahlt"
+        return daten
 
     hat_automatik = _hat_positiven_beleg(hinweis, AUTOMATISCHE_ZAHLUNGSBELEGE)
     hat_bezahlt = _hat_positiven_beleg(hinweis, BEZAHLT_BELEGE)

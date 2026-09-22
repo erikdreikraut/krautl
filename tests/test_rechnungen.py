@@ -155,6 +155,25 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
                 })
                 self.assertEqual("offen", daten["zahlungsstatus"])
 
+    def test_paypal_zahlart_gilt_auch_ohne_zahlungsbestaetigung_als_bezahlt(self):
+        hinweise = [
+            'Rechnung nennt als Zahlart "PAYPAL" (Kopfbereich der Rechnung), '
+            'jedoch ohne Bestätigung einer bereits erfolgten Zahlung. '
+            'Bankverbindung (IBAN) ist ebenfalls angegeben.',
+            "Zahlungsart: PayPal. Bitte überweisen. Kein Zahlungsbeleg vorhanden.",
+            "Payment method: PayPal",
+        ]
+        for hinweis in hinweise:
+            for status in ("unklar", "offen", "automatisch", "bezahlt"):
+                with self.subTest(hinweis=hinweis, status=status):
+                    self.assertEqual("bezahlt", _zahlungsstatus_absichern({
+                        "zahlungsstatus": status, "zahlungshinweis": hinweis,
+                    })["zahlungsstatus"])
+        self.assertEqual("gutschrift", _zahlungsstatus_absichern({
+            "zahlungsstatus": "gutschrift",
+            "zahlungshinweis": "Gutschrift. Zahlungsart: PayPal",
+        })["zahlungsstatus"])
+
     def test_bereits_per_paypal_abgewickelte_zahlung_ist_bezahlt(self):
         hinweis = (
             "Rechnung (Seite 1): Bezahlung durch: PayPal – Zahlung wurde "
