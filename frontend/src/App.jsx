@@ -1642,17 +1642,6 @@ function RechnungenView({ rechnungen, onReload }) {
     await onReload();
   }
 
-  function rechnungAnsehen(rechnung) {
-    const fenster = window.open(
-      api.rechnungDateiUrl(rechnung.id),
-      "_blank",
-      "noopener,noreferrer",
-    );
-    if (!fenster) {
-      window.alert("Rechnung konnte nicht geöffnet werden. Bitte Pop-ups für Krautl erlauben.");
-    }
-  }
-
   const statusAuswahl = (rechnung) => <select
     value={rechnung.zahlungsstatus}
     onChange={(e) => statusAendern(rechnung.id, e.target.value)}
@@ -1660,15 +1649,16 @@ function RechnungenView({ rechnungen, onReload }) {
     style={{ ...fontUI, width: "100%", minWidth: 0, fontSize: "12px", color: tokens.mossDeep, background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}
   >{Object.entries(statusTexte).map(([wert, text]) => <option key={wert} value={wert}>{text}</option>)}</select>;
 
-  const ansichtButton = (rechnung) => <button
-    type="button"
-    onClick={() => rechnungAnsehen(rechnung)}
+  const ansichtButton = (rechnung) => <a
+    href={api.rechnungDateiUrl(rechnung.id)}
+    target="_blank"
+    rel="noopener noreferrer"
     className="flex shrink-0 items-center gap-1 px-2 py-1.5"
     style={{ ...fontUI, fontSize: "12px", color: tokens.mossDeep, background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px", textDecoration: "none" }}
     title="Rechnungsoriginal in einem neuen Tab ansehen"
   >
     <Eye size={13} /> Ansehen
-  </button>;
+  </a>;
 
   return (
     <div className="flex-1 overflow-y-auto px-8 py-6 content-view rechnungen-view">
