@@ -144,6 +144,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(daten),
     }),
+  faqGoogleAuswahl: (id, ausgewaehlt) =>
+    anfrage(`/faq/${id}/google-product-qa`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ include_in_google_product_qa: ausgewaehlt }),
+    }),
   faqRubrikUmbenennen: (produktId, alteKategorie, neueKategorie) =>
     anfrage("/faq-rubriken", {
       method: "PUT",

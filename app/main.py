@@ -190,6 +190,10 @@ class FaqAenderung(BaseModel):
     include_in_google_product_qa: bool = False
 
 
+class FaqGoogleAuswahl(BaseModel):
+    include_in_google_product_qa: bool = Field(strict=True)
+
+
 class FaqRubrikAenderung(BaseModel):
     produkt_id: int | None = None
     alte_kategorie: str
@@ -1928,6 +1932,18 @@ async def faq_aktualisieren(
         raise HTTPException(status_code=404, detail="FAQ-Eintrag nicht gefunden")
     for name, wert in daten.items():
         setattr(eintrag, name, wert)
+    await session.commit()
+    return eintrag
+
+
+@app.patch("/faq/{faq_id}/google-product-qa")
+async def faq_google_auswahl(
+    faq_id: int, aenderung: FaqGoogleAuswahl, session: AsyncSession = Depends(get_session)
+):
+    eintrag = await session.get(FaqEintrag, faq_id)
+    if eintrag is None:
+        raise HTTPException(status_code=404, detail="FAQ-Eintrag nicht gefunden")
+    eintrag.include_in_google_product_qa = aenderung.include_in_google_product_qa
     await session.commit()
     return eintrag
 

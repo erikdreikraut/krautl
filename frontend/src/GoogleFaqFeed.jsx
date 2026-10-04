@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { RefreshCw, Pencil } from "lucide-react";
 import { api } from "./api.js";
+import { GoogleFaqAuswahl } from "./GoogleFaqAuswahl.jsx";
 
 const box = { background: "#FDFCEE", border: "1px solid #DDD9C4", borderRadius: "6px" };
 const button = { ...box, color: "#2C5A18", fontSize: "13px" };
 
-export function GoogleFaqFeed({ produkt, produkte, faqEintraege, onBearbeiten }) {
+export function GoogleFaqFeed({ produkt, produkte, faqEintraege, onBearbeiten, onGoogleAuswahlGespeichert }) {
   const [produktId, setProduktId] = useState(produkt?.id || "");
   const [status, setStatus] = useState(null);
   const [vorschau, setVorschau] = useState(null);
@@ -14,9 +15,9 @@ export function GoogleFaqFeed({ produkt, produkte, faqEintraege, onBearbeiten })
   const [version, setVersion] = useState(0);
 
   useEffect(() => setProduktId(produkt?.id || ""), [produkt?.id]);
+  useEffect(() => setVorschau(null), [produktId]);
   useEffect(() => {
     let aktiv = true;
-    setVorschau(null);
     const laden = async () => {
       try {
         const [s, p] = await Promise.all([
@@ -30,6 +31,10 @@ export function GoogleFaqFeed({ produkt, produkte, faqEintraege, onBearbeiten })
     return () => { aktiv = false; clearInterval(timer); };
   }, [produktId, faqEintraege, produkte, version]);
 
+  const auswahlGespeichert = async (eintrag) => {
+    setVersion((v) => v + 1);
+    await onGoogleAuswahlGespeichert(eintrag);
+  };
   const generieren = async () => {
     setLaeuft(true); setFehler("");
     try { setStatus(await api.googleQaGenerieren()); setVersion((v) => v + 1); }
@@ -78,6 +83,7 @@ export function GoogleFaqFeed({ produkt, produkte, faqEintraege, onBearbeiten })
           <div className="flex justify-between gap-3"><strong>{faq.frage || "Leere Frage"}</strong>
             <button aria-label={`FAQ ${faq.faq_id} bearbeiten`} title="FAQ bearbeiten" onClick={() => onBearbeiten(faq.faq_id)} style={{ color: "#2C5A18" }}><Pencil size={14}/></button></div>
           <p className="mt-2" style={{ color: "#6C6F5F", overflowWrap: "anywhere" }}>{faq.antwort || "Leere Antwort"}</p>
+          <div className="mt-2"><GoogleFaqAuswahl faqId={faq.faq_id} frage={faq.frage} ausgewaehlt={faq.ausgewaehlt} onGespeichert={auswahlGespeichert}/></div>
           <p className="mt-2" style={{ color: faq.exportiert ? "#2C5A18" : faq.ausgewaehlt ? "#9A6420" : "#6C6F5F", fontWeight: faq.ausgewaehlt ? 600 : 400 }}>{faq.exportiert ? "Im Google-Export" : faq.ausgewaehlt ? `Bitte korrigieren: ${faq.gruende.join(" · ")}` : "Nicht ausgewählt"}</p>
           <small style={{ color: "#6C6F5F" }}>Frage: {faq.zeichen_frage} / 1.000 · Antwort: {faq.zeichen_antwort} / 1.000 Zeichen</small>
         </article>)}

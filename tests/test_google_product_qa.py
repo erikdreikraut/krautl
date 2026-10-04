@@ -185,6 +185,44 @@ class FeedApiTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(vorschau["faq"][0]["ausgewaehlt"])
         self.assertEqual(vorschau["faq"][0]["gruende"], [])
 
+    async def test_inline_checkbox_patches_only_google_selection_and_refreshes_feed(self):
+        eintrag = await self.anlegen(status="entwurf", antwort="**Fett** und Text",
+            quelle="Quelle behalten", sortierung=7, include_in_google_product_qa=False)
+        url = f"/faq/{eintrag['id']}/google-product-qa"
+        jtl_url = f"/produkte/{self.produkt_id}/faq-export"
+        jtl_vorher = (await self.client.get(jtl_url, headers=self.headers)).json()
+        for ausgewaehlt in (True, False):
+            with self.subTest(ausgewaehlt=ausgewaehlt):
+                response = await self.client.patch(url, headers=self.headers,
+                    json={"include_in_google_product_qa": ausgewaehlt,
+                          "frage": "Darf nicht überschrieben werden", "status": "veraltet"})
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.json(), {**eintrag, "include_in_google_product_qa": ausgewaehlt})
+                self.assertEqual(self.service.snapshot["anzahl_qa"], int(ausgewaehlt))
+                feed = self.service.pfad.read_text(encoding="utf-8")
+                self.assertEqual('"Wie?":"Fett und Text"' in feed, ausgewaehlt)
+                vorschau = (await self.client.get(
+                    f"/produkte/{self.produkt_id}/google-product-qa", headers=self.headers)).json()
+                self.assertEqual(vorschau["faq"][0]["ausgewaehlt"], ausgewaehlt)
+                self.assertEqual(vorschau["faq"][0]["exportiert"], ausgewaehlt)
+                self.assertEqual((await self.client.get(jtl_url, headers=self.headers)).json(), jtl_vorher)
+
+    async def test_inline_checkbox_requires_login_existing_faq_and_explicit_boolean(self):
+        eintrag = await self.anlegen(include_in_google_product_qa=False)
+        url = f"/faq/{eintrag['id']}/google-product-qa"
+        daten = {"include_in_google_product_qa": True}
+        self.assertEqual((await self.client.patch(url, json=daten)).status_code, 401)
+        self.assertEqual((await self.client.patch("/faq/999999/google-product-qa",
+            json=daten, headers=self.headers)).status_code, 404)
+        for ungueltig in ({}, {"include_in_google_product_qa": None},
+                          {"include_in_google_product_qa": "false"}, {"include_in_google_product_qa": 1}):
+            with self.subTest(daten=ungueltig):
+                self.assertEqual((await self.client.patch(url, json=ungueltig, headers=self.headers)).status_code, 422)
+        async with self.sessions() as session:
+            gespeichert = await session.get(FaqEintrag, eintrag["id"])
+            self.assertFalse(gespeichert.include_in_google_product_qa)
+        self.assertEqual(self.service.snapshot["anzahl_qa"], 0)
+
     async def test_checked_drafts_exported_and_jtl_unchanged_by_flag(self):
         eintrag = await self.anlegen(status="entwurf", antwort="**Fett** und Text")
         self.assertEqual(self.service.snapshot["anzahl_qa"], 1)

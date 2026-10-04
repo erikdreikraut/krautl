@@ -38,7 +38,10 @@
 Unter **Wissensdatenbank → Google-FAQ-Feed** stehen Feed-URL, letzte erfolgreiche
 Generierung, Produkt-/Q&A-Zahlen, Warnungen und die Produktvorschau bereit.
 Im FAQ-Editor wählt **„Ergänzt die Artikelbeschreibung“** einen Eintrag für diesen
-Feed aus. Das Feld `include_in_google_product_qa` ist bei bestehenden und neuen
+Feed aus. In der FAQ-Übersicht und der Google-Produktvorschau lässt sich dieselbe
+Auswahl direkt über **„Für Google ausgewählt“** ändern. Sie wird sofort gespeichert;
+der Haken ist bei Auswahl grün hinterlegt. Nur dieses Feld wird dabei geändert.
+Das Feld `include_in_google_product_qa` ist bei bestehenden und neuen
 FAQs standardmäßig `false`. Die eigene Schemaergänzung läuft beim App-Start
 idempotent; sie ändert keine vorhandenen Freigaben oder Texte.
 
