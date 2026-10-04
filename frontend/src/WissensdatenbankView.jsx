@@ -52,7 +52,7 @@ function Formular({ editor, setEditor, speichern, produkte, familien, faqGruppen
       <label className="col-span-2 flex items-center gap-2" style={{ ...ui, fontSize: "12.5px" }}><input type="checkbox" checked={d.aktiv} onChange={(e) => set("aktiv", e.target.checked)}/> Im aktuellen FAQ enthalten</label>
       <div className="col-span-2">
         <label className="flex items-center gap-2" style={{ ...ui, fontSize: "12.5px" }}><input type="checkbox" checked={!!d.include_in_google_product_qa} onChange={(e) => set("include_in_google_product_qa", e.target.checked)}/> Ergänzt die Artikelbeschreibung</label>
-        <p className="mt-1" style={{ ...ui, fontSize: "12px", color: farben.muted }}>Für den öffentlichen Google-FAQ-Zusatzfeed auswählen. Exportiert werden nur freigegebene, aktive Produkt-FAQs. Der JTL-HTML-Export bleibt unverändert.</p>
+        <p className="mt-1" style={{ ...ui, fontSize: "12px", color: farben.muted }}>Mit diesem Haken wird das Frage/Antwort-Paar für den öffentlichen Google-Export ausgewählt, unabhängig vom FAQ-Status. Es gelten die Google-Format- und Größenlimits. Der JTL-HTML-Export bleibt unverändert.</p>
       </div>
     </div>}
     <button onClick={speichern} className="flex items-center gap-1.5 mt-3 px-3 py-2" style={{ ...ui, fontSize: "12.5px", fontWeight: 600, color: "#fff", background: farben.moss, borderRadius: "6px" }}><Save size={13}/> Speichern</button>

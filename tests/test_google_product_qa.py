@@ -44,18 +44,37 @@ class FeedFormatTest(unittest.TestCase):
         self.assertEqual(plaintext('- Eins\n- Zwei\t\x00Drei'), 'Eins Zwei Drei')
         self.assertEqual(plaintext('&lt;b&gt;Bio&lt;/b&gt;'), 'Bio')
 
-    def test_only_released_opted_in_active_product_faqs(self):
+    def test_checkbox_alone_selects_faqs_regardless_of_status_and_active_flags(self):
+        for status in ("entwurf", "freigegeben", "veraltet"):
+            for aktiv in (False, True):
+                for produkt_aktiv in (False, True):
+                    for ausgewaehlt in (False, True):
+                        with self.subTest(status=status, aktiv=aktiv, produkt_aktiv=produkt_aktiv, ausgewaehlt=ausgewaehlt):
+                            ergebnis = feed_bauen([faq(status=status, aktiv=aktiv, produkt_aktiv=produkt_aktiv,
+                                include_in_google_product_qa=ausgewaehlt)])
+                            self.assertEqual(ergebnis["anzahl_qa"], int(ausgewaehlt))
+                            self.assertEqual(ergebnis["anzahl_produkte"], int(ausgewaehlt))
+                            eintrag = ergebnis["produkte"][0]["faq"][0]
+                            self.assertEqual(eintrag["exportiert"], ausgewaehlt)
+                            self.assertEqual(eintrag["ausgewaehlt"], ausgewaehlt)
+                            self.assertEqual(eintrag["gruende"], [])
+                            self.assertEqual(ergebnis["warnungen"], [])
+
+    def test_unselected_faqs_do_not_warn_or_block_selected_products(self):
         ergebnis = feed_bauen([
-            faq(), faq(2, status="entwurf"), faq(3, include_in_google_product_qa=False),
-            faq(4, aktiv=False), faq(5, status="veraltet"),
-            faq(6, produkt_id=2, produkt_name="Inaktiv", artikelnummer="002", produkt_aktiv=False),
-            faq(7, produkt_id=None, produkt_name=None, artikelnummer=None, produkt_aktiv=None),
+            faq(),
+            faq(2, produkt_id=2, include_in_google_product_qa=False),
+            faq(3, produkt_id=None, produkt_name=None, artikelnummer=None,
+                frage="", antwort="a" * 1001, include_in_google_product_qa=False),
         ])
         self.assertEqual(ergebnis["anzahl_qa"], 1)
-        eintraege = {f["faq_id"]: f for p in ergebnis["produkte"] for f in p["faq"]}
-        self.assertIn("Entwurf", eintraege[2]["gruende"])
-        self.assertIn("Haken fehlt", " ".join(eintraege[3]["gruende"]))
-        self.assertFalse(eintraege[7]["exportiert"])
+        self.assertEqual(ergebnis["warnungen"], [])
+        for produkt in ergebnis["produkte"]:
+            for eintrag in produkt["faq"]:
+                self.assertEqual(eintrag["gruende"], [])
+        ohne_produkt = feed_bauen([faq(produkt_id=None, produkt_name=None, artikelnummer=None)])
+        self.assertEqual(ohne_produkt["anzahl_qa"], 0)
+        self.assertIn("Keinem Produkt zugeordnet", ohne_produkt["warnungen"][0]["meldung"])
 
     def test_30_pairs_stable_order_and_warning(self):
         ergebnis = feed_bauen([faq(i, sortierung=100-i) for i in range(1, 32)])
@@ -163,18 +182,44 @@ class FeedApiTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.service.pfad.read_text(), "id\tquestion_and_answer\n")
         vorschau = (await self.client.get(f"/produkte/{self.produkt_id}/google-product-qa", headers=self.headers)).json()
         self.assertFalse(vorschau["faq"][0]["exportiert"])
-        self.assertIn("Haken fehlt", vorschau["faq"][0]["gruende"][0])
+        self.assertFalse(vorschau["faq"][0]["ausgewaehlt"])
+        self.assertEqual(vorschau["faq"][0]["gruende"], [])
 
-    async def test_drafts_excluded_and_jtl_unchanged_by_flag(self):
+    async def test_checked_drafts_exported_and_jtl_unchanged_by_flag(self):
         eintrag = await self.anlegen(status="entwurf", antwort="**Fett** und Text")
-        self.assertEqual(self.service.snapshot["anzahl_qa"], 0)
+        self.assertEqual(self.service.snapshot["anzahl_qa"], 1)
+        self.assertEqual(eintrag["status"], "entwurf")
+        self.assertIn('"Wie?":"Fett und Text"', (await self.client.get(FEED_PFAD)).text)
+        vorschau = (await self.client.get(f"/produkte/{self.produkt_id}/google-product-qa", headers=self.headers)).json()
+        self.assertTrue(vorschau["faq"][0]["ausgewaehlt"])
+        self.assertTrue(vorschau["faq"][0]["exportiert"])
+        self.assertEqual(vorschau["faq"][0]["gruende"], [])
         url = f"/produkte/{self.produkt_id}/faq-export"
         vorher = (await self.client.get(url, headers=self.headers)).json()
         await self.client.put(f"/faq/{eintrag['id']}", json={**eintrag, "include_in_google_product_qa": False}, headers=self.headers)
         nachher = (await self.client.get(url, headers=self.headers)).json()
         self.assertEqual(vorher, nachher)
+        self.assertEqual(self.service.snapshot["anzahl_qa"], 0)
         self.assertEqual(vorher["entwuerfe"], 1)
         self.assertIn("<strong>Fett</strong>", vorher["html"])
+
+    async def test_api_status_and_active_changes_leave_checked_faq_in_feed(self):
+        eintrag = await self.anlegen(status="entwurf", aktiv=False)
+        for status, aktiv, produkt_aktiv in (("veraltet", False, False), ("freigegeben", True, True)):
+            with self.subTest(status=status, aktiv=aktiv, produkt_aktiv=produkt_aktiv):
+                produkt = await self.client.put(f"/produkte/{self.produkt_id}", headers=self.headers,
+                    json={"name": "Testprodukt", "artikelnummer": "00123", "aktiv": produkt_aktiv})
+                self.assertEqual(produkt.status_code, 200, produkt.text)
+                response = await self.client.put(f"/faq/{eintrag['id']}", headers=self.headers,
+                    json={**eintrag, "status": status, "aktiv": aktiv})
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.json()["status"], status)
+                self.assertEqual(response.json()["aktiv"], aktiv)
+                feed = await self.client.get(FEED_PFAD)
+                self.assertEqual(feed.status_code, 200)
+                self.assertIn('00123\t"Wie?":"So."', feed.text)
+                self.assertEqual(self.service.snapshot["anzahl_qa"], 1)
+                self.assertEqual(self.service.snapshot["warnungen"], [])
 
     async def test_direct_database_update_detected_and_rollback_ignored(self):
         eintrag = await self.anlegen()
@@ -185,7 +230,7 @@ class FeedApiTest(unittest.IsolatedAsyncioTestCase):
         await self.service.aktualisieren()
         self.assertEqual(vorher, self.service.snapshot["letzte_generierung"])
         async with self.sessions() as session:
-            await session.execute(text("UPDATE faq_eintrag SET status='veraltet' WHERE id=:id"), {"id": eintrag["id"]})
+            await session.execute(text("UPDATE faq_eintrag SET include_in_google_product_qa=FALSE WHERE id=:id"), {"id": eintrag["id"]})
             await session.commit()
         response = await self.client.get(FEED_PFAD)
         self.assertEqual(response.text, "id\tquestion_and_answer\n")
@@ -206,7 +251,7 @@ class FeedApiTest(unittest.IsolatedAsyncioTestCase):
         eintrag = await self.anlegen()
         alter_inhalt = self.service.pfad.read_bytes()
         with patch("app.google_product_qa.atomar_schreiben", side_effect=OSError("disk full")), self.assertLogs("app.google_product_qa", level="ERROR"):
-            response = await self.client.put(f"/faq/{eintrag['id']}", headers=self.headers, json={**eintrag, "status": "entwurf"})
+            response = await self.client.put(f"/faq/{eintrag['id']}", headers=self.headers, json={**eintrag, "include_in_google_product_qa": False})
             self.assertEqual(response.status_code, 200)  # Datensatz wurde trotzdem gespeichert
             self.assertEqual(response.headers["x-krautl-google-feed"], "error")
             self.assertEqual((await self.client.get(FEED_PFAD)).status_code, 503)

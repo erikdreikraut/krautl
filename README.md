@@ -44,8 +44,11 @@ idempotent; sie ändert keine vorhandenen Freigaben oder Texte.
 
 Der Feed ist ohne Anmeldung unter
 `https://krautl.erikschweitzer.de/feeds/google-product-faq.tsv` erreichbar.
-Er enthält ausschließlich aktive FAQs mit Status `freigegeben` und gesetztem
-Haken, die einem aktiven Produkt mit gültiger Artikelnummer zugeordnet sind.
+Allein der Haken bestimmt die Auswahl für Google. FAQ-Status (auch `entwurf`
+oder `veraltet`) sowie die Aktiv-Merkmale von FAQ und Produkt beeinflussen sie
+nicht. Ohne Haken erscheint ein FAQ in der Vorschau als „Nicht ausgewählt“;
+das ist keine Warnung. Ausgewählte FAQs benötigen eine Produktzuordnung und
+eine gültige Artikelnummer und müssen die folgenden Google-Limits einhalten.
 `id` entspricht der Artikelnummer einschließlich führender Nullen; die ID muss
 im Google-Hauptfeed identisch sein. Allgemeine FAQs werden nicht exportiert.
 Der bestehende JTL-HTML-Export bleibt unabhängig vom neuen Feld unverändert.

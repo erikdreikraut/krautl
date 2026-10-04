@@ -84,49 +84,48 @@ def feed_bauen(zeilen: list[dict]) -> dict:
                 "anzahl_qa": 0, "zeichen": 0, "_paare": [],
             }
         gruppen[pid]["faq"].append(zeile)
-    id_anzahl = Counter(g["artikelnummer"] for g in gruppen.values() if g["artikelnummer"])
+    id_anzahl = Counter(
+        g["artikelnummer"] for g in gruppen.values()
+        if g["artikelnummer"] and any(f["include_in_google_product_qa"] for f in g["faq"])
+    )
     warnungen = []
     tsv = ["id\tquestion_and_answer"]
     for gruppe in sorted(gruppen.values(), key=lambda g: (g["artikelnummer"] or "", g["produkt_id"] or 0)):
         vorschau = []
         artikelnummer = gruppe["artikelnummer"]
         for eintrag in gruppe["faq"]:
-            gruende = []
-            if eintrag["status"] != "freigegeben":
-                gruende.append("Entwurf" if eintrag["status"] == "entwurf" else "Nicht freigegeben (veraltet)")
-            if not eintrag["include_in_google_product_qa"]:
-                gruende.append("Haken fehlt: Ergänzt die Artikelbeschreibung")
-            if not eintrag["aktiv"]:
-                gruende.append("FAQ inaktiv")
-            if gruppe["produkt_id"] is None:
-                gruende.append("Keinem Produkt zugeordnet")
-            elif not eintrag["produkt_aktiv"]:
-                gruende.append("Produkt inaktiv")
+            ausgewaehlt = bool(eintrag["include_in_google_product_qa"])
             frage, antwort = plaintext(eintrag["frage"]), plaintext(eintrag["antwort"])
-            qualifiziert = not gruende
-            if not artikelnummer or not artikelnummer.strip():
-                gruende.append("Artikelnummer fehlt")
-            elif len(artikelnummer) > 50 or re.search(r"[\x00-\x1f\x7f-\x9f]", artikelnummer):
-                gruende.append("Artikelnummer ungültig: maximal 50 Zeichen, keine Steuerzeichen")
-            elif artikelnummer != " ".join(artikelnummer.split()):
-                gruende.append("Artikelnummer enthält Leerraum, den Google verändern würde")
-            elif id_anzahl[artikelnummer] > 1:
-                gruende.append("Artikelnummer mehrfach vergeben")
-            if not frage or not antwort:
-                gruende.append("Frage oder Antwort ist als Plaintext leer")
-            if len(frage) > MAX_TEXT or len(antwort) > MAX_TEXT:
-                gruende.append("Frage oder Antwort überschreitet 1.000 Zeichen")
+            gruende = []
             paar = f"{_quotieren(frage)}:{_quotieren(antwort)}"
-            if not gruende:
-                if gruppe["anzahl_qa"] >= MAX_PAARE:
-                    gruende.append("Produktlimit von 30 Q&A erreicht")
-                elif gruppe["zeichen"] + bool(gruppe["_paare"]) + len(paar) > MAX_GESAMT:
-                    gruende.append("Produktlimit von 10.000 Zeichen überschritten")
-            if not gruende:
+            # Der Google-Haken ist die einzige redaktionelle Auswahl.
+            # Status und Aktiv-Merkmale gehören zu anderen Verwendungen der FAQ.
+            if ausgewaehlt:
+                if gruppe["produkt_id"] is None:
+                    gruende.append("Keinem Produkt zugeordnet")
+                if not artikelnummer or not artikelnummer.strip():
+                    gruende.append("Artikelnummer fehlt")
+                elif len(artikelnummer) > 50 or re.search(r"[\x00-\x1f\x7f-\x9f]", artikelnummer):
+                    gruende.append("Artikelnummer ungültig: maximal 50 Zeichen, keine Steuerzeichen")
+                elif artikelnummer != " ".join(artikelnummer.split()):
+                    gruende.append("Artikelnummer enthält Leerraum, den Google verändern würde")
+                elif id_anzahl[artikelnummer] > 1:
+                    gruende.append("Artikelnummer mehrfach vergeben")
+                if not frage or not antwort:
+                    gruende.append("Frage oder Antwort ist als Plaintext leer")
+                if len(frage) > MAX_TEXT or len(antwort) > MAX_TEXT:
+                    gruende.append("Frage oder Antwort überschreitet 1.000 Zeichen")
+                if not gruende:
+                    if gruppe["anzahl_qa"] >= MAX_PAARE:
+                        gruende.append("Produktlimit von 30 Q&A erreicht")
+                    elif gruppe["zeichen"] + bool(gruppe["_paare"]) + len(paar) > MAX_GESAMT:
+                        gruende.append("Produktlimit von 10.000 Zeichen überschritten")
+            exportiert = ausgewaehlt and not gruende
+            if exportiert:
                 gruppe["_paare"].append(paar)
                 gruppe["anzahl_qa"] += 1
                 gruppe["zeichen"] = len(",".join(gruppe["_paare"]))
-            elif qualifiziert or (eintrag["include_in_google_product_qa"] and gruppe["produkt_id"] is None):
+            elif ausgewaehlt:
                 warnungen.append({
                     "produkt_id": gruppe["produkt_id"], "artikelnummer": artikelnummer,
                     "faq_id": eintrag["faq_id"],
@@ -134,7 +133,7 @@ def feed_bauen(zeilen: list[dict]) -> dict:
                 })
             vorschau.append({
                 "faq_id": eintrag["faq_id"], "frage": frage, "antwort": antwort,
-                "exportiert": not gruende, "gruende": gruende,
+                "ausgewaehlt": ausgewaehlt, "exportiert": exportiert, "gruende": gruende,
                 "zeichen_frage": len(frage), "zeichen_antwort": len(antwort),
             })
         paare = gruppe.pop("_paare")
@@ -187,11 +186,10 @@ class GoogleProductQaFeed:
                     # Eine Abfrage: FAQ und Artikelnummer aus demselben DB-Snapshot.
                     zeilen = (await session.execute(select(
                         FaqEintrag.id.label("faq_id"), FaqEintrag.produkt_id,
-                        FaqEintrag.frage, FaqEintrag.antwort, FaqEintrag.status,
-                        FaqEintrag.sortierung, FaqEintrag.aktiv,
+                        FaqEintrag.frage, FaqEintrag.antwort,
+                        FaqEintrag.sortierung,
                         FaqEintrag.include_in_google_product_qa,
                         Produkt.name.label("produkt_name"), Produkt.artikelnummer,
-                        Produkt.aktiv.label("produkt_aktiv"),
                     ).outerjoin(Produkt, Produkt.id == FaqEintrag.produkt_id)
                         .order_by(FaqEintrag.id))).mappings().all()
                 zeilen = [dict(z) for z in zeilen]
