@@ -63,6 +63,7 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
   const [bereich, setBereich] = useState("wissen");
   const [auswahl, setAuswahl] = useState("alle");
   const [suche, setSuche] = useState("");
+  const [produktsuche, setProduktsuche] = useState("");
   const [editor, setEditor] = useState(null);
   const [exportHtml, setExportHtml] = useState(null);
   const [meldung, setMeldung] = useState("");
@@ -72,6 +73,12 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
   const produkte = basis?.produkte || [];
   const familien = basis?.familien || [];
   const familienNachId = Object.fromEntries(familien.map((f) => [f.id, f]));
+  const produktSuchbegriffe = produktsuche.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const gefilterteProdukte = produkte.filter((p) => {
+    const suchtext = [p.name, p.artikelnummer, ...(p.aliases || []),
+      familienNachId[p.produktfamilie_id]?.name, p.website_url].filter(Boolean).join(" ").toLowerCase();
+    return produktSuchbegriffe.every((begriff) => suchtext.includes(begriff));
+  });
   const produktId = auswahl.startsWith("produkt:") ? Number(auswahl.split(":")[1]) : null;
   const familieId = auswahl.startsWith("familie:") ? Number(auswahl.split(":")[1]) : null;
   const produkt = produkte.find((p) => p.id === produktId);
@@ -182,7 +189,24 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
     <div className="flex flex-1 min-h-0 knowledge-body"><aside className="w-56 shrink-0 overflow-y-auto p-4 knowledge-sidebar" style={{ background: farben.paperRaised, borderRight: `1px solid ${farben.line}` }}>
       {[["alle", "Alle Inhalte"], ["allgemein", "Allgemeines"], ["ablauf", "Abläufe & Fallwissen"]].map(([id, label]) => <button key={id} onClick={() => setAuswahl(id)} className="w-full text-left px-2.5 py-2" style={{ ...ui, fontSize: "12.5px", fontWeight: auswahl === id ? 600 : 400, color: auswahl === id ? farben.mossDeep : farben.muted, background: auswahl === id ? farben.mossPale : "transparent", borderRadius: "5px" }}>{label}</button>)}
       <div className="mt-5 px-2.5" style={{ ...mono, fontSize: "10px", color: farben.muted }}>PRODUKTFAMILIEN</div>{familien.map((f) => <button key={f.id} onClick={() => setAuswahl(`familie:${f.id}`)} className="w-full text-left px-2.5 py-2" style={{ ...ui, fontSize: "12px", fontWeight: familieId === f.id ? 600 : 400, color: familieId === f.id ? farben.mossDeep : farben.muted, background: familieId === f.id ? farben.mossPale : "transparent", borderRadius: "5px" }}>{f.name}</button>)}
-      <div className="mt-5 px-2.5" style={{ ...mono, fontSize: "10px", color: farben.muted }}>PRODUKTE</div>{produkte.map((p) => <div key={p.id} className="flex items-start"><button onClick={() => setAuswahl(`produkt:${p.id}`)} className="flex-1 text-left px-2.5 py-2" style={{ ...ui, fontSize: "12px", fontWeight: produktId === p.id ? 600 : 400, color: produktId === p.id ? farben.mossDeep : farben.muted, background: produktId === p.id ? farben.mossPale : "transparent", borderRadius: "5px" }}>{p.name}<span className="block" style={{ ...mono, fontSize: "9.5px" }}>{p.artikelnummer || familienNachId[p.produktfamilie_id]?.name}</span></button><button title="Produkt bearbeiten" onClick={() => setEditor({ typ: "produkt", id: p.id, daten: { ...p, familie: familienNachId[p.produktfamilie_id]?.name || "", aliasesText: (p.aliases || []).join(", ") } })} className="p-2" style={{ color: farben.muted }}><Pencil size={12}/></button></div>)}
+      <label htmlFor="produktfilter" className="block mt-5 px-2.5" style={{ ...mono, fontSize: "10px", color: farben.muted }}>PRODUKTE</label>
+      <div className="flex items-center gap-1.5 mt-2 mb-1 px-2 py-1.5" style={feld}>
+        <Search size={13} className="shrink-0" aria-hidden="true"/>
+        <input id="produktfilter" type="search" value={produktsuche} onChange={(e) => setProduktsuche(e.target.value)}
+          placeholder="Produkte filtern …" aria-label="Produkte filtern" aria-describedby="produktfilter-hilfe"
+          className="w-full min-w-0" style={{ ...ui, fontSize: "12px", background: "transparent" }}/>
+        {produktsuche && <button type="button" onClick={() => setProduktsuche("")} title="Produktfilter zurücksetzen" aria-label="Produktfilter zurücksetzen" className="shrink-0 p-0.5"><X size={13}/></button>}
+      </div>
+      <p id="produktfilter-hilfe" className="sr-only">Suche nach Name, Artikelnummer, Suchbegriffen, Produktfamilie und URL. Alle eingegebenen Wörter müssen vorkommen.</p>
+      {produktSuchbegriffe.length > 0 && <p role="status" className="px-2.5 py-1" style={{ ...ui, fontSize: "11px", color: farben.muted }}>{gefilterteProdukte.length} von {produkte.length} Produkten</p>}
+      {gefilterteProdukte.map((p) => <div key={p.id} className="flex items-start">
+        <button onClick={() => setAuswahl(`produkt:${p.id}`)} className="flex-1 min-w-0 text-left px-2.5 py-2" style={{ ...ui, fontSize: "12px", fontWeight: produktId === p.id ? 600 : 400, color: produktId === p.id ? farben.mossDeep : farben.muted, background: produktId === p.id ? farben.mossPale : "transparent", borderRadius: "5px", overflowWrap: "anywhere" }}>
+          {p.name}
+          {p.artikelnummer ? <strong className="block" style={{ ...mono, fontSize: "9.5px", fontWeight: 700 }}>{p.artikelnummer}</strong> : <span className="block" style={{ ...mono, fontSize: "9.5px" }}>{familienNachId[p.produktfamilie_id]?.name}</span>}
+        </button>
+        <button title="Produkt bearbeiten" onClick={() => setEditor({ typ: "produkt", id: p.id, daten: { ...p, familie: familienNachId[p.produktfamilie_id]?.name || "", aliasesText: (p.aliases || []).join(", ") } })} className="shrink-0 p-2" style={{ color: farben.muted }}><Pencil size={12}/></button>
+      </div>)}
+      {produktSuchbegriffe.length > 0 && gefilterteProdukte.length === 0 && <p className="px-2.5 py-2" style={{ ...ui, fontSize: "12px", color: farben.muted }}>Keine passenden Produkte.</p>}
       <button onClick={() => neu("produkt")} className="flex items-center gap-1.5 mt-2 px-2.5 py-2" style={{ ...ui, fontSize: "12px", color: farben.mossDeep }}><Plus size={12}/> Produkt anlegen</button>
       <button disabled={shopImportLaeuft} onClick={shopProdukteImportieren} className="flex items-center gap-1.5 px-2.5 py-2 text-left" style={{ ...ui, fontSize: "12px", color: farben.mossDeep, opacity: shopImportLaeuft ? 0.6 : 1 }}><RefreshCw size={12} className={shopImportLaeuft ? "animate-spin" : ""}/> Shop-Produkte aktualisieren</button>
     </aside>
