@@ -8,7 +8,7 @@ kein Fine-Tuning nötig, siehe CLAUDE.md.
 """
 from datetime import datetime
 from sqlalchemy import (
-    String, Integer, Float, Boolean, DateTime, ForeignKey, Text, JSON, UniqueConstraint, func
+    String, Integer, Float, Boolean, DateTime, ForeignKey, Text, JSON, UniqueConstraint, func, false
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -318,6 +318,9 @@ class FaqEintrag(Base):
     status: Mapped[str] = mapped_column(String(20), default="freigegeben", index=True)
     sortierung: Mapped[int] = mapped_column(Integer, default=0)
     aktiv: Mapped[bool] = mapped_column(Boolean, default=True)
+    include_in_google_product_qa: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
 
 
 class FaqVorschlag(Base):

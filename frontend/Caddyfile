@@ -8,6 +8,11 @@
 		reverse_proxy app:8000
 	}
 
+	# Nur dieser Feed ist öffentlich; Status und Vorschauen bleiben hinter /api.
+	handle /feeds/google-product-faq.tsv {
+		reverse_proxy app:8000
+	}
+
 	# Die Oberfläche navigiert nur über internen React-State (keine eigenen
 	# Routen), trotzdem try_files zur Sicherheit für direkte Aufrufe.
 	handle {

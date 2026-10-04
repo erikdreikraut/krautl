@@ -20,6 +20,8 @@ services:
     restart: unless-stopped
     init: true
     env_file: .env
+    volumes:
+      - krautl_feeds:/app/var/feeds
     depends_on:
       db:
         condition: service_healthy
@@ -65,3 +67,4 @@ services:
 
 volumes:
   krautl_db:
+  krautl_feeds:

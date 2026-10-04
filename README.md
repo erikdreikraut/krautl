@@ -33,6 +33,77 @@
 
 ## Schritte auf dem Server (mit Claude Code)
 
+### Google-Merchant-Center-FAQ-Zusatzfeed
+
+Unter **Wissensdatenbank → Google-FAQ-Feed** stehen Feed-URL, letzte erfolgreiche
+Generierung, Produkt-/Q&A-Zahlen, Warnungen und die Produktvorschau bereit.
+Im FAQ-Editor wählt **„Ergänzt die Artikelbeschreibung“** einen Eintrag für diesen
+Feed aus. Das Feld `include_in_google_product_qa` ist bei bestehenden und neuen
+FAQs standardmäßig `false`. Die eigene Schemaergänzung läuft beim App-Start
+idempotent; sie ändert keine vorhandenen Freigaben oder Texte.
+
+Der Feed ist ohne Anmeldung unter
+`https://krautl.erikschweitzer.de/feeds/google-product-faq.tsv` erreichbar.
+Er enthält ausschließlich aktive FAQs mit Status `freigegeben` und gesetztem
+Haken, die einem aktiven Produkt mit gültiger Artikelnummer zugeordnet sind.
+`id` entspricht der Artikelnummer einschließlich führender Nullen; die ID muss
+im Google-Hauptfeed identisch sein. Allgemeine FAQs werden nicht exportiert.
+Der bestehende JTL-HTML-Export bleibt unabhängig vom neuen Feld unverändert.
+
+**Format und Grenzen:** UTF-8 ohne BOM, eine TSV-Zeile je Produkt, nur die Spalten
+`id` und `question_and_answer`. Q&A werden als `"Frage":"Antwort","Frage":"Antwort"`
+serialisiert, innere Anführungszeichen verdoppelt, Backslashes unverändert
+übernommen. Keine zusätzliche CSV-Quotierung um die gesamte Q&A-Zelle.
+HTML/unterstützte Markdown-Formatierung werden in Plaintext umgewandelt;
+Tabs und Zeilenumbrüche werden Leerzeichen. Pro Produkt höchstens 30 Paare,
+je Frage/Antwort höchstens 1.000 Unicode-Zeichen. Das Gesamtlimit von 10.000
+wird vorsichtig einschließlich Gruppentrennzeichen, Quotes und deren Escaping
+geprüft. Reihenfolge: FAQ-Sortierung, danach FAQ-ID. Ungültige oder überzählige
+Einträge werden vollständig ausgelassen und in Warnungen/Vorschau erklärt;
+Quelltexte werden niemals gekürzt oder verändert. Ohne geeignete FAQs enthält
+der Feed nur die Kopfzeile und liefert HTTP 200.
+
+Nach erfolgreichen FAQ-/Produktänderungen über die Oberfläche wird der Feed
+sofort geprüft und bei Änderungen neu erzeugt. Ein Hintergrundabgleich alle
+30 Sekunden erfasst zusätzlich Importskripte und direkte Datenbankänderungen.
+Jeder öffentliche Abruf prüft ebenfalls den aktuellen Stand. Die Datei wird
+über eine temporäre Datei im selben Verzeichnis, `fsync` und `os.replace`
+atomar ausgetauscht. Docker speichert sie dauerhaft im Volume `krautl_feeds`
+unter `/app/var/feeds/google-product-faq.tsv`. Standardpfad lokal: `var/feeds`;
+optional per `GOOGLE_PRODUCT_QA_DIR` umstellbar (Volume dann ebenfalls anpassen).
+Die Generatoren werden im bestehenden einzelnen Uvicorn-Prozess serialisiert.
+Beim Neustart wird neu generiert. Bei einem Fehler bleibt die alte Datei
+erhalten; der öffentliche Endpunkt liefert 503 statt möglicherweise inzwischen
+zurückgezogener Inhalte. Die Oberfläche zeigt den Fehler und den letzten
+erfolgreichen Stand. Es gibt weder Merchant-Center-API noch SFTP/JTL-Anbindung.
+
+Geschützte Verwaltungsendpunkte unter `/api`:
+`GET /google-product-qa`, `POST /google-product-qa/generieren`,
+`GET /produkte/{id}/google-product-qa`. Nur der exakte TSV-Pfad ist öffentlich.
+Google ruft den Zusatzfeed nach dem im Merchant Center eingerichteten Zeitplan
+ab; die lokale Neuerzeugung stößt keinen Google-Abruf an.
+
+Quellen (geprüft am 04.10.2026):
+[Q&A-Spezifikation](https://support.google.com/merchants/answer/17085211),
+[TSV-Quotierung](https://support.google.com/merchants/answer/14998273),
+[ID-Spezifikation](https://support.google.com/merchants/answer/6324405).
+
+Deployment dieser Erweiterung (Schema vor dem neuen Worker ergänzen):
+
+```sh
+cd /opt/app/krautl
+git pull --ff-only origin main
+docker compose build app frontend
+docker compose run --rm --no-deps app python -m scripts.migrate_google_product_qa
+docker compose up -d --wait app worker frontend
+curl --fail --show-error https://krautl.erikschweitzer.de/feeds/google-product-faq.tsv
+```
+
+Gezielte Tests (mit `requirements.txt` sowie `aiosqlite`, `httpx` und unter
+Windows `tzdata`): `python -m unittest tests.test_google_product_qa tests.test_wissensbasis`.
+
+### Erstinstallation
+
 1. Dieses Verzeichnis auf den Server bringen (`git clone`).
 2. `cp .env.example .env` und dort die echten Werte eintragen:
    IMAP-Zugangsdaten je Postfach, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,

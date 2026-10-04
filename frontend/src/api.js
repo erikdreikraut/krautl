@@ -155,6 +155,9 @@ export const api = {
       }),
     }),
   faqExport: (produktId) => anfrage(`/produkte/${produktId}/faq-export`),
+  googleQaStatus: () => anfrage("/google-product-qa"),
+  googleQaGenerieren: () => anfrage("/google-product-qa/generieren", { method: "POST" }),
+  googleQaVorschau: (produktId) => anfrage(`/produkte/${produktId}/google-product-qa`),
   wissensvorschlaege: () => anfrage("/wissensvorschlaege"),
   wissensvorschlagUebernehmen: (id, daten) =>
     anfrage(`/wissensvorschlaege/${id}/uebernehmen`, {

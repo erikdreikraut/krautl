@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import mimetypes
+from contextlib import suppress
 from datetime import date, datetime, timedelta, timezone
 from pathlib import PurePosixPath
 from urllib.parse import quote
@@ -14,7 +15,8 @@ from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .db import get_session, engine
+from .db import get_session, engine, SessionLocal
+from .google_product_qa import FEED_PFAD, GoogleProductQaFeed
 from .aufgaben import aufgaben_fuer_mail_anlegen, bestaetigung_erfassen, wartende_aufgaben_ausfuehren
 from .antworten import (
     antwort_vor_versand_pruefen, antwortentwurf_speichern,
@@ -54,6 +56,7 @@ from .uebersetzungen import (
 
 app = FastAPI(title="Krautl API")
 logger = logging.getLogger(__name__)
+google_product_qa_feed = GoogleProductQaFeed(SessionLocal)
 
 MAX_ANTWORTANHAENGE = 10
 MAX_ANTWORTANHAENGE_BYTES = 18 * 1024 * 1024
@@ -184,6 +187,7 @@ class FaqAenderung(BaseModel):
     status: str = "entwurf"
     sortierung: int = 0
     aktiv: bool = True
+    include_in_google_product_qa: bool = False
 
 
 class FaqRubrikAenderung(BaseModel):
@@ -203,7 +207,9 @@ class VorschlagUebernahme(BaseModel):
 
 @app.middleware("http")
 async def anmeldung_erfordern(request: Request, call_next):
-    if request.url.path in {"/health", "/auth/login"}:
+    if request.url.path in {"/health", "/auth/login"} or (
+        request.url.path == FEED_PFAD and request.method in {"GET", "HEAD"}
+    ):
         return await call_next(request)
     try:
         benutzer = sitzung_lesen(request.cookies.get(COOKIE_NAME))
@@ -212,7 +218,17 @@ async def anmeldung_erfordern(request: Request, call_next):
     if benutzer is None:
         return JSONResponse(status_code=401, content={"detail": "Anmeldung erforderlich"})
     request.state.benutzer = benutzer
-    return await call_next(request)
+    response = await call_next(request)
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and response.status_code < 400 and (
+        request.url.path.split("/")[1] in {"faq", "faq-rubriken", "produkte", "wissensvorschlaege"}
+    ):
+        try:
+            await google_product_qa_feed.aktualisieren()
+        except Exception:
+            # Die Änderung ist bereits gespeichert. Feed-Status meldet den Fehler;
+            # öffentliche Abrufe liefern bei fehlender Aktualität keinen alten Feed.
+            response.headers["X-Krautl-Google-Feed"] = "error"
+    return response
 
 
 @app.post("/auth/login")
@@ -320,6 +336,70 @@ async def on_startup():
     # auf Alembic-Migrationen umsteigen (siehe README).
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        from scripts.migrate_google_product_qa import migriere
+        await migriere(conn)
+    try:
+        await google_product_qa_feed.aktualisieren(erzwingen=True)
+    except Exception:
+        pass  # Oberfläche bleibt für die Fehlerbehebung verfügbar.
+    app.state.google_qa_task = asyncio.create_task(google_product_qa_feed.ueberwachen())
+
+
+@app.on_event("shutdown")
+async def google_qa_beenden():
+    task = getattr(app.state, "google_qa_task", None)
+    if task:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+@app.api_route(FEED_PFAD, methods=["GET", "HEAD"])
+async def google_qa_datei(request: Request):
+    try:
+        snapshot = await google_product_qa_feed.aktualisieren()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="FAQ-Feed vorübergehend nicht verfügbar") from exc
+    inhalt = snapshot["tsv"].encode("utf-8")
+    return Response(
+        content=inhalt if request.method == "GET" else b"",
+        media_type="text/tab-separated-values; charset=utf-8",
+        headers={"Cache-Control": "no-store", "Content-Length": str(len(inhalt)),
+                 "Content-Disposition": 'inline; filename="google-product-faq.tsv"'},
+    )
+
+
+@app.get("/google-product-qa")
+async def google_qa_status():
+    try:
+        await google_product_qa_feed.aktualisieren()
+    except Exception:
+        pass
+    return google_product_qa_feed.status()
+
+
+@app.post("/google-product-qa/generieren")
+async def google_qa_generieren():
+    try:
+        await google_product_qa_feed.aktualisieren(erzwingen=True)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=google_product_qa_feed.fehler) from exc
+    return google_product_qa_feed.status()
+
+
+@app.get("/produkte/{produkt_id}/google-product-qa")
+async def google_qa_vorschau(produkt_id: int, session: AsyncSession = Depends(get_session)):
+    produkt = await session.get(Produkt, produkt_id)
+    if produkt is None:
+        raise HTTPException(status_code=404, detail="Produkt nicht gefunden")
+    try:
+        snapshot = await google_product_qa_feed.aktualisieren()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=google_product_qa_feed.fehler) from exc
+    return next((p for p in snapshot["produkte"] if p["produkt_id"] == produkt_id), {
+        "produkt_id": produkt_id, "name": produkt.name, "artikelnummer": produkt.artikelnummer,
+        "anzahl_qa": 0, "zeichen": 0, "faq": [],
+    })
 
 @app.get("/health")
 async def health(session: AsyncSession = Depends(get_session)):
