@@ -31,6 +31,98 @@
   `/api/*` an (im Dev-Modus per Vite-Proxy, in Produktion per Caddy)
 - `docker-compose.yml` — Postgres + API + Frontend/Caddy als Reverse Proxy
 
+## WhatsApp und gemeinsamer Eingang
+
+Der bisherige Posteingang heißt **Eingang**. E-Mails und offene WhatsApp-Chats
+werden gemeinsam nach dem neuesten Eingang sortiert; Kanalfilter, Rollenlisten,
+Kategorien und Zuständigkeiten bleiben verfügbar. Ein Kontakt belegt genau einen
+Chat je Geschäftsnummer. Nach manuell freigegebener Antwort wartet der Chat auf
+den Kunden und verschwindet aus dem aktiven Eingang. Eine neue Kundennachricht
+öffnet ihn wieder. **Erledigt** schließt ohne Versand. **Chats** zeigt den
+suchbaren Verlauf auch nach Abschluss.
+
+Implementiert sind Textnachrichten, manuell freigegebene Wissensbasis-Vorschläge,
+Entwürfe, interne Notizen, Zuweisung, Kategoriewahl, 90-Sekunden-Reservierung,
+API-Versandstatus, eingehende Medien, Sprachnachrichten-Transkription sowie
+PDF-/JPG-/PNG-Versand. Neue Chatnachrichten werden automatisch anhand des vorhandenen Katalogs kategorisiert; manuell gewählte Kategorien bleiben erhalten. Es werden keine
+Mail-Verschiebeaktionen auf Chats ausgeführt. Vorschläge benutzen den Verlauf
+und freigegebene Wissenseinträge/FAQ; Transkription benötigt den vorhandenen
+OpenAI-Zugang. Versand und KI-Vorschläge erfolgen ausschließlich auf Knopfdruck.
+
+Neue Nachrichten/Transkripte machen ältere Entwürfe prüfpflichtig. Neue Eingänge
+während des Sendens bleiben sichtbar. Ein dauerhafter Versandauftrag mit UUID
+verhindert Wiederholung desselben Auftrags. Bei Timeout oder Serverfehler gibt
+es keinen automatischen Neuversand: Unterbrochene Übergaben werden nach zwei Minuten wieder sichtbar. Erst am Handy prüfen und das Ergebnis
+explizit im Chat bestätigen. Nach definitiver Ablehnung kann eine neue Antwort
+vorbereitet werden. Annahme, Versand, Zustellung und Lesen werden getrennt
+angezeigt. Reihenfolgefehler dürfen den Zustellstatus nicht zurücksetzen.
+
+Webhook-Ereignisse werden vor der HTTP-Bestätigung in PostgreSQL gespeichert.
+Der App-Hintergrundprozess verarbeitet sie alle zwei Sekunden; wiederholte
+Nachrichten werden anhand der WhatsApp-ID erkannt. Fehler bleiben im Admin-
+Bereich **Chats** sichtbar und können ohne Versand erneut verarbeitet werden.
+Berechtigungen gelten für Chatliste, Verlauf, Medien und sämtliche Aktionen.
+
+### Einrichtung und Coexistence
+
+Die Anbindung ist standardmäßig deaktiviert. `Base.metadata.create_all` legt
+nur neue WhatsApp-Tabellen an; die bestehenden Mailtabellen werden nicht geändert.
+Die Geschäftsrufnummer ist **+4920227277835**. `WHATSAPP_PHONE_NUMBER_ID` ist dagegen
+eine von Meta vergebene technische ID und darf nicht mit der Rufnummer verwechselt werden.
+
+1. Business-App aktualisieren, Zugang zur bestehenden Nummer und Firmenkonten
+   klären. Das Vorhandensein der Handy-App oder einer QR-Gerätekopplung ist kein
+   Nachweis für API-Zugang oder ein Meta-Unternehmensportfolio.
+2. Coexistence-Onboarding verwenden; den bestehenden App-Account nicht löschen
+   und die Nummer nicht über einen gewöhnlichen API-only-Registrierungsweg umstellen.
+   Ein dokumentierter Weg ist [360dialog Coexistence Onboarding](https://docs.360dialog.com/docs/hub/embedded-signup/coexistence-onboarding.md).
+   Anbieterwahl und kostenpflichtiger Vertrag sind noch nicht abgeschlossen.
+3. `.env` anhand `.env.example` ergänzen. `WHATSAPP_ENABLED=true` erst nach
+   abgeschlossenem Onboarding und vorbereiteter Empfangskonfiguration setzen.
+4. Öffentliche HTTPS-Callback-URL:
+   `https://krautl.erikschweitzer.de/api/whatsapp/webhook`.
+   Bestehender Caddy `/api/*`-Proxy reicht aus.
+5. Direkte Meta-Anbindung: Phone-Number-ID, Zugriffstoken, unterstützte
+   API-Version, App-Secret und Verify-Token konfigurieren, Webhook verifizieren
+   und `messages` sowie `smb_message_echoes` abonnieren. WABA-ID wird zusätzlich
+   zum Laden freigegebener Vorlagen benötigt. Die konkrete Coexistence-
+   Zulassung für die eigene Meta-App ist noch zu prüfen.
+6. Bei 360dialog `WHATSAPP_PROVIDER=360dialog`, Phone-Number-ID, API-Key unter
+   `WHATSAPP_ACCESS_TOKEN` und `WHATSAPP_WEBHOOK_TOKEN` konfigurieren. Im
+   [Channel-Webhook](https://docs.360dialog.com/docs/messaging/webhook)
+   den Header `X-Krautl-Webhook-Token` mit demselben langen zufälligen Token
+   hinterlegen. Der direkte Meta-Modus prüft stattdessen HMAC-Signaturen.
+7. Nach Deployment zuerst Empfang und Handy-Echo prüfen. Einen echten Versand
+   erst für eine vom Nutzer veranlasste Antwort durchführen. Gesendete Nachricht
+   und Zustellstatus in Krautl und am Handy vergleichen.
+
+Die [Coexistence-Dokumentation](https://docs.360dialog.com/docs/resources/phone-numbers/coexistence.md)
+beschreibt parallele App-Nutzung und Message-Echoes. Sie verlangt das Öffnen der
+Business-App mindestens alle 13 Tage und nennt Einschränkungen bei gekoppelten
+Geräten (insbesondere Windows/WearOS). Die konkrete Eignung der Nummer wird im
+Onboarding geprüft. Der Pilot importiert keine alte Chathistorie und keine
+Kontaktlisten. Neue Kontakte werden aus eingehenden Nachrichten übernommen.
+
+Nach 24 Stunden seit letzter Kundennachricht ist freier API-Versand gesperrt.
+Krautl lädt freigegebene Textvorlagen (BODY, optional FOOTER, positionale
+Textplatzhalter) und prüft sie vor Versand erneut beim Anbieter. Medienvorlagen,
+Buttonvorlagen und benannte Platzhalter sind im Pilot nicht auswählbar. Es gibt
+keinen automatischen Vorlagenversand und keine Kampagnen. Vorlagen können
+kostenpflichtig sein; passende Kundenanfrage/Einwilligung beachten.
+
+Pilot-Grenzen: bis 500 Chats je Liste, die letzten 300 Nachrichten je Detail,
+60 Nachrichten als Vorschlagskontext. Bildversand bis 5 MB, PDF bis 10 MB,
+Anhangsbeschriftung bis 1.024 Zeichen; Mediendownload bis 20 MB. Medien werden
+beim Anbieter abgerufen und nicht dauerhaft in Krautl archiviert; ihre dortige
+Verfügbarkeit ist zeitlich begrenzt. Texte, Versandaufträge und Transkripte
+bleiben gespeichert. Gruppen, Anrufe und alte Historienimporte gehören nicht
+zum Pilot. Eine deaktivierte Anbindung nimmt keine Webhooks oder Versände an;
+bereits gespeicherte Chats bleiben lesbar.
+
+Lokale Prüfung: `python -m unittest tests.test_whatsapp -q`. Tests verwenden
+ausschließlich In-Memory-SQLite und simulierte Anbieter; PostgreSQL-Sperren,
+Onboarding und echte Zustellwege benötigen einen separaten Produktivnachweis.
+
 ## Schritte auf dem Server (mit Claude Code)
 
 ### Gesendete Antworten

@@ -59,6 +59,9 @@ from .gesendet_ablage import versandkopien_ueberwachen
 
 app = FastAPI(title="Krautl API")
 app.include_router(gesendet_router)
+from .whatsapp import (router as whatsapp_router, ueberwachen as whatsapp_ueberwachen,
+                       klassifikationen_ueberwachen as whatsapp_klassifikationen)
+app.include_router(whatsapp_router)
 logger = logging.getLogger(__name__)
 google_product_qa_feed = GoogleProductQaFeed(SessionLocal)
 
@@ -215,7 +218,7 @@ class VorschlagUebernahme(BaseModel):
 
 @app.middleware("http")
 async def anmeldung_erfordern(request: Request, call_next):
-    if request.url.path in {"/health", "/auth/login"} or (
+    if (request.url.path == "/whatsapp/webhook" and request.method in {"GET", "POST"}) or request.url.path in {"/health", "/auth/login"} or (
         request.url.path == FEED_PFAD and request.method in {"GET", "HEAD"}
     ):
         return await call_next(request)
@@ -352,11 +355,13 @@ async def on_startup():
         pass  # Oberfläche bleibt für die Fehlerbehebung verfügbar.
     app.state.google_qa_task = asyncio.create_task(google_product_qa_feed.ueberwachen())
     app.state.gesendet_task = asyncio.create_task(versandkopien_ueberwachen(SessionLocal))
+    app.state.whatsapp_task = asyncio.create_task(whatsapp_ueberwachen(SessionLocal))
+    app.state.whatsapp_klassifikation_task = asyncio.create_task(whatsapp_klassifikationen(SessionLocal))
 
 
 @app.on_event("shutdown")
 async def google_qa_beenden():
-    for name in ("google_qa_task", "gesendet_task"):
+    for name in ("google_qa_task", "gesendet_task", "whatsapp_task", "whatsapp_klassifikation_task"):
         task = getattr(app.state, name, None)
         if task:
             task.cancel()

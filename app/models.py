@@ -410,3 +410,62 @@ class SystemStatus(Base):
     letzter_erfolg: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     letzter_fehler: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class WhatsAppChat(Base):
+    __tablename__ = "whatsapp_chat"
+    __table_args__ = (UniqueConstraint("telefon_id", "kontakt_id", name="uq_wa_kontakt"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    telefon_id: Mapped[str] = mapped_column(String(100))
+    kontakt_id: Mapped[str] = mapped_column(String(100))
+    name: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(30), default="offen", index=True)
+    klassifikation_id: Mapped[str | None] = mapped_column(ForeignKey("klassifikation.klassifikation_id"), nullable=True)
+    zustaendig_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    zustaendig_sachbearbeiter: Mapped[bool] = mapped_column(Boolean, default=True)
+    zustaendigkeit_manuell: Mapped[bool] = mapped_column(Boolean, default=False)
+    klassifikation_manuell: Mapped[bool] = mapped_column(Boolean, default=False)
+    klassifikation_revision: Mapped[int] = mapped_column(Integer, default=0)
+    klassifikation_fehler: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    konfidenz: Mapped[float] = mapped_column(Float, default=0.0)
+    letzte_kundennachricht: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    aktualisiert_am: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    notiz: Mapped[str] = mapped_column(Text, default="")
+    entwurf: Mapped[str] = mapped_column(Text, default="")
+    entwurf_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reserviert_von: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    reserviert_bis: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WhatsAppNachricht(Base):
+    __tablename__ = "whatsapp_nachricht"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[int] = mapped_column(ForeignKey("whatsapp_chat.id"), index=True)
+    message_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    auftrag_id: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
+    richtung: Mapped[str] = mapped_column(String(20))
+    quelle: Mapped[str] = mapped_column(String(20), default="api")
+    gesendet_von: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    transkript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    typ: Mapped[str] = mapped_column(String(30), default="text")
+    text: Mapped[str] = mapped_column(Text, default="")
+    zeit: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(30), default="empfangen")
+    fehler: Mapped[str | None] = mapped_column(Text, nullable=True)
+    media_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    dateiname: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    chat_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class WhatsAppEreignis(Base):
+    __tablename__ = "whatsapp_ereignis"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), unique=True)
+    versuche: Mapped[int] = mapped_column(Integer, default=0)
+    naechster_versuch: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    payload: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(20), default="wartet", index=True)
+    fehler: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True))

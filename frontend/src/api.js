@@ -39,6 +39,21 @@ function postForm(pfad, params) {
 }
 
 export const api = {
+  whatsappVersandPruefen: (id, nachricht, daten) => anfrage(`/whatsapp/chats/${id}/nachrichten/${nachricht}/versand-pruefen`, {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(daten)}),
+  whatsappDateiSenden: (id, daten) => anfrage(`/whatsapp/chats/${id}/senden-datei`, {method: "POST", body: daten}),
+  whatsappTranskribieren: (id, nachricht) => anfrage(`/whatsapp/chats/${id}/nachrichten/${nachricht}/transkribieren`, {method: "POST"}),
+  whatsappVorlagen: () => anfrage("/whatsapp/vorlagen"),
+  whatsappDiagnose: () => anfrage("/whatsapp/diagnose"),
+  whatsappEreignisWiederholen: (id) => anfrage(`/whatsapp/ereignisse/${id}/wiederholen`, {method: "POST"}),
+  whatsappStatus: () => anfrage("/whatsapp/status"),
+  whatsappChats: (alle = false, archiv = false, suche = "") => anfrage(`/whatsapp/chats?${new URLSearchParams({alle, archiv, suche})}`),
+  whatsappChat: (id) => anfrage(`/whatsapp/chats/${id}`),
+  whatsappReservieren: (id) => anfrage(`/whatsapp/chats/${id}/reservierung`, {method: "POST"}),
+  whatsappFreigeben: (id) => anfrage(`/whatsapp/chats/${id}/freigeben`, {method: "POST"}),
+  whatsappVorschlag: (id) => anfrage(`/whatsapp/chats/${id}/vorschlag`, {method: "POST"}),
+  whatsappAendern: (id, feld, daten) => anfrage(`/whatsapp/chats/${id}/${feld}`, {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(daten)}),
+  whatsappSenden: (id, daten) => anfrage(`/whatsapp/chats/${id}/senden`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(daten)}),
+  whatsappMedium: (id, nachricht) => dateiAnfrage(`/whatsapp/chats/${id}/medien/${nachricht}`),
   angemeldeterBenutzer: () => anfrage("/auth/me"),
   login: (benutzername, passwort) =>
     anfrage("/auth/login", {

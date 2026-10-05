@@ -5,6 +5,7 @@ import {
   LogOut, ShieldCheck, Trash2, UserRound, Eye, ArrowLeft, Lock, StickyNote,
 } from "lucide-react";
 import { api } from "./api.js";
+import { useWhatsAppEingang, WhatsAppChatPanel, WhatsAppArchiv } from "./WhatsAppView.jsx";
 import logo from "./assets/krautl-logo.png";
 import { WissensdatenbankViewNeu } from "./WissensdatenbankView.jsx";
 import { GesendeteAntwortenView } from "./GesendeteAntwortenView.jsx";
@@ -872,7 +873,14 @@ function MailInhalt({ mail }) {
   );
 }
 
-function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onAlleMailsAendern, onReload }) {
+function PosteingangView({ mails: emailMails, katalog, benutzer, alleMails, mailZaehler, onAlleMailsAendern, onReload: emailReload }) {
+  const whatsapp = useWhatsAppEingang(alleMails, emailReload);
+  const onReload = whatsapp.neuLaden;
+  const [kanal, setKanal] = useState("alle");
+  const mails = useMemo(() => [...emailMails, ...whatsapp.chats.map(c => {
+    const klass = katalog.find(k => k.klassifikation_id === c.klassifikation_id);
+    return {id: `wa-${c.id}`, chatId: c.id, kanal: "whatsapp", kat: klass?.hauptkategorie || "Unklassifiziert", katId: c.klassifikation_id || "UNKLASSIFIZIERT", absender: c.name, absenderAdresse: `+${c.kontakt_id}`, betreff: c.vorschau, snippet: c.vorschau, zeit: formatMailZeit(c.aktualisiert_am), empfangenAm: c.aktualisiert_am, anhaenge: [], aufgaben: [], felder: {}, konfidenz: c.konfidenz || 0, prioritaet: String(klass?.standard_prio || "normal").toLowerCase(), reservierung: c.reserviert_von ? {benutzername: c.reserviert_von, name: c.reserviert_von} : null};
+  })].sort((a,b) => new Date(b.empfangenAm || 0) - new Date(a.empfangenAm || 0)), [emailMails, whatsapp.chats, katalog]);
   const [filter, setFilter] = useState(null);
   const [suchbegriff, setSuchbegriff] = useState("");
   const [selectedId, setSelectedId] = useState(mails[0]?.id ?? null);
@@ -914,8 +922,8 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
   }, []);
 
   const verfuegbareMails = useMemo(
-    () => mails.filter((mail) => !lokalAusgeblendeteMailIds.has(mail.id)),
-    [mails, lokalAusgeblendeteMailIds],
+    () => mails.filter((mail) => !lokalAusgeblendeteMailIds.has(mail.id) && (kanal === "alle" || (mail.kanal || "email") === kanal)),
+    [mails, lokalAusgeblendeteMailIds, kanal],
   );
   const kategorien = useMemo(
     () => [...new Set(verfuegbareMails.map((m) => m.kat))],
@@ -973,7 +981,7 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
   }, [selected?.id, reservierungFreigeben]);
 
   useEffect(() => {
-    if (!selected || !detailSichtbar || !fensterAktiv) return undefined;
+    if (!selected || selected.kanal === "whatsapp" || !detailSichtbar || !fensterAktiv) return undefined;
     const mailId = selected.id;
     const timer = window.setTimeout(async () => {
       try {
@@ -1196,7 +1204,7 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
             type="text"
             value={suchbegriff}
             onChange={(e) => setSuchbegriff(e.target.value)}
-            placeholder="Mails durchsuchen …"
+            placeholder="Eingang durchsuchen …"
             className="flex-1 min-w-0"
             style={{ ...fontUI, fontSize: "13px", color: tokens.ink, background: "transparent", border: "none", outline: "none" }}
           />
@@ -1212,18 +1220,22 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
               style={{ ...fontMono, fontSize: "9.5px", background: !alleMails ? tokens.mossDeep : tokens.paperRaised, color: !alleMails ? "#fff" : tokens.inkMuted }}
             >
               <span>MEINE</span>
-              <MailAnzahlTag anzahl={mailZaehler?.meine ?? 0} aktiv={!alleMails} />
+              <MailAnzahlTag anzahl={(mailZaehler?.meine ?? 0) + whatsapp.meine} aktiv={!alleMails} />
             </button>
             <button
               onClick={() => onAlleMailsAendern(true)}
               className="flex items-center gap-1.5 px-2 py-1"
               style={{ ...fontMono, fontSize: "9.5px", background: alleMails ? tokens.mossDeep : tokens.paperRaised, color: alleMails ? "#fff" : tokens.inkMuted, borderLeft: `1px solid ${tokens.line}` }}
             >
-              <span>ALLE MAILS</span>
-              <MailAnzahlTag anzahl={mailZaehler?.alle ?? 0} aktiv={alleMails} />
+              <span>ALLE</span>
+              <MailAnzahlTag anzahl={(mailZaehler?.alle ?? 0) + whatsapp.alle} aktiv={alleMails} />
             </button>
           </div>
         </div>
+        <div className="flex gap-2 px-4 py-2" aria-label="Nachrichtenkanal">
+          {[["alle", "Alle Kanäle"], ["email", "E-Mail"], ["whatsapp", "WhatsApp"]].map(([wert, label]) => <button key={wert} onClick={() => setKanal(wert)} style={{...AUSWAHL_BUTTON_STIL, padding: "4px 8px", background: kanal === wert ? tokens.mossPale : "transparent"}}>{label}</button>)}
+        </div>
+        {whatsapp.fehler && <div role="alert" className="px-4 py-2 text-xs" style={{color: tokens.rust}}>WhatsApp-Eingang konnte nicht geladen werden: {whatsapp.fehler}</div>}
         <div className="flex items-center gap-1.5 px-4 py-2 overflow-x-auto" style={{ borderBottom: `1px solid ${tokens.line}` }}>
             <button onClick={() => setFilter(null)} className="px-2 py-1 rounded-full shrink-0"
               style={{ ...fontMono, fontSize: "11px", background: !filter ? tokens.mossDeep : "transparent", color: !filter ? "#fff" : tokens.inkMuted, border: `1px solid ${!filter ? tokens.mossDeep : tokens.line}` }}>
@@ -1249,7 +1261,7 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
                   : "none",
               }}>
               <div className="flex items-center justify-between gap-2">
-                <Badge label={m.katId} color={farbeFuerKategorie(m.kat)} />
+                <div className="flex flex-wrap gap-1"><Badge label={m.kanal === "whatsapp" ? "WHATSAPP" : "E-MAIL"} color={tokens.mossDeep} /><Badge label={m.katId} color={farbeFuerKategorie(m.kat)} /></div>
                 <span className="whitespace-nowrap" style={{ ...fontMono, fontSize: "11px", color: tokens.inkMuted }}>{m.zeit}</span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -1260,7 +1272,7 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
               </div>
               <div style={{ ...fontSerif, fontSize: "13.5px" }}>{m.betreffDeutsch || m.betreff}</div>
               <div className="flex items-center justify-between gap-2">
-                <Konfidenz value={m.konfidenz} />
+                {m.kanal !== "whatsapp" && <Konfidenz value={m.konfidenz} />}
                 <MailReservierungsTag
                   reservierung={
                     lokaleReservierung?.mailId === m.id
@@ -1275,15 +1287,16 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
           {verfuegbareMails.length === 0 && (
             <div className="px-5 py-10 text-center" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
               {alleMails
-                ? "Keine Mails im Krautl-Posteingang."
-                : "Der Posteingang für Deine Rolle ist leer."}
+                ? "Keine Nachrichten im Krautl-Eingang."
+                : "Der Eingang für Deine Rolle ist leer."}
             </div>
           )}
         </div>
       </div>
 
       <div className={`flex-1 flex flex-col overflow-y-auto mail-detail-panel ${mobileDetailOffen ? "mobile-visible" : ""}`}>
-        {selected && (
+        {selected?.kanal === "whatsapp" && detailSichtbar && <WhatsAppChatPanel key={selected.id} id={selected.chatId} benutzer={benutzer} katalog={katalog} onReload={onReload} onZurueck={detailSchliessen} />}
+        {selected && selected.kanal !== "whatsapp" && (
           <>
             <div className="px-6 pt-5 pb-4 mail-detail-header" style={{ borderBottom: `1px solid ${tokens.line}` }}>
               <button type="button" onClick={detailSchliessen} className="mobile-back-button items-center gap-1.5 mb-3 px-2.5 py-1.5" style={AUSWAHL_BUTTON_STIL}>
@@ -1440,8 +1453,8 @@ function PosteingangView({ mails, katalog, benutzer, alleMails, mailZaehler, onA
         {!selected && (
           <div className="flex-1 flex items-center justify-center" style={{ ...fontUI, fontSize: "13px", color: tokens.inkMuted }}>
             {alleMails
-              ? "Keine Mails im Krautl-Posteingang."
-              : "Für Deine Rolle wartet gerade keine Mail."}
+              ? "Keine Nachrichten im Krautl-Eingang."
+              : "Für Deine Rolle wartet gerade keine Nachricht."}
           </div>
         )}
       </div>
@@ -2737,6 +2750,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
       const entwurfRoh = entwurfNachMailId[m.id];
       return {
         id: m.id,
+        empfangenAm: m.empfangen_am,
         klassifikation_id: m.klassifikation_id,
         kat: klass?.hauptkategorie ?? "Unklassifiziert",
         katId: m.klassifikation_id ?? "UNKLASSIFIZIERT",
@@ -2870,7 +2884,8 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
           <img src={logo} alt="Krautl" style={{ height: "34px", width: "auto" }} />
         </div>
         <nav className="flex items-center krautl-nav">
-          <NavTab icon={InboxIcon} label="Posteingang" mobileLabel="Postfach" active={tab === "posteingang"} onClick={() => setTab("posteingang")} />
+          <NavTab icon={InboxIcon} label="Eingang" mobileLabel="Eingang" active={tab === "posteingang"} onClick={() => setTab("posteingang")} />
+          <NavTab icon={Send} label="Chats" active={tab === "whatsapp"} onClick={() => setTab("whatsapp")} />
           <NavTab icon={Send} label="Gesendet" active={tab === "gesendet"} onClick={() => setTab("gesendet")} />
           <NavTab icon={Receipt} label="Rechnungen" count={offeneRechnungen} accent active={tab === "rechnungen"} onClick={() => setTab("rechnungen")} />
           <NavTab icon={BookOpen} label="Wissensdatenbank" mobileLabel="Wissen" count={daten.wissensvorschlaege.length} accent active={tab === "wissen"} onClick={() => setTab("wissen")} />
@@ -2928,6 +2943,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
       {tab === "klassifikationen" && <KlassifikationenView katalog={daten.katalog} onReload={neuLaden} />}
       {tab === "aktionslog" && <AktionslogView />}
       {tab === "gesendet" && <GesendeteAntwortenView />}
+      {tab === "whatsapp" && <WhatsAppArchiv benutzer={benutzer} katalog={daten.katalog} />}
       {tab === "rollen" && daten.rollenMailzugriff && <RollenMailzugriffView konfiguration={daten.rollenMailzugriff} onReload={neuLaden} />}
     </div>
   );
