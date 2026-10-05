@@ -55,8 +55,9 @@ OpenAI-Zugang. Versand und KI-Vorschläge erfolgen ausschließlich auf Knopfdruc
 Neue Nachrichten/Transkripte machen ältere Entwürfe prüfpflichtig. Neue Eingänge
 während des Sendens bleiben sichtbar. Ein dauerhafter Versandauftrag mit UUID
 verhindert Wiederholung desselben Auftrags. Bei Timeout oder Serverfehler gibt
-es keinen automatischen Neuversand: Unterbrochene Übergaben werden nach zwei Minuten wieder sichtbar. Erst am Handy prüfen und das Ergebnis
-explizit im Chat bestätigen. Nach definitiver Ablehnung kann eine neue Antwort
+es keinen automatischen Neuversand: Unterbrochene Übergaben werden nach zwei Minuten wieder sichtbar. Den Meta-Status abwarten oder das Ergebnis anhand eines verlässlichen Nachweises
+(z. B. Empfängerbestätigung oder technische Versandprüfung) explizit im Chat bestätigen.
+Ein ausbleibender Zustellstatus beweist keinen Nichtversand. Nach definitiver Ablehnung kann eine neue Antwort
 vorbereitet werden. Annahme, Versand, Zustellung und Lesen werden getrennt
 angezeigt. Reihenfolgefehler dürfen den Zustellstatus nicht zurücksetzen.
 
@@ -66,45 +67,61 @@ Nachrichten werden anhand der WhatsApp-ID erkannt. Fehler bleiben im Admin-
 Bereich **Chats** sichtbar und können ohne Versand erneut verarbeitet werden.
 Berechtigungen gelten für Chatliste, Verlauf, Medien und sämtliche Aktionen.
 
-### Einrichtung und Coexistence
+### Einrichtung: direkte Meta Cloud API (API-only)
 
-Die Anbindung ist standardmäßig deaktiviert. `Base.metadata.create_all` legt
-nur neue WhatsApp-Tabellen an; die bestehenden Mailtabellen werden nicht geändert.
-Die Geschäftsrufnummer ist **+4920227277835**. `WHATSAPP_PHONE_NUMBER_ID` ist dagegen
-eine von Meta vergebene technische ID und darf nicht mit der Rufnummer verwechselt werden.
+Der gewählte Betriebsweg verbindet Krautl direkt mit Meta, ohne zusätzlichen
+Anbieter und ohne parallele Nutzung der WhatsApp-Business-App für diese Nummer.
+Die Anbindung bleibt bis zur Einrichtung deaktiviert. `Base.metadata.create_all`
+legt nur neue WhatsApp-Tabellen an; bestehende Mailtabellen werden nicht geändert.
+Die Geschäftsrufnummer ist **+4920227277835**. `WHATSAPP_PHONE_NUMBER_ID` ist eine
+von Meta vergebene technische ID, nicht die Rufnummer.
 
-1. Business-App aktualisieren, Zugang zur bestehenden Nummer und Firmenkonten
-   klären. Das Vorhandensein der Handy-App oder einer QR-Gerätekopplung ist kein
-   Nachweis für API-Zugang oder ein Meta-Unternehmensportfolio.
-2. Coexistence-Onboarding verwenden; den bestehenden App-Account nicht löschen
-   und die Nummer nicht über einen gewöhnlichen API-only-Registrierungsweg umstellen.
-   Ein dokumentierter Weg ist [360dialog Coexistence Onboarding](https://docs.360dialog.com/docs/hub/embedded-signup/coexistence-onboarding.md).
-   Anbieterwahl und kostenpflichtiger Vertrag sind noch nicht abgeschlossen.
-3. `.env` anhand `.env.example` ergänzen. `WHATSAPP_ENABLED=true` erst nach
-   abgeschlossenem Onboarding und vorbereiteter Empfangskonfiguration setzen.
-4. Öffentliche HTTPS-Callback-URL:
+1. Unter [Meta Business Suite](https://business.facebook.com/) ein eigenes
+   Unternehmensportfolio verwenden oder einrichten. Unter
+   [Meta for Developers](https://developers.facebook.com/) eine eigene App mit
+   WhatsApp Cloud API anlegen und mit dem Portfolio verbinden. Ein vorhandener
+   Business-App-Zugang oder die QR-Gerätekopplung ersetzt diese API-Einrichtung nicht.
+2. Zuerst Metas bereitgestellte Testnummer verwenden. Im App-Dashboard einen
+   Testempfänger hinterlegen. Damit Empfang, Antwort und Zustellstatus prüfen,
+   bevor die bisherige Firmennummer verändert wird.
+3. `.env` anhand `.env.example` ergänzen: `WHATSAPP_PROVIDER=meta`,
+   `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_API_VERSION`,
+   `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` und `WHATSAPP_WABA_ID`.
+   Für den Dauerbetrieb einen System-User-Zugriffstoken mit Zugriff auf die eigene
+   WABA und den benötigten Messaging-/Management-Berechtigungen verwenden;
+   Ablauf und Widerruf berücksichtigen. Der temporäre Dashboard-Token reicht
+   nur für den Test. Geheimnisse ausschließlich in der Server-Konfiguration speichern.
+4. HTTPS-Callback-URL im Meta-Dashboard hinterlegen:
    `https://krautl.erikschweitzer.de/api/whatsapp/webhook`.
-   Bestehender Caddy `/api/*`-Proxy reicht aus.
-5. Direkte Meta-Anbindung: Phone-Number-ID, Zugriffstoken, unterstützte
-   API-Version, App-Secret und Verify-Token konfigurieren, Webhook verifizieren
-   und `messages` sowie `smb_message_echoes` abonnieren. WABA-ID wird zusätzlich
-   zum Laden freigegebener Vorlagen benötigt. Die konkrete Coexistence-
-   Zulassung für die eigene Meta-App ist noch zu prüfen.
-6. Bei 360dialog `WHATSAPP_PROVIDER=360dialog`, Phone-Number-ID, API-Key unter
-   `WHATSAPP_ACCESS_TOKEN` und `WHATSAPP_WEBHOOK_TOKEN` konfigurieren. Im
-   [Channel-Webhook](https://docs.360dialog.com/docs/messaging/webhook)
-   den Header `X-Krautl-Webhook-Token` mit demselben langen zufälligen Token
-   hinterlegen. Der direkte Meta-Modus prüft stattdessen HMAC-Signaturen.
-7. Nach Deployment zuerst Empfang und Handy-Echo prüfen. Einen echten Versand
-   erst für eine vom Nutzer veranlasste Antwort durchführen. Gesendete Nachricht
-   und Zustellstatus in Krautl und am Handy vergleichen.
+   `WHATSAPP_ENABLED=true` für die vorbereitete Testkonfiguration setzen und
+   den App-Service neu starten. Webhook mit dem konfigurierten Verify-Token
+   verifizieren, das Feld `messages` abonnieren und die App mit der WABA verbinden
+   (`subscribed_apps`). Die vorhandene Caddy-Weiterleitung für `/api/*` reicht aus.
+   Krautl prüft Metas HMAC-Signatur. App-Echoes sind bei API-only nicht erforderlich.
+5. Erst nach erfolgreichem Test die bisherige Nummer umstellen: benötigte alte
+   Chats vorher exportieren. Beim klassischen Wechsel aus der Business-App muss
+   der dortige WhatsApp-Account freigegeben werden; bloßes Deinstallieren der App
+   genügt nicht. Die Account-Löschung erst unmittelbar vor der vorbereiteten
+   Registrierung durchführen, nicht während der Testeinrichtung. Die bisherigen
+   App-Chats werden nicht in Krautl importiert; ein Export ist kein API-Import.
+6. Die Festnetznummer im WhatsApp Manager hinzufügen und ihre Erreichbarkeit
+   über den angebotenen Sprachanruf verifizieren. Anschließend die Nummer für
+   Cloud API registrieren, einschließlich der dort verlangten Zwei-Schritt-PIN.
+   Produktions-Phone-Number-ID und WABA-ID in der Server-Konfiguration setzen.
+   Erforderliche Firmenprüfung und Zahlungsdaten im Meta-Dashboard abschließen.
+   Die konkrete Freigabe der Nummer erfolgt bei Meta, nicht durch Krautl.
+7. Eingang von einer externen Testperson, Zuweisung, manuelle Antwort,
+   Zustellstatus und Wiederöffnung durch die nächste Kundennachricht prüfen.
+   Danach läuft die Bearbeitung dieser Nummer über Krautl; die Business-App und
+   ihre gekoppelten Geräte sind für diese Nummer nicht mehr der Arbeitsweg.
 
-Die [Coexistence-Dokumentation](https://docs.360dialog.com/docs/resources/phone-numbers/coexistence.md)
-beschreibt parallele App-Nutzung und Message-Echoes. Sie verlangt das Öffnen der
-Business-App mindestens alle 13 Tage und nennt Einschränkungen bei gekoppelten
-Geräten (insbesondere Windows/WearOS). Die konkrete Eignung der Nummer wird im
-Onboarding geprüft. Der Pilot importiert keine alte Chathistorie und keine
-Kontaktlisten. Neue Kontakte werden aus eingehenden Nachrichten übernommen.
+Referenz: [Metas Cloud-API-Sammlung](https://www.postman.com/meta/whatsapp-business-platform/collection/wlk6lh4/whatsapp-cloud-api)
+und [Migration einer bestehenden WhatsApp-Nummer](https://developers.facebook.com/docs/whatsapp/cloud-api/get-started/migrate-existing-whatsapp-number-to-a-business-account).
+Meta-Nachrichtengebühren können weiterhin anfallen. Ein zusätzlicher
+Anbietervertrag ist für diesen Betriebsweg nicht erforderlich. Der optionale
+360dialog-Adapter bleibt im Code erhalten, wird mit `WHATSAPP_PROVIDER=meta`
+aber nicht verwendet. Neue Kontakte entstehen aus eingehenden Nachrichten;
+alte Kontaktlisten und Chatverläufe werden nicht importiert.
 
 Nach 24 Stunden seit letzter Kundennachricht ist freier API-Versand gesperrt.
 Krautl lädt freigegebene Textvorlagen (BODY, optional FOOTER, positionale

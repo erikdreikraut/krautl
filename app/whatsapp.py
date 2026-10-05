@@ -92,7 +92,7 @@ async def status(request: Request):
     cfg = konfiguration()
     return {"aktiv": aktiv(), "eingerichtet": all(cfg[k] for k in (
         "PHONE_NUMBER_ID", "ACCESS_TOKEN", "APP_SECRET", "VERIFY_TOKEN", "API_VERSION", "PROVIDER", "WEBHOOK_TOKEN", "WABA_ID")),
-        "hinweis": "Cloud API / Coexistence; bestehende Nummer erst über passenden Onboarding-Weg verbinden."}
+        "hinweis": "Direkte Meta Cloud API; bestehende Nummer erst nach vorbereitetem API-only-Onboarding umstellen."}
 
 
 @router.get("/webhook")
@@ -460,7 +460,7 @@ async def _senden(ident, body, request, session, media=None):
     offen = (await session.execute(select(Nachricht.id).where(Nachricht.chat_id == ident,
         Nachricht.status.in_(["uebergabe", "unklar"])).limit(1))).first()
     if offen:
-        raise HTTPException(409, "Versandstatus unklar. Erst im WhatsApp-Postfach prüfen; kein erneuter Versand.")
+        raise HTTPException(409, "Versandstatus unklar. Meta-Status abwarten oder Versand mit verlässlichem Nachweis klären; kein erneuter Versand.")
     msg = Nachricht(chat_id=ident, auftrag_id=str(body.auftrag_id), richtung="ausgehend", text=text, typ="template" if template else "text",
         zeit=jetzt(), status="uebergabe", chat_revision=chat.revision,
         gesendet_von=request.state.benutzer["benutzername"],
@@ -486,7 +486,7 @@ async def _senden(ident, body, request, session, media=None):
         session.expire_all()
         chat = (await session.execute(select(Chat).where(Chat.id == ident).with_for_update())).scalar_one()
         msg = await session.get(Nachricht, msg_id)
-        msg.status, msg.fehler = "unklar", "Versandstatus unklar. Vor erneutem Versand im WhatsApp-Postfach prüfen."
+        msg.status, msg.fehler = "unklar", "Versandstatus unklar. Meta-Status abwarten oder Versand mit verlässlichem Nachweis klären; nicht erneut senden."
         chat.status = "offen"
         await session.commit()
         raise HTTPException(502, msg.fehler)
@@ -696,7 +696,7 @@ async def versand_pruefen(ident: int, nachricht_id: int, body: Aenderung, reques
     if chat.revision != body.revision:
         raise HTTPException(409, "Neue Nachricht eingegangen. Chat aktualisieren.")
     msg.status = "sent" if body.text == "versendet" else "failed"
-    msg.fehler = f"Am WhatsApp-Handy geprüft und manuell als {body.text} bestätigt durch {request.state.benutzer['benutzername']}"
+    msg.fehler = f"Versand mit Nachweis geprüft und manuell als {body.text} bestätigt durch {request.state.benutzer['benutzername']}"
     if body.text == "versendet" and chat.revision == msg.chat_revision:
         chat.status = "wartet_auf_kunde"
     await session.commit()
@@ -715,7 +715,7 @@ async def unterbrochene_versandauftraege(sessions):
                 .with_for_update())).scalars().all()
             for msg in msgs:
                 msg.status = "unklar"
-                msg.fehler = "Versandprozess unterbrochen. Vor erneutem Versand am WhatsApp-Handy prüfen."
+                msg.fehler = "Versandprozess unterbrochen. Meta-Status abwarten oder Versand mit verlässlichem Nachweis klären; nicht erneut senden."
                 chat.status = "offen"
         await session.commit()
 
