@@ -179,6 +179,10 @@ export const api = {
   faqVorschlagVerwerfen: (id) =>
     anfrage(`/faq/vorschlaege/${id}/verwerfen`, { method: "POST" }),
 
+  gesendeteAntworten: ({ suche = "", seite = 1 } = {}) =>
+    anfrage("/gesendet?" + new URLSearchParams({ suche, seite: String(seite) })),
+  gesendeteAntwort: (id) => anfrage(`/gesendet/${id}`),
+  gesendeteAntwortAblegen: (id) => anfrage(`/gesendet/${id}/ablage`, { method: "POST" }),
   entwuerfe: (alle = false) => anfrage(alle ? "/entwuerfe?alle=true" : "/entwuerfe"),
   antwortentwurfErzeugen: (mailId) =>
     anfrage(`/mails/${mailId}/antwortentwurf`, { method: "POST" }),

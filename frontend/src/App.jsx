@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   Search, ChevronDown, CheckCircle2, PenLine, Paperclip, X,
-  Inbox as InboxIcon, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
+  Inbox as InboxIcon, Send, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
   LogOut, ShieldCheck, Trash2, UserRound, Eye, ArrowLeft, Lock, StickyNote,
 } from "lucide-react";
 import { api } from "./api.js";
 import logo from "./assets/krautl-logo.png";
 import { WissensdatenbankViewNeu } from "./WissensdatenbankView.jsx";
+import { GesendeteAntwortenView } from "./GesendeteAntwortenView.jsx";
 
 // Grün/Creme an den Logo-Farben ausgerichtet (#509B32 dunkelgrün,
 // #FFFFD2 creme, #BEDC0F helles Blattgrün) — Amber/Rost bleiben als
@@ -174,6 +175,8 @@ const EREIGNIS_LABEL = {
   antwort_pruefung_uebersprungen: "KI-Prüfung übersprungen",
   antwort_versendet_test: "Testantwort an Mailserver übergeben",
   antwort_versendet: "Antwort an Mailserver übergeben",
+  antwort_gesendet_abgelegt: "Kopie in Gesendet abgelegt",
+  antwort_ablage_fehlgeschlagen: "Kopie in Gesendet fehlgeschlagen",
   antwort_versand_fehlgeschlagen: "Antwortversand fehlgeschlagen",
   wissensvorschlag_erstellt: "Wissensvorschlag erstellt",
   wissenspruefung_fehlgeschlagen: "Wissensprüfung fehlgeschlagen",
@@ -2207,6 +2210,11 @@ function AktionslogMailDialog({ mailId, onSchliessen }) {
                   </div>
                 </div>
               )}
+              {(mail.gesendete_antworten || []).map(antwort => <section key={antwort.id} className="m-5 p-4" style={{ background: tokens.mossPale, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
+                <h4 style={{ ...fontUI, fontWeight: 600 }}>Gesendete Antwort · {formatZeitpunkt(antwort.versendet_am)}</h4>
+                <div className="mt-2" style={{ ...fontSerif, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{antwort.text || "Kein Antworttext gespeichert."}</div>
+                {antwort.text_deutsch && antwort.text_deutsch !== antwort.text && <details className="mt-3"><summary>Deutsche Fassung</summary><div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{antwort.text_deutsch}</div></details>}
+              </section>)}
               <MailInhalt
                 key={mail.id}
                 mail={{ id: mail.id, betreff: mail.betreff, snippet: mail.text_auszug }}
@@ -2863,6 +2871,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         </div>
         <nav className="flex items-center krautl-nav">
           <NavTab icon={InboxIcon} label="Posteingang" mobileLabel="Postfach" active={tab === "posteingang"} onClick={() => setTab("posteingang")} />
+          <NavTab icon={Send} label="Gesendet" active={tab === "gesendet"} onClick={() => setTab("gesendet")} />
           <NavTab icon={Receipt} label="Rechnungen" count={offeneRechnungen} accent active={tab === "rechnungen"} onClick={() => setTab("rechnungen")} />
           <NavTab icon={BookOpen} label="Wissensdatenbank" mobileLabel="Wissen" count={daten.wissensvorschlaege.length} accent active={tab === "wissen"} onClick={() => setTab("wissen")} />
           <EinstellungenMenu
@@ -2918,6 +2927,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
       {tab === "wissen" && <WissensdatenbankViewNeu basis={daten.wissensbasis} faqEintraege={daten.faq} vorschlaege={daten.wissensvorschlaege} onReload={neuLaden} />}
       {tab === "klassifikationen" && <KlassifikationenView katalog={daten.katalog} onReload={neuLaden} />}
       {tab === "aktionslog" && <AktionslogView />}
+      {tab === "gesendet" && <GesendeteAntwortenView />}
       {tab === "rollen" && daten.rollenMailzugriff && <RollenMailzugriffView konfiguration={daten.rollenMailzugriff} onReload={neuLaden} />}
     </div>
   );

@@ -9,6 +9,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_antwortentwuer
 os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 
 from sqlalchemy import select
+from sqlalchemy.orm import undefer
 from fastapi import HTTPException, UploadFile
 
 from app.db import SessionLocal, engine
@@ -20,7 +21,7 @@ from app.main import (
 )
 from app.aufgaben import wartende_aufgaben_ausfuehren
 from app.models import (
-    Aktionslog, Base, Entwurf, Klassifikation, Mail, MailAufgabe, Postfach,
+    Aktionslog, Base, Entwurf, Versandkopie, Klassifikation, Mail, MailAufgabe, Postfach,
 )
 
 
@@ -247,6 +248,9 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         versand = AsyncMock(return_value={
             "message_id": "<test-1@dreikraut.de>",
             "empfaenger": "ada@example.test",
+            "absender": "service@dreikraut.de",
+            "betreff": "Re: Eine Frage",
+            "eml": b"Message-ID: <test-1@dreikraut.de>\r\n\r\nTestantwort",
         })
         abschluss = AsyncMock(return_value={"status": "bestaetigt"})
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
@@ -265,6 +269,17 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("ada@example.test", ergebnis["empfaenger"])
         self.assertNotIn("bcc", ergebnis)
         self.assertEqual("bestaetigt", ergebnis["abschlussstatus"])
+        async with SessionLocal() as session:
+            kopie = (await session.execute(select(Versandkopie).options(undefer(Versandkopie.eml))
+                .where(Versandkopie.entwurf_id == entwurf_id))).scalar_one()
+            self.assertEqual(kopie.eml, versand.return_value["eml"])
+            self.assertEqual(kopie.imap_status, "ausstehend")
+            self.assertEqual(kopie.gesendet_von, "Erik Schweitzer")
+        with patch("app.main.antwort_senden", versand):
+            async with SessionLocal() as session:
+                erneut = await entwurf_freigeben(entwurf_id, EntwurfFreigabe(finaler_text="Nicht erneut senden"),
+                    test_request(), session)
+                self.assertEqual(erneut["status"], "bereits_versendet")
         versand.assert_awaited_once()
         abschluss.assert_awaited_once_with(self.mail_id, "Erik Schweitzer")
         async with SessionLocal() as session:

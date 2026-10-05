@@ -1,6 +1,7 @@
 import os
 import unittest
 from datetime import datetime, timezone
+from email import message_from_bytes, policy
 from unittest.mock import patch
 
 from app.mail_versand import _synchron_senden, antwort_mit_signatur
@@ -108,7 +109,7 @@ class MailVersandTest(unittest.TestCase):
         }
         with patch.dict(os.environ, umgebung, clear=False), \
              patch("app.mail_versand.smtplib.SMTP", _SmtpAttrappe):
-            _synchron_senden(
+            ergebnis = _synchron_senden(
                 mail,
                 "Anbei die Unterlagen.",
                 self.erik,
@@ -119,7 +120,13 @@ class MailVersandTest(unittest.TestCase):
                 }],
             )
 
-        anhaenge = list(_SmtpAttrappe.nachricht.iter_attachments())
+        kopie = message_from_bytes(ergebnis["eml"], policy=policy.default)
+        self.assertEqual(kopie["Message-ID"], ergebnis["message_id"])
+        self.assertEqual(kopie["To"], _SmtpAttrappe.nachricht["To"])
+        self.assertEqual(kopie["Date"], _SmtpAttrappe.nachricht["Date"])
+        self.assertIsNotNone(kopie["Date"])
+        self.assertEqual(kopie.get_body(preferencelist=("plain",)).get_content(), _SmtpAttrappe.nachricht.get_body(preferencelist=("plain",)).get_content().replace("\n", "\r\n"))
+        anhaenge = list(kopie.iter_attachments())
         self.assertEqual(1, len(anhaenge))
         self.assertEqual("Hinweis.pdf", anhaenge[0].get_filename())
         self.assertEqual("application/pdf", anhaenge[0].get_content_type())

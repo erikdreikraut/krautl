@@ -8,7 +8,7 @@ kein Fine-Tuning nötig, siehe CLAUDE.md.
 """
 from datetime import datetime
 from sqlalchemy import (
-    String, Integer, Float, Boolean, DateTime, ForeignKey, Text, JSON, UniqueConstraint, func, false
+    String, Integer, Float, Boolean, DateTime, ForeignKey, Text, JSON, UniqueConstraint, LargeBinary, func, false
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -234,6 +234,25 @@ class Entwurf(Base):
     versendet_am: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     mail: Mapped["Mail"] = relationship(back_populates="entwuerfe")
+
+
+class Versandkopie(Base):
+    """Unveränderliche Nachricht nach SMTP-Übergabe; IMAP-Ablage ist separat."""
+    __tablename__ = "versandkopie"
+
+    entwurf_id: Mapped[int] = mapped_column(ForeignKey("entwurf.id", ondelete="CASCADE"), primary_key=True)
+    message_id: Mapped[str] = mapped_column(String(998), unique=True)
+    absender: Mapped[str] = mapped_column(String(255))
+    empfaenger: Mapped[str] = mapped_column(String(255))
+    betreff: Mapped[str] = mapped_column(Text)
+    gesendet_von: Mapped[str] = mapped_column(String(255))
+    anhaenge: Mapped[list] = mapped_column(JSON, default=list)
+    eml: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    imap_status: Mapped[str] = mapped_column(String(20), default="ausstehend", index=True)
+    imap_ordner: Mapped[str | None] = mapped_column(Text, nullable=True)
+    imap_fehler: Mapped[str | None] = mapped_column(Text, nullable=True)
+    imap_versuche: Mapped[int] = mapped_column(Integer, default=0)
+    imap_letzter_versuch: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Rechnung(Base):

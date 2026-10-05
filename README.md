@@ -33,6 +33,45 @@
 
 ## Schritte auf dem Server (mit Claude Code)
 
+### Gesendete Antworten
+
+Der Reiter **Gesendet** zeigt versendete Antworten auch nach Abschluss der
+ursprünglichen Anfrage. Die Suche erfasst Namen, Empfänger, Betreff und
+Antworttext; neueste Antworten stehen zuerst. Im Aktionslog zeigt die
+Mailansicht ebenfalls die gespeicherten Antworten. Die bisherigen Rollen-
+und Mailzugriffsrechte gelten auch für Suche, Ansicht, Download und Ablage.
+
+Ältere Antworten werden aus `entwurf.text_final` angezeigt. Für sie sind
+vollständige Mailkopien und damalige Anhänge nicht gespeichert; Empfänger
+und Betreff werden aus der Anfrage abgeleitet und entsprechend gekennzeichnet.
+Es werden keine alten Antworten erneut versendet oder als vollständige EML
+rekonstruiert.
+
+Ab dieser Erweiterung speichert KRAUTL nach erfolgreicher SMTP-Übergabe die
+Nachricht einschließlich Message-ID, Datum, Empfänger und Anhängen in der
+neuen Tabelle `versandkopie`. Sie wird beim App-Start automatisch angelegt.
+Die vollständige Nachricht lässt sich in **Gesendet** als EML herunterladen.
+„An Mailserver übergeben“ bestätigt die SMTP-Annahme, nicht die Zustellung
+beim Empfänger.
+
+Ein Hintergrundjob prüft alle 30 Sekunden ausstehende Kopien und legt sie im
+Gesendet-Ordner des Absenderpostfachs (ersatzweise Servicepostfach) ab.
+Der Ordner wird bevorzugt über die IMAP-Markierung `\Sent` erkannt, sonst
+über gängige Ordnernamen. Bei uneindeutiger Erkennung kann in `.env` der
+exakte vorhandene Ordner mit `IMAP_SERVICE_SENT_FOLDER` angegeben werden.
+Es werden keine neuen Mailordner angelegt.
+
+Versand und Ablage sind getrennt: Ein IMAP-Fehler nimmt den erfolgreichen
+Versand nicht zurück. KRAUTL zeigt den Ablagefehler an und versucht die Ablage
+nach mindestens fünf Minuten erneut (höchstens zehn automatische Versuche).
+**Kopie in Gesendet ablegen** ermöglicht einen weiteren manuellen Versuch.
+Die Message-ID-Prüfung verhindert doppelte Kopien bei Wiederholung; eine
+erneute Ablage verschickt niemals erneut eine Kundenmail. Ausstehende
+Kopien bleiben über App-Neustarts erhalten.
+
+Gezielte Tests: `python -m unittest tests.test_gesendete_antworten
+tests.test_mail_versand tests.test_antwortentwuerfe tests.test_berechtigungen`.
+
 ### Google-Merchant-Center-FAQ-Zusatzfeed
 
 Unter **Wissensdatenbank → Google-FAQ-Feed** stehen Feed-URL, letzte erfolgreiche

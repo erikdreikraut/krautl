@@ -36,7 +36,7 @@ from .berechtigungen import (
 from .models import (
     Aktionslog, Base, Mail, MailAufgabe, MailNotiz, MailReservierung, Postfach, Rechnung,
     FaqEintrag, FaqVorschlag,
-    Entwurf, Korrektur, Klassifikation, KlassifikationAufgabe, SystemStatus,
+    Entwurf, Versandkopie, Korrektur, Klassifikation, KlassifikationAufgabe, SystemStatus,
     Produkt, Produktfamilie, RollenMailzugriff, Wissenseintrag, WissensVorschlag,
 )
 from .wissensbasis import (
@@ -54,7 +54,11 @@ from .uebersetzungen import (
     uebersetzung_fuer_mail_sicherstellen,
 )
 
+from .gesendete_antworten import router as gesendet_router
+from .gesendet_ablage import versandkopien_ueberwachen
+
 app = FastAPI(title="Krautl API")
+app.include_router(gesendet_router)
 logger = logging.getLogger(__name__)
 google_product_qa_feed = GoogleProductQaFeed(SessionLocal)
 
@@ -347,15 +351,17 @@ async def on_startup():
     except Exception:
         pass  # Oberfläche bleibt für die Fehlerbehebung verfügbar.
     app.state.google_qa_task = asyncio.create_task(google_product_qa_feed.ueberwachen())
+    app.state.gesendet_task = asyncio.create_task(versandkopien_ueberwachen(SessionLocal))
 
 
 @app.on_event("shutdown")
 async def google_qa_beenden():
-    task = getattr(app.state, "google_qa_task", None)
-    if task:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
+    for name in ("google_qa_task", "gesendet_task"):
+        task = getattr(app.state, name, None)
+        if task:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 @app.api_route(FEED_PFAD, methods=["GET", "HEAD"])
@@ -1466,7 +1472,7 @@ async def aktionslog_mail_ansehen(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
-    """Liefert eine historische Mail ausschließlich zur Ansicht im Aktionslog."""
+    """Liefert eine historische Mail und ihre versendeten Antworten zur Ansicht."""
     mail = (await session.execute(
         select(Mail)
         .options(selectinload(Mail.notiz), selectinload(Mail.postfach))
@@ -1488,6 +1494,13 @@ async def aktionslog_mail_ansehen(
         "klassifikation_id": mail.klassifikation_id,
         "im_krautl_posteingang": mail.im_krautl_posteingang,
         "quellpostfach": mail.postfach.adresse if mail.postfach else None,
+        "gesendete_antworten": [
+            {"id": e.id, "versendet_am": e.versendet_am, "text": e.text_final,
+             "text_deutsch": e.text_final_deutsch}
+            for e in (await session.execute(select(Entwurf).where(
+                Entwurf.mail_id == mail.id, Entwurf.status == "versendet"
+            ).order_by(Entwurf.versendet_am.desc(), Entwurf.id.desc()))).scalars().all()
+        ],
         "anhang_dateinamen": mail.anhang_dateinamen or [],
         "notiz": (
             {
@@ -2421,6 +2434,16 @@ async def _entwurf_freigeben(
             + f"Message-ID {versandergebnis['message_id']}"
         ),
     ))
+    if versandergebnis.get("eml"):
+        session.add(Versandkopie(
+            entwurf_id=entwurf.id, message_id=versandergebnis["message_id"],
+            absender=versandergebnis["absender"], empfaenger=versandergebnis["empfaenger"],
+            betreff=versandergebnis["betreff"], gesendet_von=request.state.benutzer["name"],
+            anhaenge=[a["dateiname"] for a in versand_anhaenge], eml=versandergebnis["eml"],
+        ))
+    # Nach erfolgreichem SMTP keine Antwort verlieren, wenn die spätere
+    # Wissensprüfung oder IMAP-Ablage scheitert. Der Hintergrundjob legt nur ab.
+    await session.commit()
     if kundenservice:
         try:
             vorschlag = await wissenszuwachs_nach_antwort_pruefen(

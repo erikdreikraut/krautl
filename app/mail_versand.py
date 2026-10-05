@@ -4,8 +4,9 @@ import mimetypes
 import os
 import smtplib
 import ssl
+from email import policy
 from email.message import EmailMessage
-from email.utils import make_msgid, parseaddr
+from email.utils import formatdate, make_msgid, parseaddr
 
 from .models import Mail
 
@@ -120,6 +121,7 @@ def _synchron_senden(
     nachricht["Subject"] = _antwort_betreff(mail.betreff)
     absender_domain = smtp["user"].partition("@")[2] or None
     nachricht["Message-ID"] = make_msgid(domain=absender_domain)
+    nachricht["Date"] = formatdate(localtime=False, usegmt=True)
     if mail.message_id:
         nachricht["In-Reply-To"] = mail.message_id
         nachricht["References"] = mail.message_id
@@ -141,6 +143,8 @@ def _synchron_senden(
             filename=dateiname,
         )
 
+    # MIME-Grenzen, Datum und Message-ID vor Versand und Ablage festhalten.
+    eml = nachricht.as_bytes(policy=policy.SMTP)
     kontext = ssl.create_default_context()
     if smtp["port"] == 465:
         with smtplib.SMTP_SSL(
@@ -160,6 +164,9 @@ def _synchron_senden(
     return {
         "message_id": nachricht["Message-ID"],
         "empfaenger": empfaenger,
+        "absender": str(nachricht["From"]),
+        "betreff": str(nachricht["Subject"]),
+        "eml": eml,
     }
 
 
