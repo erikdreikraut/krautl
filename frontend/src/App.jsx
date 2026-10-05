@@ -22,6 +22,9 @@ const tokens = {
   moss: "#4F9B2E",
   mossDeep: "#2C5A18",
   mossPale: "#E8F0C8",
+  whatsappPale: "#E7F2FA",
+  whatsappSelected: "#D5E8F5",
+  whatsappBlue: "#366B8C",
   amber: "#B07B2E",
   amberPale: "#F3E7D2",
   rust: "#A5462F",
@@ -880,7 +883,15 @@ function PosteingangView({ mails: emailMails, katalog, benutzer, alleMails, mail
   const mails = useMemo(() => [...emailMails, ...whatsapp.chats.map(c => {
     const klass = katalog.find(k => k.klassifikation_id === c.klassifikation_id);
     return {id: `wa-${c.id}`, chatId: c.id, kanal: "whatsapp", kat: klass?.hauptkategorie || "Unklassifiziert", katId: c.klassifikation_id || "UNKLASSIFIZIERT", absender: c.name, absenderAdresse: `+${c.kontakt_id}`, betreff: c.vorschau, snippet: c.vorschau, zeit: formatMailZeit(c.aktualisiert_am), empfangenAm: c.aktualisiert_am, anhaenge: [], aufgaben: [], felder: {}, konfidenz: c.konfidenz || 0, prioritaet: String(klass?.standard_prio || "normal").toLowerCase(), reservierung: c.reserviert_von ? {benutzername: c.reserviert_von, name: c.reserviert_von} : null};
-  })].sort((a,b) => new Date(b.empfangenAm || 0) - new Date(a.empfangenAm || 0)), [emailMails, whatsapp.chats, katalog]);
+  })].sort((a, b) => {
+    const kanalRang = Number(b.kanal === "whatsapp") - Number(a.kanal === "whatsapp");
+    if (kanalRang) return kanalRang;
+    if (a.kanal !== "whatsapp") {
+      const prioRang = Number(b.prioritaet === "hoch") - Number(a.prioritaet === "hoch");
+      if (prioRang) return prioRang;
+    }
+    return new Date(b.empfangenAm || 0) - new Date(a.empfangenAm || 0);
+  }), [emailMails, whatsapp.chats, katalog]);
   const [filter, setFilter] = useState(null);
   const [suchbegriff, setSuchbegriff] = useState("");
   const [selectedId, setSelectedId] = useState(mails[0]?.id ?? null);
@@ -1253,15 +1264,17 @@ function PosteingangView({ mails: emailMails, katalog, benutzer, alleMails, mail
             <button key={m.id} onClick={() => mailOeffnen(m.id)} className="w-full text-left px-4 py-3 flex flex-col gap-1.5"
               style={{
                 borderBottom: `1px solid ${tokens.line}`,
-                background: m.prioritaet === "hoch"
-                  ? tokens.rustPale
-                  : selected?.id === m.id ? tokens.mossPale : "transparent",
+                background: m.kanal === "whatsapp"
+                  ? selected?.id === m.id ? tokens.whatsappSelected : tokens.whatsappPale
+                  : m.prioritaet === "hoch"
+                    ? tokens.rustPale
+                    : selected?.id === m.id ? tokens.mossPale : "transparent",
                 boxShadow: selected?.id === m.id
-                  ? `inset 3px 0 0 ${m.prioritaet === "hoch" ? tokens.rust : tokens.moss}`
+                  ? `inset 3px 0 0 ${m.kanal === "whatsapp" ? tokens.whatsappBlue : m.prioritaet === "hoch" ? tokens.rust : tokens.moss}`
                   : "none",
               }}>
               <div className="flex items-center justify-between gap-2">
-                <div className="flex flex-wrap gap-1"><Badge label={m.kanal === "whatsapp" ? "WHATSAPP" : "E-MAIL"} color={tokens.mossDeep} /><Badge label={m.katId} color={farbeFuerKategorie(m.kat)} /></div>
+                <Badge label={m.kanal === "whatsapp" ? "WhatsApp" : m.katId} color={m.kanal === "whatsapp" ? tokens.whatsappBlue : farbeFuerKategorie(m.kat)} />
                 <span className="whitespace-nowrap" style={{ ...fontMono, fontSize: "11px", color: tokens.inkMuted }}>{m.zeit}</span>
               </div>
               <div className="flex items-center gap-1.5">

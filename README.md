@@ -34,7 +34,10 @@
 ## WhatsApp und gemeinsamer Eingang
 
 Der bisherige Posteingang heißt **Eingang**. E-Mails und offene WhatsApp-Chats
-werden gemeinsam nach dem neuesten Eingang sortiert; Kanalfilter, Rollenlisten,
+werden gemeinsam angezeigt: WhatsApp-Chats zuerst, danach Mails mit hoher
+Priorität, anschließend übrige Mails. Innerhalb jeder Gruppe stehen neue
+Nachrichten zuerst. WhatsApp erhält einen eigenen blassblauen Hintergrund,
+Mails behalten Klassifikations-Tags und ihre bisherige Farbgebung; Kanalfilter, Rollenlisten,
 Kategorien und Zuständigkeiten bleiben verfügbar. Ein Kontakt belegt genau einen
 Chat je Geschäftsnummer. Nach manuell freigegebener Antwort wartet der Chat auf
 den Kunden und verschwindet aus dem aktiven Eingang. Eine neue Kundennachricht
