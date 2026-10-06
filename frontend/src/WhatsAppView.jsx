@@ -18,7 +18,7 @@ export function useWhatsAppEingang(alle, reload) {
   return {...daten, fehler, neuLaden: async () => { await Promise.all([laden(), reload()]); }};
 }
 
-export function WhatsAppChatPanel({id, benutzer, katalog, onReload, onZurueck}) {
+export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
   const [chat, setChat] = useState(null);
   const [text, setText] = useState("");
   const [datei, setDatei] = useState(null);
@@ -91,10 +91,8 @@ export function WhatsAppChatPanel({id, benutzer, katalog, onReload, onZurueck}) 
       </div>
       <div className="flex flex-wrap gap-2 mt-3">
         <label className="text-sm">Zuständig: <select aria-label="Chat zuweisen" disabled={gesperrt} value={chat.zustaendig_admin ? "admin" : "sachbearbeiter"} onChange={e => aktion(() => api.whatsappAendern(id, "zustaendigkeit", {revision: chat.revision, rolle: e.target.value}))} style={button}><option value="admin">Erik</option><option value="sachbearbeiter">Sachbearbeitung</option></select></label>
-        <select aria-label="Chatkategorie" disabled={gesperrt} style={button} value={chat.klassifikation_id || ""} onChange={e => aktion(() => api.whatsappAendern(id, "kategorie", {revision: chat.revision, klassifikation_id: e.target.value}))}><option value="" disabled>Kategorie wählen</option>{katalog.map(k => <option key={k.klassifikation_id} value={k.klassifikation_id}>{k.unterkategorie || k.klassifikation_id}</option>)}</select>
       </div>
       <div className="mt-3 text-sm" style={{color: fensterOffen ? "#2C5A18" : "#B07B2E"}}>{fensterOffen ? `Freie API-Antwort noch ungefähr ${rest} Stunden möglich.` : "24-Stunden-Fenster geschlossen. Eine freie API-Antwort ist gesperrt. Eine freigegebene Vorlage nutzen oder eine neue Kundennachricht abwarten."}</div>
-      {chat.klassifikation_fehler && <div role="alert" className="mt-2 text-sm">{chat.klassifikation_fehler}</div>}
       {chat.reserviert_von && chat.reserviert_von !== benutzer.benutzername && <div className="mt-2 text-sm">Wird von {chat.reserviert_von} bearbeitet.</div>}
     </div>
     <div className="p-5 flex flex-col gap-3" aria-label="WhatsApp-Chatverlauf">
@@ -134,7 +132,7 @@ export function WhatsAppChatPanel({id, benutzer, katalog, onReload, onZurueck}) 
   </div>;
 }
 
-export function WhatsAppArchiv({benutzer, katalog}) {
+export function WhatsAppArchiv({benutzer}) {
   const [chats, setChats] = useState([]); const [suche, setSuche] = useState("");
   const [status, setStatus] = useState(null); const [diagnose, setDiagnose] = useState([]);
   const [id, setId] = useState(null); const [fehler, setFehler] = useState("");
@@ -142,6 +140,6 @@ export function WhatsAppArchiv({benutzer, katalog}) {
   useEffect(() => {const t = setTimeout(laden, 250); return () => clearTimeout(t);}, [laden]);
   return <div className="flex flex-1 min-h-0 overflow-auto flex-col md:flex-row">
     <div className={`p-4 md:w-80 shrink-0 ${id ? "hidden md:block" : ""}`}><h2 className="text-lg">WhatsApp-Verlauf</h2><p className="text-sm mt-2">{status?.aktiv && status?.eingerichtet ? "Anbindung aktiviert; Live-Nachweis noch separat prüfen." : "Anbindung noch nicht aktiviert oder eingerichtet."}</p>{diagnose.map(e => <div key={e.id} role="alert" className="text-sm mt-2">Eingangsereignis #{e.id}: {e.fehler} <button style={button} onClick={async () => {try {await api.whatsappEreignisWiederholen(e.id); await laden();}catch(err){setFehler(err.message);}}}>Erneut verarbeiten</button></div>)}<input aria-label="Chats durchsuchen" placeholder="Name, Nummer oder Nachricht …" className="w-full p-2 my-3" value={suche} onChange={e => setSuche(e.target.value)} />{fehler && <div role="alert">{fehler}</div>}{chats.map(c => <button key={c.id} className="block w-full text-left p-3" style={{borderBottom: "1px solid #DDD9C4", background: id === c.id ? "#E8F0C8" : "transparent"}} onClick={() => setId(c.id)}><strong>{c.name}</strong><div className="text-sm">{c.vorschau}</div><div className="text-xs">{{offen: "Offen", wartet_auf_kunde: "Wartet auf Kunde", erledigt: "Erledigt"}[c.status] || c.status}</div></button>)}{!chats.length && <p>Keine Chats gefunden.</p>}</div>
-    {id && <WhatsAppChatPanel key={id} id={id} benutzer={benutzer} katalog={katalog} onReload={laden} onZurueck={() => setId(null)} />}
+    {id && <WhatsAppChatPanel key={id} id={id} benutzer={benutzer} onReload={laden} onZurueck={() => setId(null)} />}
   </div>;
 }

@@ -882,8 +882,7 @@ function PosteingangView({ mails: emailMails, katalog, benutzer, alleMails, mail
   const onReload = whatsapp.neuLaden;
   const [kanal, setKanal] = useState("alle");
   const mails = useMemo(() => [...emailMails, ...whatsapp.chats.map(c => {
-    const klass = katalog.find(k => k.klassifikation_id === c.klassifikation_id);
-    return {id: `wa-${c.id}`, chatId: c.id, kanal: "whatsapp", kat: klass?.hauptkategorie || "Unklassifiziert", katId: c.klassifikation_id || "UNKLASSIFIZIERT", absender: c.name, absenderAdresse: `+${c.kontakt_id}`, betreff: c.vorschau, snippet: c.vorschau, zeit: formatMailZeit(c.aktualisiert_am), empfangenAm: c.aktualisiert_am, anhaenge: [], aufgaben: [], felder: {}, konfidenz: c.konfidenz || 0, prioritaet: String(klass?.standard_prio || "normal").toLowerCase(), reservierung: c.reserviert_von ? {benutzername: c.reserviert_von, name: c.reserviert_von} : null};
+    return {id: `wa-${c.id}`, chatId: c.id, kanal: "whatsapp", kat: "WhatsApp", katId: "WhatsApp", absender: c.name, absenderAdresse: `+${c.kontakt_id}`, betreff: c.vorschau, snippet: c.vorschau, zeit: formatMailZeit(c.aktualisiert_am), empfangenAm: c.aktualisiert_am, anhaenge: [], aufgaben: [], felder: {}, konfidenz: 0, prioritaet: "normal", reservierung: c.reserviert_von ? {benutzername: c.reserviert_von, name: c.reserviert_von} : null};
   })].sort((a, b) => {
     const kanalRang = Number(b.kanal === "whatsapp") - Number(a.kanal === "whatsapp");
     if (kanalRang) return kanalRang;
@@ -1309,7 +1308,7 @@ function PosteingangView({ mails: emailMails, katalog, benutzer, alleMails, mail
       </div>
 
       <div className={`flex-1 flex flex-col overflow-y-auto mail-detail-panel ${mobileDetailOffen ? "mobile-visible" : ""}`}>
-        {selected?.kanal === "whatsapp" && detailSichtbar && <WhatsAppChatPanel key={selected.id} id={selected.chatId} benutzer={benutzer} katalog={katalog} onReload={onReload} onZurueck={detailSchliessen} />}
+        {selected?.kanal === "whatsapp" && detailSichtbar && <WhatsAppChatPanel key={selected.id} id={selected.chatId} benutzer={benutzer} onReload={onReload} onZurueck={detailSchliessen} />}
         {selected && selected.kanal !== "whatsapp" && (
           <>
             <div className="px-6 pt-5 pb-4 mail-detail-header" style={{ borderBottom: `1px solid ${tokens.line}` }}>

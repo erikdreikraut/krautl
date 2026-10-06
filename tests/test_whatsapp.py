@@ -6,6 +6,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
+from types import SimpleNamespace
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test")
@@ -259,10 +260,9 @@ class WhatsAppTest(unittest.IsolatedAsyncioTestCase):
             session.add(Klassifikation(klassifikation_id="PRIVAT", hauptkategorie="Privat", unterkategorie="Privat",
                 beschreibung="Test", standard_prio="normal", aktion_id="KEINE_AKTION"))
             session.add(RollenMailzugriff(rolle="sachbearbeiter", klassifikation_id="PRIVAT", darf_sehen=False))
+            current = await session.get(Chat, chat.id)
+            current.klassifikation_id = "PRIVAT"  # Historische Berechtigungen bleiben geschützt.
             await session.commit()
-        response = await self.client.put(f"/whatsapp/chats/{chat.id}/kategorie", headers=self.admin,
-            json={"revision": 1, "klassifikation_id": "PRIVAT"})
-        self.assertEqual(response.status_code, 200)
         self.assertEqual((await self.client.get(f"/whatsapp/chats/{chat.id}", headers=self.staff)).status_code, 403)
         self.assertEqual((await self.client.post(f"/whatsapp/chats/{chat.id}/vorschlag", headers=self.staff)).status_code, 403)
         self.assertEqual((await self.client.get(f"/whatsapp/chats/{chat.id}/medien/1", headers=self.staff)).status_code, 403)
@@ -343,40 +343,37 @@ class WhatsAppTest(unittest.IsolatedAsyncioTestCase):
             msg = (await session.execute(select(Nachricht).where(Nachricht.richtung == "ausgehend"))).scalar_one()
             self.assertEqual(msg.status, "unklar")
 
-    async def test_auto_category_and_assignment_respect_permissions(self):
-        chat = await self.eingang()
-        async with self.sessions() as session:
-            session.add(Klassifikation(klassifikation_id="PRIVAT", hauptkategorie="Privat", unterkategorie="Privat", beschreibung="Test", standard_prio="hoch", aktion_id="KEINE_AKTION"))
-            session.add(RollenMailzugriff(rolle="sachbearbeiter", klassifikation_id="PRIVAT", darf_sehen=False))
-            await session.commit()
-        with patch("app.whatsapp._chat_klassifizieren", return_value={"klassifikation_id": "PRIVAT", "konfidenz": .9}):
-            await whatsapp.naechsten_chat_klassifizieren(self.sessions)
-        async with self.sessions() as session:
-            c = await session.get(Chat, chat.id)
-            self.assertEqual(c.klassifikation_id, "PRIVAT")
-            self.assertTrue(c.zustaendig_admin)
-            self.assertFalse(c.zustaendig_sachbearbeiter)
+    async def test_incoming_and_reopened_chat_do_not_call_ai(self):
+        with patch("app.whatsapp.Anthropic") as ai:
+            chat = await self.eingang()
+            await self.client.put(f"/whatsapp/chats/{chat.id}/erledigen", headers=self.admin, json={"revision": 1})
+            chat = await self.eingang(self.payload("follow-up"))
+            ai.assert_not_called()
+        self.assertEqual(chat.status, "offen")
+        self.assertIsNone(chat.klassifikation_id)
+        self.assertEqual(chat.revision, 2)
 
-    async def test_manual_category_never_overwritten_by_background(self):
+    async def test_category_action_removed(self):
         chat = await self.eingang()
-        async with self.sessions() as session:
-            c = await session.get(Chat, chat.id); c.klassifikation_manuell = True
-            await session.commit()
-        with patch("app.whatsapp._chat_klassifizieren") as classify:
-            await whatsapp.naechsten_chat_klassifizieren(self.sessions)
-            classify.assert_not_called()
+        response = await self.client.put(f"/whatsapp/chats/{chat.id}/kategorie", headers=self.admin,
+            json={"revision": 1, "klassifikation_id": "KUNDE"})
+        self.assertEqual(response.status_code, 404)
 
-    async def test_classifier_failure_visible_without_losing_message(self):
+    async def test_explicit_proposal_still_uses_ai_and_never_sends(self):
         chat = await self.eingang()
-        async with self.sessions() as session:
-            session.add(Klassifikation(klassifikation_id="KUNDE", hauptkategorie="Kunde", unterkategorie="Kunde", beschreibung="Test", standard_prio="normal", aktion_id="KEINE_AKTION"))
-            await session.commit()
-        with patch("app.whatsapp._chat_klassifizieren", side_effect=RuntimeError("synthetic")):
-            await whatsapp.naechsten_chat_klassifizieren(self.sessions)
-        async with self.sessions() as session:
-            c = await session.get(Chat, chat.id)
-            self.assertIsNotNone(c.klassifikation_fehler)
-            self.assertEqual(c.status, "offen")
+        with patch("app.whatsapp.Anthropic") as ai, patch("app.whatsapp.api_senden", new_callable=AsyncMock) as send:
+            ai.return_value.messages.create.return_value = SimpleNamespace(
+                content=[SimpleNamespace(type="text", text="Hallo, wie kann ich helfen?")])
+            response = await self.client.post(f"/whatsapp/chats/{chat.id}/vorschlag", headers=self.admin)
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()["text"], "Hallo, wie kann ich helfen?")
+            ai.return_value.messages.create.assert_called_once()
+            send.assert_not_awaited()
+        detail = (await self.client.get(f"/whatsapp/chats/{chat.id}", headers=self.admin)).json()
+        self.assertEqual(detail["entwurf"], "Hallo, wie kann ich helfen?")
+        self.assertEqual(detail["status"], "offen")
+        self.assertEqual(len(detail["nachrichten"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

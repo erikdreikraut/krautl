@@ -45,9 +45,10 @@ den Kunden und verschwindet aus dem aktiven Eingang. Eine neue Kundennachricht
 suchbaren Verlauf auch nach Abschluss.
 
 Implementiert sind Textnachrichten, manuell freigegebene Wissensbasis-Vorschläge,
-Entwürfe, interne Notizen, Zuweisung, Kategoriewahl, 90-Sekunden-Reservierung,
+Entwürfe, interne Notizen, Zuweisung, 90-Sekunden-Reservierung,
 API-Versandstatus, eingehende Medien, Sprachnachrichten-Transkription sowie
-PDF-/JPG-/PNG-Versand. Neue Chatnachrichten werden automatisch anhand des vorhandenen Katalogs kategorisiert; manuell gewählte Kategorien bleiben erhalten. Es werden keine
+PDF-/JPG-/PNG-Versand. WhatsApp-Chats werden weder beim ersten Eingang noch bei weiteren Nachrichten KI-klassifiziert.
+Es gibt keine Kategorieauswahl für Chats; die KI wird für Antwortvorschläge weiterhin auf Knopfdruck genutzt. Es werden keine
 Mail-Verschiebeaktionen auf Chats ausgeführt. Vorschläge benutzen den Verlauf
 und freigegebene Wissenseinträge/FAQ; Transkription benötigt den vorhandenen
 OpenAI-Zugang. Versand und KI-Vorschläge erfolgen ausschließlich auf Knopfdruck.
