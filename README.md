@@ -38,11 +38,12 @@ werden gemeinsam angezeigt: WhatsApp-Chats zuerst, danach Mails mit hoher
 Priorität, anschließend übrige Mails. Innerhalb jeder Gruppe stehen neue
 Nachrichten zuerst. WhatsApp erhält einen eigenen blassblauen Hintergrund,
 Mails behalten Klassifikations-Tags und ihre bisherige Farbgebung; Kanalfilter, Rollenlisten,
-Kategorien und Zuständigkeiten bleiben verfügbar. Ein Kontakt belegt genau einen
+Zuständigkeiten bleiben verfügbar. Ein Kontakt belegt genau einen
 Chat je Geschäftsnummer. Nach manuell freigegebener Antwort wartet der Chat auf
 den Kunden und verschwindet aus dem aktiven Eingang. Eine neue Kundennachricht
-öffnet ihn wieder. **Erledigt** schließt ohne Versand. **Chats** zeigt den
-suchbaren Verlauf auch nach Abschluss.
+öffnet ihn wieder. **Erledigt** schließt ohne Versand. **Archiv → WhatsApp-Chats** zeigt den
+suchbaren Verlauf auch nach Abschluss. **Archiv → Gesendete E-Mails** enthält
+die bisherige Ansicht gesendeter Antworten.
 
 Implementiert sind Textnachrichten, manuell freigegebene Wissensbasis-Vorschläge,
 Entwürfe, interne Notizen, Zuweisung, 90-Sekunden-Reservierung,
@@ -65,7 +66,7 @@ angezeigt. Reihenfolgefehler dürfen den Zustellstatus nicht zurücksetzen.
 Webhook-Ereignisse werden vor der HTTP-Bestätigung in PostgreSQL gespeichert.
 Der App-Hintergrundprozess verarbeitet sie alle zwei Sekunden; wiederholte
 Nachrichten werden anhand der WhatsApp-ID erkannt. Fehler bleiben im Admin-
-Bereich **Chats** sichtbar und können ohne Versand erneut verarbeitet werden.
+Bereich **Archiv → WhatsApp-Chats** sichtbar und können ohne Versand erneut verarbeitet werden.
 Berechtigungen gelten für Chatliste, Verlauf, Medien und sämtliche Aktionen.
 
 ### Einrichtung: direkte Meta Cloud API (API-only)
