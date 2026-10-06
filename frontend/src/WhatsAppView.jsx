@@ -98,7 +98,7 @@ export function WhatsAppChatPanel({id, benutzer, katalog, onReload, onZurueck}) 
       {chat.reserviert_von && chat.reserviert_von !== benutzer.benutzername && <div className="mt-2 text-sm">Wird von {chat.reserviert_von} bearbeitet.</div>}
     </div>
     <div className="p-5 flex flex-col gap-3" aria-label="WhatsApp-Chatverlauf">
-      {chat.nachrichten.map(m => <div key={m.id} className="rounded-lg p-3 max-w-full" style={{alignSelf: m.richtung === "eingehend" ? "flex-start" : "flex-end", background: m.richtung === "eingehend" ? "#FDFCEE" : "#E8F0C8", width: "min(85%, 650px)", overflowWrap: "anywhere"}}>
+      {chat.nachrichten.map(m => <div key={m.id} className="rounded-lg p-3 max-w-full" style={{alignSelf: "flex-start", marginLeft: m.richtung === "eingehend" ? 0 : "min(8%, 120px)", background: m.richtung === "eingehend" ? "#FDFCEE" : "#E8F0C8", width: "min(85%, 650px)", overflowWrap: "anywhere"}}>
         <div className="text-xs mb-1">{m.richtung === "eingehend" ? chat.name : m.quelle === "app" ? "Wir · Handy" : `Wir · ${m.gesendet_von || "Krautl"}`}</div>
         <div style={{whiteSpace: "pre-wrap"}}>{m.text}</div>
         {m.media && <button style={button} className="mt-2" onClick={() => aktion(async () => {
