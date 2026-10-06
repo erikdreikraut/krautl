@@ -29,6 +29,7 @@ const tokens = {
   amberPale: "#F3E7D2",
   rust: "#A5462F",
   rustPale: "#F1DED7",
+  rustSelected: "#EACBC1",
 };
 
 const fontDisplay = { fontFamily: "'Source Serif 4', serif", fontWeight: 700 };
@@ -1267,8 +1268,8 @@ function PosteingangView({ mails: emailMails, katalog, benutzer, alleMails, mail
                 background: m.kanal === "whatsapp"
                   ? selected?.id === m.id ? tokens.whatsappSelected : tokens.whatsappPale
                   : m.prioritaet === "hoch"
-                    ? tokens.rustPale
-                    : selected?.id === m.id ? tokens.mossPale : "transparent",
+                    ? selected?.id === m.id ? tokens.rustSelected : tokens.rustPale
+                    : selected?.id === m.id ? tokens.mossPale : tokens.paper,
                 boxShadow: selected?.id === m.id
                   ? `inset 3px 0 0 ${m.kanal === "whatsapp" ? tokens.whatsappBlue : m.prioritaet === "hoch" ? tokens.rust : tokens.moss}`
                   : "none",
