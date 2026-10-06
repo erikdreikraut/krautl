@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   Search, ChevronDown, CheckCircle2, PenLine, Paperclip, X,
-  Inbox as InboxIcon, Send, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
+  Inbox as InboxIcon, Archive, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
   LogOut, ShieldCheck, Trash2, UserRound, Eye, ArrowLeft, Lock, StickyNote,
 } from "lucide-react";
 import { api } from "./api.js";
@@ -2744,6 +2744,7 @@ export default function KrautlUI() {
 
 function KrautlAnwendung({ benutzer, onAbmelden }) {
   const [tab, setTab] = useState("posteingang");
+  const [archivBereich, setArchivBereich] = useState("whatsapp");
   const [alleMails, setAlleMails] = useState(true);
   const { daten, fehler, neuLaden } = verwendeKrautlDaten(onAbmelden, benutzer, alleMails);
 
@@ -2898,8 +2899,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         </div>
         <nav className="flex items-center krautl-nav">
           <NavTab icon={InboxIcon} label="Eingang" mobileLabel="Eingang" active={tab === "posteingang"} onClick={() => setTab("posteingang")} />
-          <NavTab icon={Send} label="Chats" active={tab === "whatsapp"} onClick={() => setTab("whatsapp")} />
-          <NavTab icon={Send} label="Gesendet" active={tab === "gesendet"} onClick={() => setTab("gesendet")} />
+          <NavTab icon={Archive} label="Archiv" active={tab === "archiv"} onClick={() => setTab("archiv")} />
           <NavTab icon={Receipt} label="Rechnungen" count={offeneRechnungen} accent active={tab === "rechnungen"} onClick={() => setTab("rechnungen")} />
           <NavTab icon={BookOpen} label="Wissensdatenbank" mobileLabel="Wissen" count={daten.wissensvorschlaege.length} accent active={tab === "wissen"} onClick={() => setTab("wissen")} />
           <EinstellungenMenu
@@ -2955,8 +2955,27 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
       {tab === "wissen" && <WissensdatenbankViewNeu basis={daten.wissensbasis} faqEintraege={daten.faq} vorschlaege={daten.wissensvorschlaege} onReload={neuLaden} />}
       {tab === "klassifikationen" && <KlassifikationenView katalog={daten.katalog} onReload={neuLaden} />}
       {tab === "aktionslog" && <AktionslogView />}
-      {tab === "gesendet" && <GesendeteAntwortenView />}
-      {tab === "whatsapp" && <WhatsAppArchiv benutzer={benutzer} katalog={daten.katalog} />}
+      {tab === "archiv" && <div className="flex flex-col flex-1 min-h-0">
+        <div role="tablist" aria-label="Archiv" className="flex gap-1 px-4 pt-3 shrink-0" style={{borderBottom: `1px solid ${tokens.line}`}}>
+          {[["whatsapp", "WhatsApp-Chats"], ["gesendet", "Gesendete E-Mails"]].map(([bereich, label], index) => <button
+            key={bereich} type="button" role="tab" id={`archiv-tab-${bereich}`} aria-selected={archivBereich === bereich}
+            aria-controls={`archiv-panel-${bereich}`} tabIndex={archivBereich === bereich ? 0 : -1}
+            className="px-3 py-2" style={{...fontUI, color: archivBereich === bereich ? tokens.mossDeep : tokens.inkMuted,
+              fontWeight: archivBereich === bereich ? 600 : 400, borderBottom: `2px solid ${archivBereich === bereich ? tokens.mossDeep : "transparent"}`}}
+            onClick={() => setArchivBereich(bereich)}
+            onKeyDown={e => {
+              if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+              e.preventDefault();
+              const ziel = e.key === "Home" ? "whatsapp" : e.key === "End" ? "gesendet" : index === 0 ? "gesendet" : "whatsapp";
+              setArchivBereich(ziel);
+              document.getElementById(`archiv-tab-${ziel}`)?.focus();
+            }}
+          >{label}</button>)}
+        </div>
+        <div role="tabpanel" id={`archiv-panel-${archivBereich}`} aria-labelledby={`archiv-tab-${archivBereich}`} className="flex flex-1 min-h-0">
+          {archivBereich === "whatsapp" ? <WhatsAppArchiv benutzer={benutzer} /> : <GesendeteAntwortenView />}
+        </div>
+      </div>}
       {tab === "rollen" && daten.rollenMailzugriff && <RollenMailzugriffView konfiguration={daten.rollenMailzugriff} onReload={neuLaden} />}
     </div>
   );
