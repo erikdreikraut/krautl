@@ -32,6 +32,10 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
   const [basisRevision, setBasisRevision] = useState(null);
   const initialisiert = useRef(false);
   const versandAuftrag = useRef(null);
+  const antwortRef = useRef(null);
+  const fokusGesetzt = useRef(false);
+  const fokusNachVersand = useRef(false);
+  const aktionLaeuft = useRef(false);
   const laden = useCallback(async () => {
     const c = await api.whatsappChat(id);
     setChat(c);
@@ -59,11 +63,21 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
     aktualisieren(); const timer = setInterval(aktualisieren, 15000);
     return () => {aktiv = false; clearInterval(timer); api.whatsappFreigeben(id).catch(() => {});};
   }, [id, laden]);
+  useEffect(() => {
+    if (!chat || !eigene || laeuft || !antwortRef.current) return;
+    if (!fokusGesetzt.current || fokusNachVersand.current) {
+      antwortRef.current.focus({preventScroll: true});
+      fokusGesetzt.current = true;
+      fokusNachVersand.current = false;
+    }
+  }, [chat, eigene, laeuft]);
   async function aktion(fn) {
+    if (aktionLaeuft.current) return;
+    aktionLaeuft.current = true;
     setLaeuft(true); setFehler("");
     try { await fn(); await laden(); await onReload(); }
     catch (e) { setFehler(e.message); }
-    finally { setLaeuft(false); }
+    finally { aktionLaeuft.current = false; setLaeuft(false); }
   }
   if (!chat) return <div className="p-6">{fehler || "Chat wird geladen …"}</div>;
   const gesperrt = !eigene || laeuft;
@@ -72,6 +86,7 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
   const rest = fensterOffen ? Math.max(1, Math.ceil((new Date(chat.antwortfenster_bis) - new Date()) / 3600000)) : 0;
   const vorlage = vorlageIndex === "" ? null : vorlagen[Number(vorlageIndex)];
   const vorlagenText = vorlage ? parameter.reduce((t, p, i) => t.replaceAll(`{{${i+1}}}`, p), vorlage.text) : "";
+  const versandGesperrt = gesperrt || (vorlage ? parameter.some(p => !p.trim()) : veraltet || !fensterOffen || (!text.trim() && !datei));
   const zustand = {offen: "Offen", wartet_auf_kunde: "Wartet auf Kunde", erledigt: "Erledigt"}[chat.status];
   const senden = async () => {
     if (!versandAuftrag.current) versandAuftrag.current = crypto.randomUUID();
@@ -81,6 +96,29 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
     if (["angenommen", "sent", "delivered", "read"].includes(result.status)) {
       setText(""); setDatei(null); setVorlageIndex(""); versandAuftrag.current = null;
     } else throw new Error(result.fehler || "Versandstatus prüfen; nicht erneut senden.");
+  };
+  const antwortSenden = () => {
+    if (versandGesperrt || aktionLaeuft.current) return;
+    fokusNachVersand.current = true;
+    return aktion(senden);
+  };
+  const antwortTaste = e => {
+    if (e.key !== "Enter" || e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+    e.preventDefault();
+    if (e.repeat || gesperrt || aktionLaeuft.current) return;
+    if (e.ctrlKey) {
+      const feld = e.currentTarget;
+      const start = feld.selectionStart;
+      const ende = feld.selectionEnd;
+      const neu = text.slice(0, start) + "\n" + text.slice(ende);
+      if (neu.length > feld.maxLength) return;
+      setText(neu);
+      requestAnimationFrame(() => {
+        if (antwortRef.current === feld) feld.setSelectionRange(start + 1, start + 1);
+      });
+    } else if (!e.shiftKey && !e.altKey && !e.metaKey) {
+      antwortSenden();
+    }
   };
   return <div className="flex flex-col min-h-0 flex-1" style={{color: "#242A1F"}}>
     <div className="p-5" style={{borderBottom: "1px solid #DDD9C4"}}>
@@ -113,7 +151,8 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
     <div className="p-5" style={{borderTop: "1px solid #DDD9C4"}}>
       {veraltet && <div className="mb-2 text-sm" style={{color: "#A33E25"}}>Neue Kundennachricht: Antwort prüfen. <button style={button} disabled={gesperrt} onClick={() => {setBasisRevision(chat.revision); versandAuftrag.current = null;}}>Antwort geprüft</button></div>}
       <label className="block text-sm mb-2" htmlFor={`wa-antwort-${id}`}>Antwort an {chat.name}</label>
-      <textarea id={`wa-antwort-${id}`} value={text} disabled={gesperrt} rows={4} maxLength={datei ? 1024 : 4096} className="w-full p-3 rounded-md" style={{background: "#FDFCEE", border: "1px solid #DDD9C4"}} onChange={e => {setText(e.target.value);}} />
+      <textarea ref={antwortRef} onKeyDown={antwortTaste} aria-describedby={`wa-tasten-${id}`} id={`wa-antwort-${id}`} value={text} disabled={gesperrt} rows={4} maxLength={datei ? 1024 : 4096} className="w-full p-3 rounded-md" style={{background: "#FDFCEE", border: "1px solid #DDD9C4"}} onChange={e => {setText(e.target.value);}} />
+      <div id={`wa-tasten-${id}`} className="text-xs mt-1" style={{color: "#6C6F5F"}}>Enter: senden · Strg+Enter: Zeilenumbruch</div>
       {fensterOffen && <label className="block text-sm mt-2">Anhang (PDF bis 10 MB, JPG/PNG bis 5 MB)<input type="file" accept=".pdf,.jpg,.jpeg,.png" disabled={gesperrt} onChange={e => setDatei(e.target.files?.[0] || null)} className="block mt-1 max-w-full" /></label>}
       {!fensterOffen && <div className="my-3 p-3" style={{background: "#F3E7D2"}}>
         <button style={button} disabled={gesperrt} onClick={() => aktion(async () => setVorlagen(await api.whatsappVorlagen()))}>Freigegebene Textvorlagen laden</button>
@@ -123,7 +162,7 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
       <div className="flex flex-wrap gap-2 mt-2">
         <button style={button} disabled={gesperrt} onClick={() => aktion(async () => {const result = await api.whatsappVorschlag(id); setText(result.text); setBasisRevision(result.revision); versandAuftrag.current = null;})}>✦ Antwort vorschlagen</button>
         <button style={button} disabled={gesperrt || veraltet} onClick={() => aktion(() => api.whatsappAendern(id, "entwurf", {text, revision: chat.revision}))}>Entwurf speichern</button>
-        <button style={{...button, background: "#2C5A18", color: "white"}} disabled={gesperrt || (vorlage ? parameter.some(p => !p.trim()) : veraltet || !fensterOffen || (!text.trim() && !datei))} onClick={() => aktion(senden)}>{laeuft ? "Bitte warten …" : (vorlage ? "Vorlage senden" : "Antwort senden")}</button>
+        <button style={{...button, background: "#2C5A18", color: "white"}} disabled={versandGesperrt} onClick={antwortSenden}>{laeuft ? "Bitte warten …" : (vorlage ? "Vorlage senden" : "Antwort senden")}</button>
       </div>
       <label className="block text-sm mt-5">Interne Notiz<textarea value={notiz} disabled={gesperrt} onChange={e => setNotiz(e.target.value)} rows={2} className="w-full p-2 mt-1" style={{background: "#FDFCEE", border: "1px solid #DDD9C4"}} /></label>
       <button style={button} disabled={gesperrt} onClick={() => aktion(() => api.whatsappAendern(id, "notiz", {text: notiz, revision: chat.revision}))}>Notiz speichern</button>
