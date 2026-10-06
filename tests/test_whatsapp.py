@@ -70,6 +70,22 @@ class WhatsAppTest(unittest.IsolatedAsyncioTestCase):
         return await self.client.post(f"/whatsapp/chats/{chat.id}/senden", headers=self.admin,
             json={"text": "Antwort", "revision": chat.revision if revision is None else revision, "auftrag_id": str(auftrag or uuid4())})
 
+    async def test_sender_name_uses_profile_or_phone_number(self):
+        payload = self.payload()
+        contact = payload["entry"][0]["changes"][0]["value"]["contacts"][0]
+        for index, (name, expected) in enumerate([
+            ("S", "+4912345"), ("", "+4912345"), ("   ", "+4912345"),
+            ("  Sabine Beispiel  ", "Sabine Beispiel"),
+            ("", "Sabine Beispiel"),
+        ]):
+            contact["profile"]["name"] = name
+            payload["entry"][0]["changes"][0]["value"]["messages"][0]["id"] = f"name-{index}"
+            chat = await self.eingang(payload)
+            detail = (await self.client.get(f"/whatsapp/chats/{chat.id}", headers=self.admin)).json()
+            liste = (await self.client.get("/whatsapp/chats?alle=true", headers=self.admin)).json()
+            self.assertEqual(detail["name"], expected)
+            self.assertEqual(liste[0]["name"], expected)
+
     async def test_webhook_requires_signature_not_login(self):
         self.assertEqual((await self.webhook(self.payload(), False)).status_code, 403)
         self.assertEqual((await self.client.get("/whatsapp/chats")).status_code, 401)

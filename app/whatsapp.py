@@ -77,8 +77,13 @@ async def laden(session, request, ident, schreiben=False):
     return chat
 
 
+def absendername(chat):
+    name = (chat.name or "").strip()
+    return name if len(name) > 1 else "+" + str(chat.kontakt_id).lstrip("+")
+
+
 def daten(chat):
-    return {"id": chat.id, "name": chat.name or chat.kontakt_id, "kontakt_id": chat.kontakt_id,
+    return {"id": chat.id, "name": absendername(chat), "kontakt_id": chat.kontakt_id,
             "status": chat.status, "klassifikation_id": chat.klassifikation_id, "konfidenz": chat.konfidenz,
             "klassifikation_fehler": chat.klassifikation_fehler,
             "revision": chat.revision, "aktualisiert_am": chat.aktualisiert_am,
@@ -177,7 +182,9 @@ async def verarbeiten(session, payload):
                     await session.flush()
                 if not echoes:
                     contact = next((c for c in value.get("contacts", []) if c.get("wa_id") == kontakt), {})
-                    chat.name = contact.get("profile", {}).get("name") or chat.name
+                    profilname = (contact.get("profile", {}).get("name") or "").strip()
+                    if profilname:
+                        chat.name = profilname
                     # Historische/verspätete Ereignisse dürfen abgeschlossene neue Antworten nicht öffnen.
                     neu = chat.letzte_kundennachricht is None or zeit >= utc(chat.letzte_kundennachricht)
                     chat.revision += 1
@@ -358,7 +365,7 @@ async def vorschlag(ident: int, request: Request, session=Depends(get_session)):
     messages = (await session.execute(select(Nachricht).where(Nachricht.chat_id == ident)
         .order_by(Nachricht.zeit.desc(), Nachricht.id.desc()).limit(60))).scalars().all()
     verlauf = "\n".join(f"{'Kunde' if m.richtung == 'eingehend' else 'Wir'}: {m.text}{(' Transkript: ' + m.transkript) if m.transkript else ''}" for m in reversed(messages))[-24000:]
-    proxy = SimpleNamespace(betreff=chat.name, betreff_deutsch=None, text_auszug=verlauf,
+    proxy = SimpleNamespace(betreff=absendername(chat), betreff_deutsch=None, text_auszug=verlauf,
                             text_deutsch=None, klassifikation_id=None)
     _, wissen, faq = await relevante_wissensbasis(session, proxy)
     kontext = wissen_als_text(wissen) + "\n" + "\n".join(f"{f.frage}: {f.antwort}" for f in faq)
