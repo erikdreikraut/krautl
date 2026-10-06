@@ -408,7 +408,17 @@ async def api_senden(kontakt, text, template=None, media=None):
     if response.status_code >= 500:
         raise RuntimeError("Versandannahme unklar")
     if response.status_code >= 400:
-        raise HTTPException(502, "WhatsApp hat den Versand abgelehnt")
+        # Nur technische Codes anzeigen, keine Providertexte mit möglichen Geheimnissen.
+        codes = [f"HTTP {response.status_code}"]
+        try:
+            error = response.json().get("error", {})
+            for key, label in (("code", "Meta-Code"), ("error_subcode", "Untercode")):
+                value = error.get(key)
+                if isinstance(value, int) and not isinstance(value, bool):
+                    codes.append(f"{label} {value}")
+        except (ValueError, AttributeError):
+            pass
+        raise HTTPException(502, "WhatsApp hat den Versand abgelehnt (" + "; ".join(codes) + ")")
     return response.json()["messages"][0]["id"]
 
 

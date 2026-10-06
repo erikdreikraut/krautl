@@ -330,6 +330,36 @@ class WhatsAppTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(RuntimeError):
                 await whatsapp.api_senden("49123", "Antwort")
 
+    async def test_rejection_codes_saved_without_provider_secrets_or_retry(self):
+        chat = await self.eingang()
+        real_client = httpx.AsyncClient
+        calls = []
+        def handler(req):
+            calls.append(req)
+            return httpx.Response(400, json={"error": {"code": 190, "error_subcode": 463,
+                "message": "synthetic-private-token"}})
+        with patch("app.whatsapp.httpx.AsyncClient", side_effect=lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw)):
+            response = await self.send(chat)
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("Meta-Code 190", response.text)
+        self.assertIn("Untercode 463", response.text)
+        self.assertNotIn("synthetic-private-token", response.text)
+        self.assertEqual(len(calls), 1)
+        async with self.sessions() as session:
+            msg = (await session.execute(select(Nachricht).where(Nachricht.richtung == "ausgehend"))).scalar_one()
+            self.assertEqual(msg.status, "failed")
+            self.assertIn("Meta-Code 190", msg.fehler)
+            self.assertEqual((await session.get(Chat, chat.id)).status, "offen")
+
+    async def test_non_json_rejection_retains_http_status(self):
+        real_client = httpx.AsyncClient
+        with patch("app.whatsapp.httpx.AsyncClient", side_effect=lambda **kw: real_client(
+                transport=httpx.MockTransport(lambda req: httpx.Response(403, text="synthetic-private-token")), **kw)):
+            with self.assertRaises(whatsapp.HTTPException) as caught:
+                await whatsapp.api_senden("49123", "Antwort")
+        self.assertIn("HTTP 403", caught.exception.detail)
+        self.assertNotIn("synthetic-private-token", caught.exception.detail)
+
     async def test_crashed_send_recovered_without_resending(self):
         chat = await self.eingang()
         async with self.sessions() as session:
