@@ -1954,6 +1954,17 @@ async def faq_aktualisieren(
     return eintrag
 
 
+@app.delete("/faq/{faq_id}", status_code=204)
+async def faq_loeschen(faq_id: int, session: AsyncSession = Depends(get_session)):
+    # Protected by anmeldung_erfordern, like FAQ creation and editing.
+    eintrag = await session.get(FaqEintrag, faq_id)
+    if eintrag is None:
+        raise HTTPException(status_code=404, detail="FAQ-Eintrag nicht gefunden")
+    await session.delete(eintrag)
+    await session.commit()
+    return Response(status_code=204)
+
+
 @app.patch("/faq/{faq_id}/google-product-qa")
 async def faq_google_auswahl(
     faq_id: int, aenderung: FaqGoogleAuswahl, session: AsyncSession = Depends(get_session)

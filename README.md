@@ -501,7 +501,7 @@ hat Quelle, Stand und Freigabestatus. Nur **freigegebene** Einträge gelangen in
 KI-Antworten. Gesundheitsbezogene Aussagen können als sensibel markiert
 werden und dürfen weder erfunden noch durch Umformulierung verstärkt werden.
 
-FAQ werden in der Oberfläche als einfache Frage und Antwort bearbeitet. Für
+FAQ werden in der Oberfläche als einfache Frage und Antwort bearbeitet. Jeder FAQ hat einen „Löschen“-Button; erst nach Bestätigung der Rückfrage wird der einzelne Eintrag dauerhaft entfernt. Der Google-Feed wird anschließend aktualisiert. Für
 Absätze, Aufzählungen, `**Fettdruck**` und Weblinks ist kein HTML nötig. Für
 jedes Produkt erzeugt **Aktuelles JTL-HTML kopieren** alle als **Im aktuellen
 FAQ enthalten** markierten Entwürfe und freigegebenen FAQ in einem vollständigen

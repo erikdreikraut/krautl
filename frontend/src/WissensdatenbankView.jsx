@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Database, Download, Pencil, Plus, RefreshCw, Save, Search, Sparkles, X } from "lucide-react";
+import { Check, Database, Download, Pencil, Plus, RefreshCw, Save, Search, Sparkles, Trash2, X } from "lucide-react";
 import { api } from "./api.js";
 import { FaqDokumentImport } from "./FaqDokumentImport.jsx";
 import { GoogleFaqFeed } from "./GoogleFaqFeed.jsx";
@@ -107,6 +107,8 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
   const [shopImportLaeuft, setShopImportLaeuft] = useState(false);
   const [rubrikEditor, setRubrikEditor] = useState(null);
   const formularRef = useRef(null);
+  const loeschSperre = useRef(false);
+  const [loescht, setLoescht] = useState(false);
   const produkte = basis?.produkte || [];
   const familien = basis?.familien || [];
   const familienNachId = Object.fromEntries(familien.map((f) => [f.id, f]));
@@ -170,6 +172,29 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
       ? { ...aktuell, daten: { ...aktuell.daten, include_in_google_product_qa: eintrag.include_in_google_product_qa } }
       : aktuell);
     await onReload();
+  };
+  const faqLoeschen = async (eintrag) => {
+    if (loeschSperre.current) return;
+    if (!window.confirm(`FAQ wirklich dauerhaft löschen?
+
+„${eintrag.frage}“
+
+Das Löschen kann nicht rückgängig gemacht werden.`)) return;
+    loeschSperre.current = true;
+    setLoescht(true);
+    try {
+      await api.faqLoeschen(eintrag.id);
+      setEditor((aktuell) => aktuell?.typ === "faq" && aktuell.id === eintrag.id ? null : aktuell);
+      setExportHtml(null);
+      setMeldung("FAQ gelöscht.");
+      try { await onReload(); }
+      catch { setMeldung("FAQ gelöscht. Bitte die Ansicht neu laden; die Aktualisierung ist fehlgeschlagen."); }
+    } catch (fehler) {
+      setMeldung(`FAQ konnte nicht gelöscht werden: ${fehler.message}`);
+    } finally {
+      loeschSperre.current = false;
+      setLoescht(false);
+    }
   };
   const rubrikSpeichern = async () => {
     const neuerName = rubrikEditor.neu.trim();
@@ -279,7 +304,10 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
                 <div className="flex justify-between items-start gap-3"><b style={serif}>{f.frage}</b><StatusMarke status={f.status}/></div>
                 <div className="mt-1" style={{ ...serif, fontSize: "14px", color: farben.muted }}>{f.antwort}</div>
               </button>
-              <div className="mt-2"><GoogleFaqAuswahl faqId={f.id} frage={f.frage} ausgewaehlt={f.include_in_google_product_qa} onGespeichert={googleAuswahlGespeichert}/></div>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <GoogleFaqAuswahl faqId={f.id} frage={f.frage} ausgewaehlt={f.include_in_google_product_qa} onGespeichert={googleAuswahlGespeichert}/>
+                <button type="button" disabled={loescht} onClick={() => faqLoeschen(f)} aria-label={`FAQ löschen: ${f.frage}`} className="flex items-center gap-1.5 px-2 py-1" style={{ ...ui, fontSize: "12px", color: "#9A4332", border: `1px solid ${farben.line}`, borderRadius: "5px", opacity: loescht ? 0.5 : 1 }}><Trash2 size={13}/> Löschen</button>
+              </div>
             </article>)}
           </div>)
         }</StatusAbschnitte>

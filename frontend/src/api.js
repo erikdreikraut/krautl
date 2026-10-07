@@ -140,6 +140,7 @@ export const api = {
     `${BASIS}/rechnungen/${rechnungId}/datei`,
 
   faq: () => anfrage("/faq"),
+  faqLoeschen: (id) => anfrage(`/faq/${id}`, { method: "DELETE" }),
   wissensbasis: () => anfrage("/wissensbasis"),
   produktSpeichern: (id, daten) =>
     anfrage(id ? `/produkte/${id}` : "/produkte", {

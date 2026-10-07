@@ -154,6 +154,22 @@ class FeedApiTest(unittest.IsolatedAsyncioTestCase):
         await self.engine.dispose()
         self.tmp.cleanup()
 
+    async def test_faq_loeschen_entfernt_nur_ziel_und_aktualisiert_feed(self):
+        ziel = await self.anlegen(frage="Löschziel")
+        behalten = await self.anlegen(frage="Behalten")
+        url = f"/faq/{ziel['id']}"
+        self.assertEqual((await self.client.delete(url)).status_code, 401)
+        self.assertEqual(len((await self.client.get("/faq", headers=self.headers)).json()), 2)
+        r = await self.client.delete(url, headers=self.headers)
+        self.assertEqual(r.status_code, 204, r.text)
+        self.assertEqual(r.content, b"")
+        rest = (await self.client.get("/faq", headers=self.headers)).json()
+        self.assertEqual([f["id"] for f in rest], [behalten["id"]])
+        feed = (await self.client.get(FEED_PFAD)).text
+        self.assertNotIn("Löschziel", feed)
+        self.assertIn("Behalten", feed)
+        self.assertEqual((await self.client.delete(url, headers=self.headers)).status_code, 404)
+
     async def anlegen(self, **werte):
         daten = dict({"produkt_id": self.produkt_id, "kategorie": "Test", "frage": "Wie?", "antwort": "So.", "status": "freigegeben", "include_in_google_product_qa": True}, **werte)
         response = await self.client.post("/faq", json=daten, headers=self.headers)
