@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Database, Download, Pencil, Plus, RefreshCw, Save, Search, Sparkles, X } from "lucide-react";
 import { api } from "./api.js";
+import { FaqDokumentImport } from "./FaqDokumentImport.jsx";
 import { GoogleFaqFeed } from "./GoogleFaqFeed.jsx";
 import { GoogleFaqAuswahl } from "./GoogleFaqAuswahl.jsx";
 
@@ -268,6 +269,7 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
         {wissen.length === 0 && <LeereAnsicht text="Noch kein passendes Wissen hinterlegt." aktion={() => neu("wissen")} label="Ersten Wissenseintrag anlegen"/>}
       </>}
       {bereich === "faq" && <>
+        <FaqDokumentImport produkte={produkte} onReload={onReload}/>
         <div className="flex justify-between mb-4"><h3 style={{ ...serif, fontWeight: 700 }}>{produkt ? `FAQ · ${produkt.name}` : "FAQ"}</h3>{produkt && <button onClick={exportieren} className="flex items-center gap-1.5 px-3 py-2" style={{ ...ui, fontSize: "12px", color: farben.mossDeep, border: `1px solid ${farben.line}`, borderRadius: "5px" }}><Download size={13}/> Aktuelles JTL-HTML kopieren</button>}</div>
         <StatusAbschnitte eintraege={faq}>{(gruppe) =>
           [...new Set(gruppe.map((f) => f.kategorie))].map((g) => <div key={g} className="mb-5">

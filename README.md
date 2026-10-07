@@ -653,3 +653,26 @@ kontrolliert ab, damit eine fehlerhafte Konfiguration nicht den gesamten
 Posteingang mit Fehlversuchen durchläuft. Standardmäßig laufen zwei
 Rechnungsanalysen gleichzeitig. `--parallelitaet 1` schaltet auf den
 langsameren seriellen Betrieb zurück; Werte bis höchstens `4` sind möglich.
+
+### FAQ aus Dokumenten übernehmen
+
+Unter **Wissensdatenbank → FAQ → FAQ aus Dokument** können PDF, DOCX, ODT,
+TXT, Markdown, CSV, JSON und HTML bis 10 MB ausgewertet werden. Andere Formate
+vorher als PDF speichern. Textdateien sind auf 150.000 Zeichen begrenzt;
+pro Dokument sind höchstens 100 Frage-Antwort-Paare vorgesehen. Die Auswertung
+verwendet die bestehende Anthropic-Anbindung (`ANTHROPIC_API_KEY`) und übermittelt
+den Dokumentinhalt an die KI. Originaldateien werden nicht dauerhaft abgelegt.
+
+Die Vorschau ordnet Produkte zuerst anhand der Artikelnummer zu (einschließlich
+führender Nullen), nur ohne Artikelnummer anhand der ID, danach des exakten
+Namens. Unbekannte oder mehrdeutige Artikelnummern erfordern manuelle Zuordnung.
+Abweichende IDs/Namen werden angezeigt. Auswahl, Zuordnung, Rubrik, Frage und
+Antwort sind vor dem Übernehmen bearbeitbar.
+
+Die Übernahme legt ausschließlich Entwürfe an, zunächst mit `aktiv=false` und
+`include_in_google_product_qa=false`. Nach Prüfung können sie im vorhandenen
+FAQ-Editor aktiviert und freigegeben werden. Vorhandene Fragen desselben Produkts
+(ohne Beachtung von Groß-/Kleinschreibung und äußerem Leerraum) werden übersprungen,
+auch bei wiederholter Übernahme; vorhandene Antworten werden niemals überschrieben.
+Die gesamte Auswahl wird vor dem Speichern validiert und in einer Transaktion
+übernommen. Die Analyse selbst verändert keine FAQ.

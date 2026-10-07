@@ -59,6 +59,8 @@ from .gesendet_ablage import versandkopien_ueberwachen
 
 app = FastAPI(title="Krautl API")
 app.include_router(gesendet_router)
+from .faq_import import router as faq_import_router
+app.include_router(faq_import_router)
 from .whatsapp import router as whatsapp_router, ueberwachen as whatsapp_ueberwachen
 app.include_router(whatsapp_router)
 logger = logging.getLogger(__name__)
