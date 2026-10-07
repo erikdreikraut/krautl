@@ -5,7 +5,7 @@
 - Lokale Arbeitskopie auf diesem Windows-Host: `C:/Users/info/Documents/Codex/Krautl`. Der im Codex-Projekt gespeicherte Dropbox-Pfad ist veraltet; vor Arbeiten die tatsächliche Arbeitskopie prüfen.
 - Maßgebliche Betriebs- und Fachbeschreibung: [README.md](README.md). Vor Änderungen an WhatsApp-Einrichtung, Versand oder Verarbeitung den zugehörigen Abschnitt lesen.
 - Die Produktivinstanz läuft unter `https://krautl.erikschweitzer.de`, Server-Arbeitskopie `/opt/app/krautl`. Ein lokaler Build oder Push belegt kein Deployment.
-- Bei Server-Aktualisierungsbefehlen das HTTPS-Remote berücksichtigen: `git remote set-url origin https://github.com/erikdreikraut/krautl.git`; kein SSH-Remote voraussetzen.
+- Nach jedem erfolgreichen Push die zum Änderungsstand passenden, direkt ausführbaren Deployment-Befehle für die Serverkonsole mitliefern. Projektpfad `/opt/app/krautl`, Branch `main` und erforderliche Build-/Migrationsschritte anhand der Projektdokumentation prüfen. Für Git-Remotes und Abrufe HTTPS statt SSH verwenden: `git remote set-url origin https://github.com/erikdreikraut/krautl.git`. Bei reinen Dokumentationsänderungen ausdrücklich darauf hinweisen, dass kein Deployment erforderlich ist; dafür genügt die HTTPS-Aktualisierung der Server-Arbeitskopie. Das Bereitstellen der Befehle ist keine Freigabe, das Deployment selbst auszuführen.
 
 ## WhatsApp
 
