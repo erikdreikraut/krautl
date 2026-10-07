@@ -1901,7 +1901,9 @@ async def _faq_daten(session, aenderung: FaqAenderung) -> dict:
     _faq_validieren(aenderung)
     if aenderung.produkt_id and not await session.get(Produkt, aenderung.produkt_id):
         raise HTTPException(status_code=422, detail="Produkt nicht gefunden")
-    return aenderung.model_dump()
+    daten = aenderung.model_dump()
+    daten["aktiv"] = aenderung.status == "freigegeben"
+    return daten
 
 
 @app.post("/faq")
@@ -1985,7 +1987,7 @@ async def faq_export(produkt_id: int, session: AsyncSession = Depends(get_sessio
     faq = (await session.execute(select(FaqEintrag).where(
         FaqEintrag.produkt_id == produkt_id,
         FaqEintrag.aktiv.is_(True),
-        FaqEintrag.status.in_(["entwurf", "freigegeben"]),
+        FaqEintrag.status == "freigegeben",
     ))).scalars().all()
     entwuerfe = sum(eintrag.status == "entwurf" for eintrag in faq)
     return {
@@ -2045,7 +2047,7 @@ async def wissensvorschlag_uebernehmen(
         session.add(FaqEintrag(
             produkt_id=aenderung.produkt_id, kategorie=aenderung.kategorie.strip(),
             frage=aenderung.titel.strip(), antwort=aenderung.inhalt.strip(),
-            quelle=f"Kundenmail #{vorschlag.quelle_mail_id}", status="entwurf", aktiv=True,
+            quelle=f"Kundenmail #{vorschlag.quelle_mail_id}", status="entwurf", aktiv=False,
         ))
     else:
         if aenderung.wissensart not in WISSENSARTEN:

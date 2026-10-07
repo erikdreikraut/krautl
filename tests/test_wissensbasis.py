@@ -93,7 +93,7 @@ class WissensbasisTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Anwendung &amp; Praktisches", export)
         self.assertIn("Kalt oder lauwarm einrühren.", export)
 
-    async def test_jtl_export_enthaelt_aktive_entwuerfe_aber_nichts_veraltetes(self):
+    async def test_jtl_export_nur_freigegeben_und_aktiv(self):
         async with SessionLocal() as session:
             session.add_all([
                 FaqEintrag(
@@ -115,9 +115,9 @@ class WissensbasisTest(unittest.IsolatedAsyncioTestCase):
             await session.commit()
             ergebnis = await faq_export(self.produkt_id, session)
 
-        self.assertEqual(2, ergebnis["anzahl"])
-        self.assertEqual(1, ergebnis["entwuerfe"])
-        self.assertIn("Aktiver Entwurf?", ergebnis["html"])
+        self.assertEqual(1, ergebnis["anzahl"])
+        self.assertEqual(0, ergebnis["entwuerfe"])
+        self.assertNotIn("Aktiver Entwurf?", ergebnis["html"])
         self.assertNotIn("Veraltet?", ergebnis["html"])
         self.assertNotIn("Ausgewählt?", ergebnis["html"])
 

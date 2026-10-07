@@ -14,3 +14,10 @@
 - Keine automatischen Nachrichten oder automatischen Wiederholungen bei unklarem Versand. Revisionen, Reservierungen, Berechtigungen, dauerhafte Versandaufträge und Metas Antwortfenster bei Änderungen erhalten.
 - In der Navigation bündelt „Archiv“ die Reiter „WhatsApp-Chats“ und „Gesendete E-Mails“; deren bestehende Such- und Detailfunktionen erhalten.
 - Im WhatsApp-Antwortfeld sendet Enter, Strg+Enter fügt einen Zeilenumbruch ein. Beim Öffnen einmalig fokussieren; Polling darf den Fokus nicht aus anderen Feldern stehlen.
+
+## FAQ-Freigabe und geplante JTL-Synchronisierung
+
+- Der separate Haken „Im aktuellen FAQ enthalten“ entfällt. Nur FAQ mit `status=freigegeben` und `aktiv=true` gehören in den HTML-Export und den geplanten JTL-Abgleich. Beim Speichern im Editor aktiviert „Freigegeben“ den Eintrag; Entwurf/veraltet deaktivieren ihn.
+- Bestehende aktive Entwürfe gehörten zur alten Exportauswahl und sollen einmalig durch `scripts.migrate_faq_freigabe` freigegeben werden. Die Migration nicht ohne ihren dauerhaften Ausführungsnachweis nachbauen oder erneut per pauschalem UPDATE ausführen.
+- Bestätigte JTL-Ziele: `tab1 name` = `Fragen / Antworten`, `tab1 inhalt` = bestehender HTML-Export; ausschließlich Deutsch im dreikraut JTL-Shop. Entfällt der letzte übertragbare FAQ, beide Zielwerte leeren. Andere Attribute, Sprachen und Kanäle erhalten.
+- Google-Zusatzfeed bleibt unabhängig. Eigene Krautl-JTL-App und eigene Zugangsdaten verwenden; Werkel bleibt unverändert. Stand und noch fehlende Schreibabnahme in `ops/jtl/README.md` beachten.

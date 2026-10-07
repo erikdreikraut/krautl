@@ -86,7 +86,7 @@ function Formular({ editor, setEditor, speichern, produkte, familien, faqGruppen
       <textarea className="col-span-2 px-3 py-2" style={feld} rows={7} placeholder="Antwort – Absätze, - Aufzählungen und **Fettdruck** sind möglich" value={d.antwort} onChange={(e) => set("antwort", e.target.value)}/>
       <input className="px-3 py-2" style={feld} placeholder="Quelle" value={d.quelle || ""} onChange={(e) => set("quelle", e.target.value)}/>
       <input className="px-3 py-2" style={feld} type="number" placeholder="Reihenfolge" value={d.sortierung} onChange={(e) => set("sortierung", Number(e.target.value))}/>
-      <label className="col-span-2 flex items-center gap-2" style={{ ...ui, fontSize: "12.5px" }}><input type="checkbox" checked={d.aktiv} onChange={(e) => set("aktiv", e.target.checked)}/> Im aktuellen FAQ enthalten</label>
+      <p className="col-span-2" style={{ ...ui, fontSize: "12px", color: farben.muted }}>Nur freigegebene, aktive FAQ werden im JTL-HTML ausgegeben. Freigeben aktiviert den Eintrag.</p>
       <div className="col-span-2">
         <label className="flex items-center gap-2" style={{ ...ui, fontSize: "12.5px" }}><input type="checkbox" checked={!!d.include_in_google_product_qa} onChange={(e) => set("include_in_google_product_qa", e.target.checked)}/> Ergänzt die Artikelbeschreibung</label>
         <p className="mt-1" style={{ ...ui, fontSize: "12px", color: farben.muted }}>Mit diesem Haken wird das Frage/Antwort-Paar für den öffentlichen Google-Export ausgewählt, unabhängig vom FAQ-Status. Es gelten die Google-Format- und Größenlimits. Der JTL-HTML-Export bleibt unverändert.</p>
@@ -215,12 +215,10 @@ Das Löschen kann nicht rückgängig gemacht werden.`)) return;
     const ergebnis = await api.faqExport(produkt.id);
     if (!ergebnis.anzahl) {
       setExportHtml(null);
-      setMeldung("Keine als ‚Im aktuellen FAQ enthalten‘ markierten FAQ-Punkte vorhanden.");
+      setMeldung("Keine freigegebenen, aktiven FAQ-Punkte vorhanden.");
       return;
     }
-    if (ergebnis.entwuerfe && !window.confirm(
-      `${ergebnis.entwuerfe} von ${ergebnis.anzahl} FAQ-Punkten haben noch den Status „Entwurf“. Trotzdem das vollständige JTL-HTML kopieren?`
-    )) return;
+
     setExportHtml(ergebnis.html);
     try { await navigator.clipboard.writeText(ergebnis.html); setMeldung(`${ergebnis.anzahl} FAQ-Punkte als vollständiges JTL-HTML kopiert.`); }
     catch { setMeldung("HTML ist unten zum Kopieren geöffnet."); }

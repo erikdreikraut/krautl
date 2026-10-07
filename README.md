@@ -503,12 +503,16 @@ werden und dürfen weder erfunden noch durch Umformulierung verstärkt werden.
 
 FAQ werden in der Oberfläche als einfache Frage und Antwort bearbeitet. Jeder FAQ hat einen „Löschen“-Button; erst nach Bestätigung der Rückfrage wird der einzelne Eintrag dauerhaft entfernt. Der Google-Feed wird anschließend aktualisiert. Für
 Absätze, Aufzählungen, `**Fettdruck**` und Weblinks ist kein HTML nötig. Für
-jedes Produkt erzeugt **Aktuelles JTL-HTML kopieren** alle als **Im aktuellen
-FAQ enthalten** markierten Entwürfe und freigegebenen FAQ in einem vollständigen
-Schema.org-`FAQPage`-Accordion mit den bei dreikraut verwendeten
-Bootstrap-/JTL-Attributen. Veraltete oder inaktive Einträge werden nicht
-exportiert. Sind Entwürfe enthalten, verlangt Krautl vor dem Kopieren eine
-ausdrückliche Bestätigung. Der Block kann als Ganzes in JTL eingefügt werden.
+jedes Produkt erzeugt **Aktuelles JTL-HTML kopieren** ausschließlich freigegebene,
+aktive FAQ in einem vollständigen Schema.org-`FAQPage`-Accordion mit den bei dreikraut
+verwendeten Bootstrap-/JTL-Attributen. Der bisherige Haken „Im aktuellen FAQ enthalten“
+entfällt. Speichern mit Status „Freigegeben“ aktiviert den FAQ; „Entwurf“ und
+„Veraltet“ deaktivieren ihn. Der Block kann als Ganzes in JTL eingefügt werden.
+Die einmalige Migration `python -m scripts.migrate_faq_freigabe` stellt bisher
+aktive Entwürfe auf „freigegeben“, weil sie zur bisherigen Exportauswahl gehörten.
+Inaktive und veraltete Einträge werden nicht freigegeben. Ein dauerhafter
+Migrationsnachweis verhindert, dass spätere Entwürfe beim erneuten Ausführen
+versehentlich freigegeben werden. Die Google-Auswahl bleibt unabhängig.
 HTML muss nicht von Hand gepflegt werden.
 
 **Shop-Produkte aktualisieren** liest den derzeit sichtbaren Produktbestand
@@ -671,8 +675,15 @@ Antwort sind vor dem Übernehmen bearbeitbar.
 
 Die Übernahme legt ausschließlich Entwürfe an, zunächst mit `aktiv=false` und
 `include_in_google_product_qa=false`. Nach Prüfung können sie im vorhandenen
-FAQ-Editor aktiviert und freigegeben werden. Vorhandene Fragen desselben Produkts
+FAQ-Editor freigegeben und damit aktiviert werden. Vorhandene Fragen desselben Produkts
 (ohne Beachtung von Groß-/Kleinschreibung und äußerem Leerraum) werden übersprungen,
 auch bei wiederholter Übernahme; vorhandene Antworten werden niemals überschrieben.
 Die gesamte Auswahl wird vor dem Speichern validiert und in einer Transaktion
 übernommen. Die Analyse selbst verändert keine FAQ.
+
+### JTL-Cloud-Anbindung
+
+Die eigene App-Registrierung und ein ausschließlich lesender Diagnose-Client sind
+vorbereitet. Der automatische Schreibabgleich ist noch nicht implementiert oder
+aktiviert. Einrichtung, bestätigte Zielattribute und offene Abnahme: siehe
+[ops/jtl/README.md](ops/jtl/README.md).

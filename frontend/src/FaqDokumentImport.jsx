@@ -32,7 +32,7 @@ export function FaqDokumentImport({ produkte, onReload }) {
     try {
       const ergebnis = await api.faqDokumentUebernehmen({ dateiname: datei.name.slice(0, 250), eintraege: ausgewaehlt.map(({ ausgewaehlt, hinweis, ...p }) => p) });
       setPaare(null);
-      setMeldung(`${ergebnis.angelegt} Entwürfe angelegt, ${ergebnis.uebersprungen} bereits vorhandene Fragen übersprungen. Im FAQ-Editor prüfen und aktivieren.`);
+      setMeldung(`${ergebnis.angelegt} Entwürfe angelegt, ${ergebnis.uebersprungen} bereits vorhandene Fragen übersprungen. Im FAQ-Editor prüfen und freigeben.`);
       try { await onReload(); } catch { setMeldung("Entwürfe gespeichert. Die Ansicht konnte nicht aktualisiert werden; bitte neu laden."); }
     } catch (e) { setMeldung(e.message); }
     finally { sperre.current = false; setBusy(false); }
@@ -47,7 +47,7 @@ export function FaqDokumentImport({ produkte, onReload }) {
     <p className="mt-2" style={{ color: "#6C6F5F", fontSize: 12 }}>PDF, DOCX, ODT, TXT, Markdown, CSV, JSON oder HTML · maximal 10 MB und 100 Paare. Andere Formate bitte als PDF speichern.</p>
     {meldung && <p role="status" className="mt-3">{meldung}</p>}
     {!!paare?.length && <div className="mt-3">
-      <p className="mb-3">Ausgewählte Paare werden als Entwürfe gespeichert. Bestehende Fragen werden übersprungen. Für Exporte bitte später im FAQ-Editor aktivieren.</p>
+      <p className="mb-3">Ausgewählte Paare werden als Entwürfe gespeichert. Bestehende Fragen werden übersprungen. Für den JTL-Export bitte später im FAQ-Editor freigeben.</p>
       {paare.map((p, i) => <fieldset key={i} disabled={busy} className="mb-3 p-3" style={{ border: "1px solid #DDD9C4", minWidth: 0 }}>
         <legend><label><input type="checkbox" checked={p.ausgewaehlt} onChange={(e) => aendern(i, "ausgewaehlt", e.target.checked)}/> Paar {i + 1} übernehmen</label></legend>
         <p className="mb-2">Im Dokument: {p.artikelnummer || "keine Artikelnummer"} · {p.produktname || "kein Produktname"}</p>

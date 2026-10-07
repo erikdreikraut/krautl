@@ -1,0 +1,16 @@
+{
+  "technicalName": "krautl-intern",
+  "version": "0.1.0",
+  "authentication": {
+    "serviceAccount": {
+      "clientCredentials": true,
+      "description": "Produktbezogene FAQ aus Krautl in die JTL-Wawi übertragen"
+    }
+  },
+  "capabilities": {
+    "hub": {
+      "appLauncher": { "redirectUrl": "https://krautl.erikschweitzer.de" }
+    },
+    "erp": { "api": { "scopes": ["items.read", "items.write"] } }
+  }
+}

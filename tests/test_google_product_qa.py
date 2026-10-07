@@ -170,6 +170,19 @@ class FeedApiTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Behalten", feed)
         self.assertEqual((await self.client.delete(url, headers=self.headers)).status_code, 404)
 
+    async def test_faq_freigabe_steuert_aktivierung_und_jtl_export(self):
+        eintrag = await self.anlegen(status="entwurf", aktiv=True)
+        self.assertFalse(eintrag["aktiv"])
+        url = f"/produkte/{self.produkt_id}/faq-export"
+        self.assertEqual((await self.client.get(url, headers=self.headers)).json()["anzahl"], 0)
+        r = await self.client.put(f"/faq/{eintrag['id']}", headers=self.headers,
+            json={**eintrag, "status": "freigegeben", "aktiv": False})
+        self.assertTrue(r.json()["aktiv"])
+        self.assertEqual((await self.client.get(url, headers=self.headers)).json()["anzahl"], 1)
+        await self.client.put(f"/faq/{eintrag['id']}", headers=self.headers,
+            json={**eintrag, "status": "veraltet"})
+        self.assertEqual((await self.client.get(url, headers=self.headers)).json()["anzahl"], 0)
+
     async def anlegen(self, **werte):
         daten = dict({"produkt_id": self.produkt_id, "kategorie": "Test", "frage": "Wie?", "antwort": "So.", "status": "freigegeben", "include_in_google_product_qa": True}, **werte)
         response = await self.client.post("/faq", json=daten, headers=self.headers)
@@ -254,8 +267,8 @@ class FeedApiTest(unittest.IsolatedAsyncioTestCase):
         nachher = (await self.client.get(url, headers=self.headers)).json()
         self.assertEqual(vorher, nachher)
         self.assertEqual(self.service.snapshot["anzahl_qa"], 0)
-        self.assertEqual(vorher["entwuerfe"], 1)
-        self.assertIn("<strong>Fett</strong>", vorher["html"])
+        self.assertEqual(vorher["entwuerfe"], 0)
+        self.assertNotIn("<strong>Fett</strong>", vorher["html"])
 
     async def test_api_status_and_active_changes_leave_checked_faq_in_feed(self):
         eintrag = await self.anlegen(status="entwurf", aktiv=False)
