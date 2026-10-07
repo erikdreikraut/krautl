@@ -45,6 +45,7 @@ const RESERVIERUNG_KURZNAMEN = {
   gursewak: "Guri",
   ludwig: "Ludwig",
   aneta: "Aneta",
+  micha: "Micha",
 };
 
 function lesbareDateigroesse(bytes) {
@@ -565,7 +566,7 @@ function ZuweisenButton({ mail, onZugewiesen, deaktiviert = false }) {
             ? [{ value: "admin", label: "Erik (Admin)" }]
             : []),
           ...(mail.zuweisbareRollen.includes("sachbearbeiter")
-            ? [{ value: "sachbearbeiter", label: "Guri, Ludwig, Aneta (Sachbearbeitung)" }]
+            ? [{ value: "sachbearbeiter", label: "Guri, Ludwig, Aneta, Micha (Sachbearbeitung)" }]
             : []),
         ]}
         onWaehlen={zuweisen}
@@ -2791,9 +2792,9 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         zustaendigSachbearbeiter: Boolean(m.zustaendig_sachbearbeiter),
         zuweisbareRollen: m.zuweisbare_rollen ?? ["admin", "sachbearbeiter"],
         zustaendigkeitLabel: (() => {
-          if (m.zustaendig_admin && m.zustaendig_sachbearbeiter) return "Erik, Guri, Ludwig und Aneta";
+          if (m.zustaendig_admin && m.zustaendig_sachbearbeiter) return "Erik, Guri, Ludwig, Aneta und Micha";
           if (m.zustaendig_admin) return "Erik (Admin)";
-          if (m.zustaendig_sachbearbeiter) return "Guri, Ludwig, Aneta (Sachbearbeitung)";
+          if (m.zustaendig_sachbearbeiter) return "Guri, Ludwig, Aneta, Micha (Sachbearbeitung)";
           return "nicht zugewiesen";
         })(),
         zielhinweis: (() => {

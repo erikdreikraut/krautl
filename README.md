@@ -23,7 +23,7 @@
   sein letztes Lebenszeichen in der Datenbank
 - `app/main.py` — FastAPI mit den Endpunkten, die die Oberfläche braucht
 - `app/auth.py` — persönliche Anmeldung mit signierten Sitzungen für Erik,
-  Gursewak, Ludwig und Aneta sowie deren Rollen **Admin** beziehungsweise
+  Gursewak, Ludwig, Aneta und Micha sowie deren Rollen **Admin** beziehungsweise
   **Sachbearbeiter**
 - `scripts/import_klassifikationen.py` — importiert/aktualisiert die
   `klassifikation`-Tabelle aus `data/mail-klassifikationen.csv` (idempotent)
@@ -376,11 +376,11 @@ getrennt und versucht zusätzlich, die Nachricht dauerhaft aus IMAP zu löschen.
   `SMTP_SERVICE_USER` und
   `SMTP_SERVICE_PASSWORD` gesetzt sein.
 - Alle fachlichen API-Funktionen erfordern eine persönliche Krautl-Anmeldung.
-  `erik` ist Admin; `gursewak`, `ludwig` und `aneta` gehören zur
+  `erik` ist Admin; `gursewak`, `ludwig`, `aneta` und `micha` gehören zur
   Sachbearbeitung.
   Passwörter stehen ausschließlich in den Elestio-Umgebungsvariablen
   `KRAUTL_PASSWORD_ERIK`, `KRAUTL_PASSWORD_GURSEWAK` und
-  `KRAUTL_PASSWORD_LUDWIG` sowie `KRAUTL_PASSWORD_ANETA`.
+  `KRAUTL_PASSWORD_LUDWIG`, `KRAUTL_PASSWORD_ANETA` sowie `KRAUTL_PASSWORD_MICHA`.
   `KRAUTL_SESSION_SECRET` signiert die
   Anmeldesitzungen und muss ein langes zufälliges Geheimnis sein.
 - Beim Versand ergänzt Krautl abhängig vom angemeldeten Nutzer automatisch
@@ -423,7 +423,7 @@ getrennt und versucht zusätzlich, die Nachricht dauerhaft aus IMAP zu löschen.
   abgeleitete Wissensvorschläge. Admins haben stets Zugriff auf alle Mailarten.
 - Die Rollen-Matrix bestimmt zugleich die anfängliche Zuständigkeit neuer
   Mails. Über **Zuweisen** kann eine Mail anschließend exklusiv Erik als Admin
-  oder der gemeinsamen Sachbearbeitungsgruppe Guri, Ludwig und Aneta zugeordnet
+  oder der gemeinsamen Sachbearbeitungsgruppe Guri, Ludwig, Aneta und Micha zugeordnet
   werden. Admins sehen standardmäßig nur ihre eigene Arbeitsliste und können
   zur Kontrolle auf **Alle Mails** wechseln. Zuweisungen werden im Aktionslog
   mit dem auslösenden Nutzer festgehalten.

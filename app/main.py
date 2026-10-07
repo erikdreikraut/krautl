@@ -758,7 +758,7 @@ async def mail_zustaendigkeit_aendern(
     ziel = (
         "Erik (Admin)"
         if zuweisung.rolle == "admin"
-        else "Guri, Ludwig und Aneta (Sachbearbeitung)"
+        else "Guri, Ludwig, Aneta und Micha (Sachbearbeitung)"
     )
     session.add(Aktionslog(
         mail_id=mail.id,
