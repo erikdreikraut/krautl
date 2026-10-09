@@ -32,6 +32,42 @@ Stand: 09.10.2026. Eigene interne Krautl-App; Werkel bleibt unverändert.
   GraphQL-Inputtypen ausschließlich lesend. Es überträgt keine Attributwerte und
   meldet Feldpfade statt Inhalte. Ein gültiges Inputschema beweist noch keine
   gültigen Geschäftsregeln und keine sichere partielle Aktualisierungssemantik.
+- Live-Schemaprüfung bestätigt zwölf fehlende Pflichtfelder `languageIso` in
+  mitgesendeten fremden Bestandsattributen des Vaterartikels. Nicht als `de` ergänzen.
+
+## Explizit freigegebener Kind-Test 40047-1000
+
+Der Nutzer hat den Kindartikel `40047-1000` für die Teilupdate-Abnahme ausgewählt.
+`scripts.teste_jtl_spirulina_kind` sendet ausschließlich die zwei FAQ-Werte auf
+Deutsch für Kanal `2-2-1`, nachdem der Auftrag gegen das Live-GraphQL-Schema geprüft
+wurde. Die Artikel-ID wird ausschließlich über diese exakte SKU aufgelöst.
+Quelle sind die aktuell ausgewählten Krautl-FAQ des Vaterprodukts `40047-000`.
+Der Vater wird nicht verändert, keine automatische Vererbung wird eingeschaltet.
+
+Vorher werden alle Attributwerte des Kindes in einer eigenen dauerhaften Datei
+`var/jtl-test/spirulina-kind-40047-1000.json` gesichert. Der Vater ist kein Ersatz
+für diese Sicherung. API-Antwort und Ergebnis erhalten separate Dateien. Bei Fehler
+oder Verlust anderer Werte keine automatische Wiederholung oder Wiederherstellung:
+Der vollständige Lesestand ist wegen sprachneutraler Attribute nicht ohne Weiteres
+schreibbar. Dann anhand der Sicherung gezielt wiederherstellen. Der Nutzer hat den
+Test trotz noch ungeklärter Teilupdate-Semantik ausdrücklich beauftragt.
+
+```bash
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git switch main &&
+git pull --ff-only origin main &&
+docker compose build app &&
+docker compose run --rm --no-deps -v /opt/app/krautl/var/jtl-test:/jtl-test app \
+  python -m scripts.teste_jtl_spirulina_kind --anwenden
+```
+
+Ohne `--anwenden`: nur Vorschau. Mit `--pruefen`: nur Vergleich mit dem vorhandenen
+Kind-Journal. Während des Tests Kind und FAQ-Auswahl nicht bearbeiten. Der Test liest
+auch bei einer API-Fehlermeldung zurück; bei Netzwerkabbruch separat `--pruefen`
+aufrufen. Erfolg erfordert erfolgreichen API-Aufruf und den exakten vollständigen
+Zielstand, einschließlich aller unveränderten anderen Attributwerte. Kein Neustart
+der laufenden App erforderlich. Ergebnis gilt zunächst nur für diesen Artikeltest.
 
 ## Implementiert und noch offen
 
