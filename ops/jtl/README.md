@@ -4,6 +4,28 @@ Stand: 09.10.2026. Eigene interne Krautl-App; Werkel bleibt unverändert.
 
 ## Dauerabgleich: HTTPS, alle fünf Minuten, nur Änderungen
 
+### Betriebsnachtrag: einmalige Freigabe 20015
+
+HTTPS mit IP-SAN `81.90.38.170`, vertrautem Zertifikat und Firewall-Regel für
+`159.195.122.18` wurde eingerichtet; Vorschau und erster Dauerlauf sind erfolgt.
+Erster Lauf: vier erfolgreiche Schreibvorgänge, zwei bereits gleiche Artikel,
+Stopp bei `20015`. FAQ-Zielwerte stimmen, aber die zuvor leere sprachneutrale
+Attributzuordnung `29708817-225b-4208-9a57-5ff5f0000000` fehlt. Ursache ungeklärt.
+Nutzer hat ausdrücklich die einmalige Annahme dieser konkreten Abweichung genehmigt.
+`scripts.freigabe_jtl_20015 --anwenden` prüft den Live-Stand gegen genau das offene
+Journal `versuch-72a7f960fc4542cab7aa0709804ddde0.json`, erhält das Original,
+schreibt einen Freigabenachweis und löst nur diesen Vorgang auf. Kein Wawi-PATCH.
+Andere Abweichungen werden weiterhin abgewiesen. Dienst vor Ausführung stoppen;
+ohne `--anwenden` nur lesende Prüfung. Ausführung auf dem Server noch ausstehend.
+
+```bash
+docker compose stop jtl-sync
+docker compose --profile jtl-sync run --rm --no-deps jtl-sync python -m scripts.freigabe_jtl_20015 --anwenden
+```
+
+Nach bestätigter Freigabe den Dienst wieder starten; übrige Aufträge werden normal
+geprüft und verarbeitet. Keine allgemeine Ausnahme für leere Attribute eingeführt.
+
 Der vollständige FAQ-HTML-Export wurde am 09.10.2026 am Kind `40047-1000`
 lokal erfolgreich geschrieben und exakt zurückgelesen; alle übrigen Attributwerte
 blieben erhalten. Nutzer hat auch die Darstellung in Wawi bestätigt.
