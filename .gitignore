@@ -6,6 +6,8 @@ test_*.db
 .venv/
 var/feeds/
 var/jtl-test/
+var/jtl-sync/
+var/jtl-tls/
 frontend/node_modules/
 frontend/dist/
 frontend/vite.config.js.timestamp-*.mjs

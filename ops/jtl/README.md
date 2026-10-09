@@ -2,6 +2,90 @@
 
 Stand: 09.10.2026. Eigene interne Krautl-App; Werkel bleibt unverändert.
 
+## Dauerabgleich: HTTPS, alle fünf Minuten, nur Änderungen
+
+Der vollständige FAQ-HTML-Export wurde am 09.10.2026 am Kind `40047-1000`
+lokal erfolgreich geschrieben und exakt zurückgelesen; alle übrigen Attributwerte
+blieben erhalten. Nutzer hat auch die Darstellung in Wawi bestätigt.
+
+Implementiert ist ein eigener Docker-Dienst `jtl-sync` (Profil gleichen Namens).
+Aktivierung steht noch aus: öffentliche HTTPS-Adresse, Zertifikat, Firewall mit
+Krautl-IP als einzig erlaubter Quelle und Übergabe des lokalen API-Keys fehlen.
+Kein automatischer Wechsel zurück zum Cloud-Weg. Kein Windows-Pull-Dienst.
+
+- Ein Lauf, anschließend 300 Sekunden Pause; keine Überlappung oder Nachholschleife.
+- Ein Datenbankabruf der ausgewählten FAQ pro Lauf. Maßgeblich ist der HTML-Inhalt,
+  nicht bloß ein Bearbeitungszeitstempel. Entwürfe und Google-Auswahl sind unabhängig.
+- Ohne Exportänderung keine JTL-Anfrage. Bei geändertem Export wird der paginierte
+  Artikelkatalog einmal für den gesamten Lauf gelesen, um SKU und echte
+  `parentItemId`-Beziehungen zu bestimmen. Keine Präfixannahmen.
+- FAQ gehen an gleiche SKU und ihre Varianten. Eigene ausgewählte Varianten-FAQ
+  haben Vorrang; werden sie entfernt, gelten wieder vorhandene Vater-FAQ.
+- Nur tatsächlich geänderte Zielartikel werden gelesen und nötigenfalls geschrieben.
+  Bereits gleiche Zielwerte werden ohne PATCH als bestätigt gespeichert.
+- Beim ersten Start werden vorhandene ausgewählte FAQ einmalig abgeglichen.
+  Entfällt eine Quelle, werden nur zuvor verwaltete, nun nicht mehr zugeordnete
+  Zielartikel geleert (beide deutsche Shopwerte). Unverwaltete Artikel bleiben frei.
+- Neue JTL-Varianten werden beim nächsten geänderten FAQ-Export erkannt. Kein
+  zusätzlicher Katalog-Poll bei unveränderten FAQ; bewusst zur Lastbegrenzung.
+- Vor jedem PATCH vollständige Attribut-Sicherung und zweiter Lesestand gegen
+  zwischenzeitliche Änderungen. PATCH enthält nur zwei deutsche Shopwerte.
+  Rücklesen prüft sämtliche Attributwerte. Das ist kein atomarer serverseitiger
+  Vergleich; gleichzeitige externe Änderungen zwischen Prüfung und PATCH sind möglich.
+- Bei unklarem PATCH-Ausgang wird nur rückgelesen. Exakter gesicherter Zielstand
+  löst den offenen Versuch auf. Abweichungen sperren weitere Schreibläufe bis zur
+  manuellen Prüfung; keine automatische Wiederholung/Wiederherstellung.
+
+Zustand, letzter Lauf/Fehler und Sicherungen liegen dauerhaft in `var/jtl-sync/`.
+Nicht löschen oder zurücksetzen, um einen Fehler zu übergehen. Verzeichnis sichern;
+es enthält Artikelattribute, keine API-Schlüssel. Eine Dateisperre schützt vor
+mehreren Diensten auf derselben Arbeitskopie. `var/jtl-tls/` enthält optional das
+vertrauenswürdige PEM-Zertifikat. Beide Verzeichnisse sind aus Git/Build ausgeschlossen.
+
+### Einrichtung und Aktivierung
+
+1. Wawi-API als HTTPS-Endpunkt einrichten. Zertifikat muss für den gewählten
+   DNS-Namen bzw. die IP gültig sein. Selbstsigniertes Zertifikat nur mit explizit
+   vertrautem PEM-Zertifikat in Krautl verwenden; niemals TLS-Prüfung abschalten.
+   Firewall/Provider-Firewall auf die öffentliche ausgehende Krautl-Server-IP
+   beschränken; keine allgemein erlaubende JTL-Regel daneben stehen lassen.
+   Der bisherige lokale Testdienst kann bis zur Abnahme bestehen bleiben.
+2. Lokalen App-Key aus der DPAPI-Sicherung im ursprünglichen Windows-Konto
+   sicher in die Server-`.env` übertragen, nicht im Chat oder Git ablegen.
+   `JTL_LOCAL_URL=https://HOST:PORT/api/eazybusiness`, `JTL_LOCAL_API_KEY=...`,
+   zunächst `JTL_SYNC_ENABLED=false`. Optional
+   `JTL_LOCAL_CA_FILE=/app/var/jtl-tls/ca.pem`. `.env` nur für Serveradministration lesbar.
+3. Code holen und Image bauen; bestehende Mail-/WhatsApp-Dienste müssen dafür
+   nicht neu gestartet werden. Keine Datenbankmigration erforderlich:
+
+```bash
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git switch main &&
+git pull --ff-only origin main &&
+mkdir -p var/jtl-sync var/jtl-tls &&
+chmod 700 var/jtl-sync var/jtl-tls &&
+docker compose build app
+```
+
+4. Lesende Vorschau über die echte HTTPS-Verbindung (kein PATCH, kein Fortschreiben
+   des Abgleichstands), Liste einschließlich Varianten und Leerungen prüfen:
+
+```bash
+docker compose --profile jtl-sync run --rm --no-deps jtl-sync python -m app.jtl_sync_service --vorschau
+```
+
+5. Danach `JTL_SYNC_ENABLED=true` in `.env` setzen und starten:
+
+```bash
+docker compose --profile jtl-sync up -d --no-deps jtl-sync
+docker compose logs --tail=40 jtl-sync
+```
+
+Pausieren: `docker compose stop jtl-sync`. Status: Logs und `var/jtl-sync/stand.json`.
+Bei Updates des aktiven Abgleichs das Image neu bauen und nur `jtl-sync` neu erstellen.
+Die folgenden Abschnitte dokumentieren die vorherigen manuellen Abnahmeschritte.
+
 ## Direkter lokaler Test auf dem Wawi-Server
 
 Am 09.10.2026 nach Cloud-Diagnose eingerichtet: Windows-Dienst `Krautl-API-lokal`,
@@ -65,7 +149,7 @@ Eigenes Journal `jtl-lokal-faq-vollstaendig-40047-1000.json` im bisherigen
 Sicherungsordner; Absatzjournal bleibt erhalten. Bei erneuter Prüfung denselben
 Aufruf mit `-Pruefen` statt `-Anwenden` verwenden. Ohne beide Flags Vorschau mit
 Zeichenanzahl. Der Titel `Fragen / Antworten` bleibt wie alle übrigen Werte erhalten.
-Noch keine Live-Abnahme des vollständigen HTML. Tests decken langen Unicode-Text,
+Vollständiges HTML anschließend live erfolgreich abgenommen. Tests decken langen Unicode-Text,
 separate Journale und UTF-8-Rücklesen unter Windows PowerShell 5.1 ab.
 
 ## Bestätigter Einrichtungsstand
@@ -79,7 +163,8 @@ separate Journale und UTF-8-Rücklesen unter Windows PowerShell 5.1 ab.
 - Tenant `5bb11f28-30fd-4966-84c5-f59d3841c64b`: lesender API-Zugriff am
   09.10.2026 mit eigenen Krautl-Zugangsdaten für `40047-000` und `30014` bestätigt.
 - REST-Kurztext-Schreibabnahme am Kind `40047-1000` erfolgreich (siehe unten).
-  Noch offen: vollständiger FAQ-HTML-Auftrag, erstmalige Zuordnung und Wawi-Shopabgleich.
+  Vollständiger HTML-Auftrag inzwischen lokal abgenommen. Noch offen: produktiver
+  HTTPS-Dauerbetrieb, erstmalige Zuordnung auf weiteren Artikeln und Wawi-Shopabgleich.
 - Erster Spirulina-PATCH am 09.10.2026: HTTP 403. Rücklesen bestätigt exakt den
   gesicherten Ausgangsstand. Hub, registriertes Manifest und der vom Server
   ausgestellte Token enthalten `items.read` und `items.write`; Client-ID stimmt
@@ -206,9 +291,9 @@ via GraphQL, lesende V2-Artikeldiagnose, vereinheitlichte FAQ-Freigabe und einma
 Migration der bisherigen Exportauswahl. Keine produktive Migration ausgeführt.
 
 Implementiert ist außerdem ein isolierter, expliziter PATCH-Test ausschließlich für
-Spirulina (siehe unten). Noch NICHT implementiert: dauerhafte Synchronisierungsaufträge,
-Automatik und Synchronisierungsstatus in der Oberfläche. Die Diagnoseroutine bleibt
-rein lesend. Der Test überträgt den vollständigen gesicherten Attributstand, mit nur
+Spirulina (siehe unten). Der direkte Dauerabgleich ist inzwischen implementiert
+(siehe oben); noch keine Statusanzeige in der Oberfläche. Die Diagnoseroutine bleibt
+rein lesend. Der alte Vater-Test überträgt den vollständigen gesicherten Attributstand, mit nur
 zwei geänderten Zielwerten: damit werden übrige Werte sowohl bei Ersetzen als auch
 bei Zusammenführen der Listen mitgeliefert. Keine ungeprüften partiellen Listen senden.
 

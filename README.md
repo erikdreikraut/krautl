@@ -524,6 +524,15 @@ Migrationsnachweis verhindert, dass spätere Entwürfe beim erneuten Ausführen
 versehentlich freigegeben werden. Die Google-Auswahl bleibt unabhängig.
 HTML muss nicht von Hand gepflegt werden.
 
+Der JTL-Dauerabgleich ist als separater Docker-Dienst `jtl-sync` vorbereitet und
+bleibt bis zur HTTPS-Einrichtung deaktiviert. Er prüft alle fünf Minuten den
+ausgewählten FAQ-Export und überträgt nur geänderte Inhalte an gleiche Artikelnummern
+und deren JTL-Varianten. Eigene ausgewählte Varianten-FAQ haben Vorrang. Unveränderte
+Exporte verursachen keine JTL-Anfragen; das Entfernen der letzten FAQ leert die
+beiden zuvor verwalteten deutschen Shopwerte. Sicherungen und bestätigte Stände
+bleiben über Neustarts erhalten. Einrichtung, Vorschau und Fehlerbehandlung stehen
+in [ops/jtl/README.md](ops/jtl/README.md).
+
 **Shop-Produkte aktualisieren** liest den derzeit sichtbaren Produktbestand
 aus der öffentlichen JTL-Produktübersicht ein. Vorhandene Produkte werden über
 Artikelnummer, Produktadresse oder Namen wiedererkannt; manuell gepflegte

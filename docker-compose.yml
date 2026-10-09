@@ -50,6 +50,20 @@ services:
       retries: 3
       start_period: 90s
 
+  jtl-sync:
+    image: krautl-app
+    profiles: ["jtl-sync"]
+    restart: unless-stopped
+    init: true
+    command: ["python", "-m", "app.jtl_sync_service"]
+    env_file: .env
+    volumes:
+      - ./var/jtl-sync:/app/var/jtl-sync
+      - ./var/jtl-tls:/app/var/jtl-tls:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
   frontend:
     build: ./frontend
     restart: unless-stopped
