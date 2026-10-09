@@ -10,8 +10,9 @@ Stand: 09.10.2026. Eigene interne Krautl-App; Werkel bleibt unverändert.
 - Eigener Service-Account erstellt. Client-ID und Secret sind laut Nutzer in der
   Server-`.env` hinterlegt; keine Zugangsdaten hier dokumentieren.
 - Hub-Verbindungsstatus: JTL-Wawi verbunden, Version `2.1.1+Sha.6aebf42`.
-- Noch offen: ERP-Tenant-ID bestätigen, lesende Artikeldiagnose und Schreibabnahme.
-  Die erfolgreiche Installation belegt noch keinen geprüften Krautl-API-Aufruf.
+- Tenant `5bb11f28-30fd-4966-84c5-f59d3841c64b`: lesender API-Zugriff am
+  09.10.2026 mit eigenen Krautl-Zugangsdaten für `40047-000` und `30014` bestätigt.
+- Noch offen: tatsächliche Schreibabnahme auf dem Server und Wawi-Shopabgleich.
 
 ## Implementiert und noch offen
 
@@ -19,13 +20,67 @@ Implementiert: Manifest, serverseitiger OAuth-Client, exakte Artikelnummern-Aufl
 via GraphQL, lesende V2-Artikeldiagnose, vereinheitlichte FAQ-Freigabe und einmalige
 Migration der bisherigen Exportauswahl. Keine produktive Migration ausgeführt.
 
-Noch NICHT implementiert: dauerhafte Synchronisierungsaufträge, Artikel-PATCH,
-Automatik und Synchronisierungsstatus in der Oberfläche. Dafür zuerst eigene
-Credentials, Tenant und Attribut-UUIDs am bekannten Artikel lesen und die tatsächliche
-PATCH-Semantik der installierten Wawi-Version nachweisen. Die aktuellen offiziellen
-Schemas beschreiben Listenstrukturen, aber nicht hinreichend, ob die enthaltenen
-Listen ersetzt oder zusammengeführt werden. Keine Live-Schreibexperimente auf
-Verdacht. Die Diagnoseroutine führt ausschließlich lesende ERP-Operationen aus.
+Implementiert ist außerdem ein isolierter, expliziter PATCH-Test ausschließlich für
+Spirulina (siehe unten). Noch NICHT implementiert: dauerhafte Synchronisierungsaufträge,
+Automatik und Synchronisierungsstatus in der Oberfläche. Die Diagnoseroutine bleibt
+rein lesend. Der Test überträgt den vollständigen gesicherten Attributstand, mit nur
+zwei geänderten Zielwerten: damit werden übrige Werte sowohl bei Ersetzen als auch
+bei Zusammenführen der Listen mitgeliefert. Keine ungeprüften partiellen Listen senden.
+
+## Einmaliger Spirulina-Schreibtest
+
+Durch API-Ausgabe zu `30014` und die zugehörigen Wawi-Screenshots bestätigt:
+
+| Feld | Attribut-ID |
+| --- | --- |
+| `tab1 inhalt` | `29708817-225b-4208-9a57-5ff511000000` |
+| `tab1 name` | `29708817-225b-4208-9a57-5ff512000000` |
+
+Ziel: Kanal `2-2-1`, Sprache `de`. Der alte Referenztitel `Fragen / Anworten`
+(17 Zeichen) passt exakt zum Diagnose-Hash
+`0c61608025b20e5c5fc02685443ac18725aa52cd90238996ca0a7b62e65bfbe3`.
+Geschrieben wird ausdrücklich **Fragen / Antworten**. Referenzartikel `30014` bleibt unverändert.
+Zielartikel: `40047-000`, UUID `770f139d-18dd-405c-9f84-322131010000`.
+
+Während des Tests Spirulina weder in Wawi noch in Krautl bearbeiten. Der Test liest
+vor dem Schreiben erneut und bricht bei geänderten Attributwerten ab; die API bietet
+hier keinen nachgewiesenen atomaren Vergleichsschutz. Der Ersttest bricht auch bei
+fehlenden ausgewählten FAQ ab. Er ergänzt fehlende Zielattribute und erhält bestehende
+andere Sprachen, Kanäle, Standardwerte und Attribute. Es wird nur `attributes` gesendet.
+Die tatsächlich installierte API muss den vollständigen Stand akzeptieren; vorhandene
+sprachneutrale Werte werden unverändert mit `languageIso: null` weitergegeben.
+Ein Validierungsfehler ist kein erfolgreicher Test und wird nicht automatisch wiederholt.
+
+Serverbefehle für den explizit angeforderten Test:
+
+```bash
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git switch main &&
+git pull --ff-only origin main &&
+docker compose build app &&
+mkdir -p var/jtl-test &&
+docker compose run --rm --no-deps -v /opt/app/krautl/var/jtl-test:/jtl-test app \
+  python -m scripts.teste_jtl_spirulina --anwenden
+```
+
+Ohne `--anwenden` wird nur die Vorschau ausgegeben. Das Skript erzeugt das HTML mit
+dem bestehenden Exporter aus den aktuell ausgewählten FAQ. Vor dem einzigen PATCH
+legt es exklusiv `var/jtl-test/spirulina.json` mit Vorher-/Zielstand und Idempotenzschlüssel
+an, ohne Zugangsdaten. Das Verzeichnis ist nicht öffentlich und wird nicht committet.
+Die Rückleseprüfung vergleicht sämtliche Attributwerte; HTTP 200 allein genügt nicht.
+Bei Timeout oder Abbruch das Journal **nicht löschen**, keinen neuen Schreibversuch
+erzwingen. Stattdessen ausschließlich rücklesen:
+
+```bash
+cd /opt/app/krautl &&
+docker compose run --rm --no-deps -v /opt/app/krautl/var/jtl-test:/jtl-test app \
+  python -m scripts.teste_jtl_spirulina --pruefen
+```
+
+Der einmalige Container erfordert keinen Neustart der laufenden Anwendung. Für die
+reguläre Übernahme des gebauten App-Images anschließend `docker compose up -d --wait app worker`.
+Auch eine erfolgreiche Rückleseprüfung belegt noch keinen erfolgten Wawi-Shopabgleich.
 
 ## Bestätigter fachlicher Umfang
 

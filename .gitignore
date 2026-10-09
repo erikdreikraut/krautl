@@ -5,6 +5,7 @@ __pycache__/
 test_*.db
 .venv/
 var/feeds/
+var/jtl-test/
 frontend/node_modules/
 frontend/dist/
 frontend/vite.config.js.timestamp-*.mjs

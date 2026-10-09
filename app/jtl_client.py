@@ -1,7 +1,7 @@
-"""Read-only setup client for Krautl's own JTL Cloud service account.
+"""OAuth and read operations for Krautl's own JTL Cloud service account.
 
-No attribute writes are enabled until the tenant-specific mapping and PATCH
-semantics have been verified. Credentials never leave this backend.
+The isolated Spirulina acceptance command uses this connection for one guarded
+write; no automatic synchronization is enabled. Credentials stay server-side.
 """
 import asyncio
 import os
