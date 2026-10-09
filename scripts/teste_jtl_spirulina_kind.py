@@ -57,20 +57,20 @@ async def ruecklesen(client, daten):
 
 async def testen(client, html, journal, anwenden=False, ergebnis_test=False,
                  kurztext=False, transport="graphql"):
-    if transport not in ("graphql", "rest") or (transport == "rest" and not kurztext):
-        raise JtlFehler("REST ist hier ausschließlich für den Kurztext-Test vorgesehen.")
-    if kurztext and ergebnis_test:
-        raise JtlFehler("Kurztext benötigt einen eigenen Auftrag, keinen Ergebnis-Wiederholungsversuch.")
+    if transport not in ("graphql", "rest"):
+        raise JtlFehler("Unbekannter Transport.")
+    if (kurztext or transport == "rest") and ergebnis_test:
+        raise JtlFehler("Kurztext und REST benötigen einen eigenen Auftrag, keinen Ergebnis-Wiederholungsversuch.")
     if kurztext:
         html = KURZTEXT
     if not html:
         raise JtlFehler("Keine freigegebenen FAQ; kein Schreibtest.")
     artikel = await lesen(client)
     vorher = artikel.get("attributes") or {"values": []}
-    if kurztext:
+    if kurztext or transport == "rest":
         bestand = signatur(vorher)
         if any((ident, KANAL, "de") not in bestand for ident in (NAME, INHALT)):
-            raise JtlFehler("Kurztext-Test erfordert beide vorhandenen deutschen Shop-Attributwerte.")
+            raise JtlFehler("Dieser Test erfordert beide vorhandenen deutschen Shop-Attributwerte.")
     ziel = zielattribute(vorher, html)
     # Bewusst nur die beiden Zielwerte. Ob JTL übrige Werte erhält, wird am
     # ausdrücklich freigegebenen Kind-Artikel geprüft und nicht vorausgesetzt.
@@ -172,7 +172,9 @@ async def main():
     parser.add_argument("--journal")
     args = parser.parse_args()
     journal = args.journal or (f"/jtl-test/spirulina-kind-40047-1000-kurztext-{args.transport}.json"
-                              if args.kurztext_test else "/jtl-test/spirulina-kind-40047-1000.json")
+                              if args.kurztext_test else
+                              "/jtl-test/spirulina-kind-40047-1000-html-rest.json" if args.transport == "rest"
+                              else "/jtl-test/spirulina-kind-40047-1000.json")
     try:
         async with JtlClient.aus_umgebung() as client:
             if args.pruefen:

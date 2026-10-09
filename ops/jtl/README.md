@@ -12,7 +12,8 @@ Stand: 09.10.2026. Eigene interne Krautl-App; Werkel bleibt unverändert.
 - Hub-Verbindungsstatus: JTL-Wawi verbunden, Version `2.1.1+Sha.6aebf42`.
 - Tenant `5bb11f28-30fd-4966-84c5-f59d3841c64b`: lesender API-Zugriff am
   09.10.2026 mit eigenen Krautl-Zugangsdaten für `40047-000` und `30014` bestätigt.
-- Noch offen: tatsächliche Schreibabnahme auf dem Server und Wawi-Shopabgleich.
+- REST-Kurztext-Schreibabnahme am Kind `40047-1000` erfolgreich (siehe unten).
+  Noch offen: vollständiger FAQ-HTML-Auftrag, erstmalige Zuordnung und Wawi-Shopabgleich.
 - Erster Spirulina-PATCH am 09.10.2026: HTTP 403. Rücklesen bestätigt exakt den
   gesicherten Ausgangsstand. Hub, registriertes Manifest und der vom Server
   ausgestellte Token enthalten `items.read` und `items.write`; Client-ID stimmt
@@ -104,12 +105,31 @@ docker compose run --rm --no-deps -v /opt/app/krautl/var/jtl-test:/jtl-test app 
   python -m scripts.teste_jtl_spirulina_kind --kurztext-test --anwenden
 ```
 
-Standard ist GraphQL. `--transport rest` ist ausschließlich für diesen Kurztext-
-Test freigeschaltet und als separater Vergleich nach Auswertung vorgesehen, keine
+Standard ist GraphQL. `--transport rest` ist als separater Vergleich vorgesehen, keine
 automatische Ausweichroute. Beide Varianten haben eigene dauerhafte Journale
 `spirulina-kind-40047-1000-kurztext-graphql.json` bzw. `...-rest.json`. Mit denselben
 Auswahlflags und `--pruefen` statt `--anwenden` wird ausschließlich zurückgelesen.
 Ohne `--anwenden` nur Vorschau. Keine Wiederholung durch Löschen der Journale.
+
+09.10.2026, 11:28:28 GMT: REST-Kurztext am Kind erfolgreich. Nutzer-Ausgabe bestätigt
+`ziel_erreicht`, `andere_bestandswerte_erhalten`, `exakter_zielstand` und
+`test_erfolgreich` jeweils true. Unmittelbar zuvor gleicher Kurztext per GraphQL
+ohne Wirkung. Keine zusätzlichen deutschen Standardwerte zwischen den Versuchen
+angelegt. Das belegt REST-Schreiben für diese Shopwerte, nicht die genaue Ursache
+der GraphQL-Wirkungslosigkeit oder der früheren REST-403 mit großem HTML-Auftrag.
+
+Nächster Schritt: vollständiges ausgewähltes FAQ-HTML per REST an denselben Kindartikel:
+
+```bash
+docker compose run --rm --no-deps -v /opt/app/krautl/var/jtl-test:/jtl-test app \
+  python -m scripts.teste_jtl_spirulina_kind --transport rest --anwenden
+```
+
+Eigene Sicherung `spirulina-kind-40047-1000-html-rest.json`, eigener Idempotenzschlüssel,
+beide Zielwerte müssen bereits vorhanden sein. Bei Erfolg ersetzt der FAQ-Export den
+temporären Kurztext. Bei Fehler nur mit `--transport rest --pruefen` rücklesen.
+Keine automatische Wiederholung oder Vererbung. Anlage fehlender Attribute weiterhin
+nicht abgenommen. Der Vaterartikel bleibt unverändert.
 
 Der separate Sprachenabruf scheiterte mit HTTP 403. Laut öffentlichem 2.1-Schema
 braucht `/v2/languages/activated` `system.config.read`; das ist kein Gegenbeweis

@@ -29,8 +29,10 @@ SCHEMA = {"ChangeItemCommandRequestInput": {"itemId": "ID!", "attributes": "Attr
 
 
 class KindTest(unittest.IsolatedAsyncioTestCase):
-    async def test_kurztext_transport_ruecklesen_und_sicherung(self):
-        for transport in ("graphql", "rest"):
+    async def test_transport_ruecklesen_und_sicherung(self):
+        for transport, kurztext in (("graphql", True), ("rest", True), ("rest", False)):
+            html = '<div itemscope itemtype="https://schema.org/FAQPage">Fragen &amp; Antworten</div>' * 250
+            inhalt = KURZTEXT if kurztext else html
             for uebernommen in (False, True):
                 vorher = zielattribute({"values": [{"attributeId": "other",
                     "defaultValues": [{"value": "neutral"}]}]}, "alter Inhalt")
@@ -48,22 +50,22 @@ class KindTest(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(json.loads(journal.read_text())["vorher"], vorher)
                         payload = kwargs["json"]
                         request = payload if transport == "rest" else payload["variables"]["request"]
-                        self.assertEqual(request["attributes"], zielattribute({"values": []}, KURZTEXT))
+                        self.assertEqual(request["attributes"], zielattribute({"values": []}, inhalt))
                         self.assertEqual(url.rsplit("/", 1)[-1], "child-id" if transport == "rest" else "graphql")
                         if transport == "rest":
                             self.assertEqual(set(payload), {"attributes"})
                         if uebernommen:
-                            state = zielattribute(vorher, KURZTEXT)
+                            state = zielattribute(vorher, inhalt)
                         result = {"item": {"id": "child-id"}}
                         return httpx.Response(200, json=result if transport == "rest" else {"data": {"ChangeItem": result}})
                     client = SimpleNamespace(tenant_id=TENANT, client_secret="secret", artikel_lesen=lesen,
                         _token=AsyncMock(return_value="token"), _lesen=AsyncMock(return_value=schema),
                         http=SimpleNamespace(post=AsyncMock(side_effect=senden), patch=AsyncMock(side_effect=senden)))
-                    result = await testen(client, "ignored", journal, True, kurztext=True, transport=transport)
+                    result = await testen(client, html, journal, True, kurztext=kurztext, transport=transport)
                     self.assertEqual(result["test_erfolgreich"], uebernommen)
                     self.assertTrue(result["ruecklesepruefung"]["andere_bestandswerte_erhalten"])
                     with self.assertRaisesRegex(JtlFehler, "Journal"):
-                        await testen(client, "ignored", journal, True, kurztext=True, transport=transport)
+                        await testen(client, html, journal, True, kurztext=kurztext, transport=transport)
                     self.assertEqual(client.http.post.await_count + client.http.patch.await_count, 1)
 
     async def test_kurztext_ohne_zugeordnete_werte_schreibt_nicht(self):
