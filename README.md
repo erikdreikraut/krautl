@@ -52,7 +52,10 @@ PDF-/JPG-/PNG-Versand. WhatsApp-Chats werden weder beim ersten Eingang noch bei 
 Es gibt keine Kategorieauswahl für Chats; die KI wird für Antwortvorschläge weiterhin auf Knopfdruck genutzt. Es werden keine
 Mail-Verschiebeaktionen auf Chats ausgeführt. Vorschläge benutzen den Verlauf
 und freigegebene Wissenseinträge/FAQ; Transkription benötigt den vorhandenen
-OpenAI-Zugang. Versand und KI-Vorschläge erfolgen ausschließlich auf Knopfdruck.
+OpenAI-Zugang. Versand erfolgt ausdrücklich über Enter oder „Antwort senden“;
+Shift+Enter fügt einen Zeilenumbruch ein. KI-Vorschläge erfolgen auf Knopfdruck.
+Nach Rückkehr zum Fenster oder Tab wird die Bearbeitungsreservierung sofort
+erneuert; laufende Abfragen stehlen keinen Fokus aus anderen Eingabefeldern.
 
 Neue Nachrichten/Transkripte machen ältere Entwürfe prüfpflichtig. Neue Eingänge
 während des Sendens bleiben sichtbar. Ein dauerhafter Versandauftrag mit UUID

@@ -47,21 +47,39 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
   }, [id]);
   useEffect(() => {
     let aktiv = true;
+    let aktualisierungLaeuft = false;
+    let erneutAktualisieren = false;
     const aktualisieren = async () => {
       if (!aktiv) return;
+      if (aktualisierungLaeuft) { erneutAktualisieren = true; return; }
+      aktualisierungLaeuft = true;
       try {
         await laden();
+        if (!aktiv) return;
         if (document.visibilityState === "visible" && document.hasFocus()) {
           await api.whatsappReservieren(id);
-          if (aktiv) setEigene(true);
+          if (aktiv) setEigene(document.visibilityState === "visible" && document.hasFocus());
         } else {
           await api.whatsappFreigeben(id);
           if (aktiv) setEigene(false);
         }
       } catch (e) { if (aktiv) {setFehler(e.message); setEigene(false);} }
+      finally {
+        aktualisierungLaeuft = false;
+        if (aktiv && erneutAktualisieren) { erneutAktualisieren = false; aktualisieren(); }
+      }
     };
     aktualisieren(); const timer = setInterval(aktualisieren, 15000);
-    return () => {aktiv = false; clearInterval(timer); api.whatsappFreigeben(id).catch(() => {});};
+    document.addEventListener("visibilitychange", aktualisieren);
+    window.addEventListener("focus", aktualisieren);
+    window.addEventListener("blur", aktualisieren);
+    return () => {
+      aktiv = false; clearInterval(timer);
+      document.removeEventListener("visibilitychange", aktualisieren);
+      window.removeEventListener("focus", aktualisieren);
+      window.removeEventListener("blur", aktualisieren);
+      api.whatsappFreigeben(id).catch(() => {});
+    };
   }, [id, laden]);
   useEffect(() => {
     if (!chat || !eigene || laeuft || !antwortRef.current) return;
@@ -106,7 +124,7 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
     if (e.key !== "Enter" || e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
     e.preventDefault();
     if (e.repeat || gesperrt || aktionLaeuft.current) return;
-    if (e.ctrlKey) {
+    if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
       const feld = e.currentTarget;
       const start = feld.selectionStart;
       const ende = feld.selectionEnd;
@@ -116,7 +134,7 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
       requestAnimationFrame(() => {
         if (antwortRef.current === feld) feld.setSelectionRange(start + 1, start + 1);
       });
-    } else if (!e.shiftKey && !e.altKey && !e.metaKey) {
+    } else if (!e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
       antwortSenden();
     }
   };
@@ -152,7 +170,7 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
       {veraltet && <div className="mb-2 text-sm" style={{color: "#A33E25"}}>Neue Kundennachricht: Antwort prüfen. <button style={button} disabled={gesperrt} onClick={() => {setBasisRevision(chat.revision); versandAuftrag.current = null;}}>Antwort geprüft</button></div>}
       <label className="block text-sm mb-2" htmlFor={`wa-antwort-${id}`}>Antwort an {chat.name}</label>
       <textarea ref={antwortRef} onKeyDown={antwortTaste} aria-describedby={`wa-tasten-${id}`} id={`wa-antwort-${id}`} value={text} disabled={gesperrt} rows={4} maxLength={datei ? 1024 : 4096} className="w-full p-3 rounded-md" style={{background: "#FDFCEE", border: "1px solid #DDD9C4"}} onChange={e => {setText(e.target.value);}} />
-      <div id={`wa-tasten-${id}`} className="text-xs mt-1" style={{color: "#6C6F5F"}}>Enter: senden · Strg+Enter: Zeilenumbruch</div>
+      <div id={`wa-tasten-${id}`} className="text-xs mt-1" style={{color: "#6C6F5F"}}>Enter: senden · Shift+Enter: Zeilenumbruch</div>
       {fensterOffen && <label className="block text-sm mt-2">Anhang (PDF bis 10 MB, JPG/PNG bis 5 MB)<input type="file" accept=".pdf,.jpg,.jpeg,.png" disabled={gesperrt} onChange={e => setDatei(e.target.files?.[0] || null)} className="block mt-1 max-w-full" /></label>}
       {!fensterOffen && <div className="my-3 p-3" style={{background: "#F3E7D2"}}>
         <button style={button} disabled={gesperrt} onClick={() => aktion(async () => setVorlagen(await api.whatsappVorlagen()))}>Freigegebene Textvorlagen laden</button>
