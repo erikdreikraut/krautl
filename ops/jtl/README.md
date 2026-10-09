@@ -83,6 +83,38 @@ separate `.item-ergebnis`-Datei sperrt Wiederholungen. Bei Fehler nur `--pruefen
 
 ## Implementiert und noch offen
 
+### Diagnose nach manueller Zuordnung am Kind
+
+Auch `item { id }` und ein weiterer Auftrag nach manueller Zuordnung beider
+Attribute lieferten HTTP 200 mit passender ID, aber unveränderten Attributstand.
+Der separat gelesene Stand und das Journal `spirulina-kind-40047-1000-angelegt.json`
+bestätigen beide Zielattribute auf `2-2-1` / `de`: Inhalt 11 Zeichen, Titel 18 Zeichen
+und korrekt `Fragen / Antworten`. Die fehlende Zuordnung erklärt den letzten
+Fehlschlag somit nicht. Noch keine erfolgreiche Schreibabnahme. Nutzer möchte
+keinen Supportkontakt; weitere technische Tests fortsetzen.
+
+Der Kurztext-Test isoliert HTML/Inhaltsgröße vom Schreibweg. Er verwendet temporär
+`Krautl FAQ Schreibtest 40047-1000` als Inhalt und den regulären FAQ-Titel. Er
+verlangt beide schon vorhandenen deutschen Shopwerte. Keine Datenbank-FAQ werden
+verändert. Ein Erfolg bestätigt nur diesen Texttest, noch keinen HTML-Export.
+Danach muss der reguläre FAQ-Inhalt in einem gesondert gesicherten Auftrag folgen.
+
+```bash
+docker compose run --rm --no-deps -v /opt/app/krautl/var/jtl-test:/jtl-test app \
+  python -m scripts.teste_jtl_spirulina_kind --kurztext-test --anwenden
+```
+
+Standard ist GraphQL. `--transport rest` ist ausschließlich für diesen Kurztext-
+Test freigeschaltet und als separater Vergleich nach Auswertung vorgesehen, keine
+automatische Ausweichroute. Beide Varianten haben eigene dauerhafte Journale
+`spirulina-kind-40047-1000-kurztext-graphql.json` bzw. `...-rest.json`. Mit denselben
+Auswahlflags und `--pruefen` statt `--anwenden` wird ausschließlich zurückgelesen.
+Ohne `--anwenden` nur Vorschau. Keine Wiederholung durch Löschen der Journale.
+
+Der separate Sprachenabruf scheiterte mit HTTP 403. Laut öffentlichem 2.1-Schema
+braucht `/v2/languages/activated` `system.config.read`; das ist kein Gegenbeweis
+zu den bestätigten Artikelrechten. Keine zusätzlichen Rechte dafür angefordert.
+
 Implementiert: Manifest, serverseitiger OAuth-Client, exakte Artikelnummern-Auflösung
 via GraphQL, lesende V2-Artikeldiagnose, vereinheitlichte FAQ-Freigabe und einmalige
 Migration der bisherigen Exportauswahl. Keine produktive Migration ausgeführt.

@@ -10,7 +10,7 @@ import httpx
 
 from app.jtl_client import JtlFehler
 from app.jtl_faq_test import TENANT, zielattribute
-from scripts.teste_jtl_spirulina_kind import testen, SKU
+from scripts.teste_jtl_spirulina_kind import testen, SKU, KURZTEXT
 
 
 def typ(name):
@@ -29,6 +29,49 @@ SCHEMA = {"ChangeItemCommandRequestInput": {"itemId": "ID!", "attributes": "Attr
 
 
 class KindTest(unittest.IsolatedAsyncioTestCase):
+    async def test_kurztext_transport_ruecklesen_und_sicherung(self):
+        for transport in ("graphql", "rest"):
+            for uebernommen in (False, True):
+                vorher = zielattribute({"values": [{"attributeId": "other",
+                    "defaultValues": [{"value": "neutral"}]}]}, "alter Inhalt")
+                state = copy.deepcopy(vorher)
+                schema = {"data": {"__schema": {"types": [
+                    {"name": n, "inputFields": [{"name": k, "type": typ(v)} for k, v in fields.items()]}
+                    for n, fields in SCHEMA.items()]}}}
+                async def lesen(sku):
+                    self.assertEqual(sku, SKU)
+                    return {"id": "child-id", "attributes": copy.deepcopy(state)}
+                with tempfile.TemporaryDirectory() as tmp:
+                    journal = Path(tmp) / "kurz.json"
+                    async def senden(url, **kwargs):
+                        nonlocal state
+                        self.assertEqual(json.loads(journal.read_text())["vorher"], vorher)
+                        payload = kwargs["json"]
+                        request = payload if transport == "rest" else payload["variables"]["request"]
+                        self.assertEqual(request["attributes"], zielattribute({"values": []}, KURZTEXT))
+                        self.assertEqual(url.rsplit("/", 1)[-1], "child-id" if transport == "rest" else "graphql")
+                        if transport == "rest":
+                            self.assertEqual(set(payload), {"attributes"})
+                        if uebernommen:
+                            state = zielattribute(vorher, KURZTEXT)
+                        result = {"item": {"id": "child-id"}}
+                        return httpx.Response(200, json=result if transport == "rest" else {"data": {"ChangeItem": result}})
+                    client = SimpleNamespace(tenant_id=TENANT, client_secret="secret", artikel_lesen=lesen,
+                        _token=AsyncMock(return_value="token"), _lesen=AsyncMock(return_value=schema),
+                        http=SimpleNamespace(post=AsyncMock(side_effect=senden), patch=AsyncMock(side_effect=senden)))
+                    result = await testen(client, "ignored", journal, True, kurztext=True, transport=transport)
+                    self.assertEqual(result["test_erfolgreich"], uebernommen)
+                    self.assertTrue(result["ruecklesepruefung"]["andere_bestandswerte_erhalten"])
+                    with self.assertRaisesRegex(JtlFehler, "Journal"):
+                        await testen(client, "ignored", journal, True, kurztext=True, transport=transport)
+                    self.assertEqual(client.http.post.await_count + client.http.patch.await_count, 1)
+
+    async def test_kurztext_ohne_zugeordnete_werte_schreibt_nicht(self):
+        client = SimpleNamespace(tenant_id=TENANT,
+            artikel_lesen=AsyncMock(return_value={"id": "child-id", "attributes": {"values": []}}))
+        with self.assertRaisesRegex(JtlFehler, "vorhandenen"):
+            await testen(client, "ignored", "unused", True, kurztext=True)
+
     async def test_ergebnisversuch_bewahrt_original_und_sperrt_wiederholung(self):
         vorher = {"values": []}
         request = {"itemId": "child-id", "attributes": zielattribute(vorher, "FAQ")}
