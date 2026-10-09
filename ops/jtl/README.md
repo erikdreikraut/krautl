@@ -37,9 +37,36 @@ inklusive anderer Sprachen und Kanäle. Bei vorhandenem Journal ausschließlich
 um erneut zu schreiben. Ein erfolgreicher Absatztest ist noch keine Abnahme des
 vollständigen FAQ-Exports oder der erstmaligen Attributzuordnung.
 
-Dieser lokale HTML-Test ist vorbereitet und mit gemockten HTTP-Antworten geprüft,
-noch nicht live abgenommen. Die dauerhafte Verbindung vom Krautl-Server zur lokalen
+Der lokale Absatztest wurde am 09.10.2026 live erfolgreich abgenommen: exakter
+Zielstand und alle anderen Attributwerte erhalten, Antwort mit korrekter Artikel-ID.
+Das gleiche Absatz-HTML war zuvor im Cloud-Weg mit 403 abgelehnt worden.
+Die dauerhafte Verbindung vom Krautl-Server zur lokalen
 Wawi-API ist ebenfalls noch nicht eingerichtet. Keine öffentliche Portfreigabe erfolgt.
+
+### Vollständiges FAQ-HTML auf demselben Kind testen
+
+Aktuelles `scripts/teste_jtl_lokal.ps1` auf dem Wawi-Desktop ersetzen. In Krautl
+beim Vaterprodukt `40047-000` unter FAQ „Aktuelles JTL-HTML kopieren“ wählen.
+Den kopierten HTML-Text über die RDP-Zwischenablage auf dem Wawi-Server als UTF-8
+speichern (die PowerShell-Befehlszeile zuerst vorbereiten, danach HTML kopieren):
+
+```powershell
+[IO.File]::WriteAllText((Join-Path $env:USERPROFILE 'Desktop\krautl-faq.html'), (Get-Clipboard -Raw), [Text.UTF8Encoding]::new($false))
+```
+
+Alternativ den vollständigen kopierten HTML-Text mit einem Editor als UTF-8 in
+`krautl-faq.html` auf dem Wawi-Desktop speichern. Vor dem Schreiben Datei prüfen.
+
+```powershell
+powershell.exe -NoProfile -File "$env:USERPROFILE\Desktop\teste_jtl_lokal.ps1" -HtmlDatei "$env:USERPROFILE\Desktop\krautl-faq.html" -Anwenden
+```
+
+Eigenes Journal `jtl-lokal-faq-vollstaendig-40047-1000.json` im bisherigen
+Sicherungsordner; Absatzjournal bleibt erhalten. Bei erneuter Prüfung denselben
+Aufruf mit `-Pruefen` statt `-Anwenden` verwenden. Ohne beide Flags Vorschau mit
+Zeichenanzahl. Der Titel `Fragen / Antworten` bleibt wie alle übrigen Werte erhalten.
+Noch keine Live-Abnahme des vollständigen HTML. Tests decken langen Unicode-Text,
+separate Journale und UTF-8-Rücklesen unter Windows PowerShell 5.1 ab.
 
 ## Bestätigter Einrichtungsstand
 

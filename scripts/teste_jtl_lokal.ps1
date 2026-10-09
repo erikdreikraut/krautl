@@ -1,6 +1,6 @@
 # Einmaliger HTML-Test auf dem Wawi-Server. Windows PowerShell 5.1.
 [CmdletBinding()]
-param([switch]$Anwenden, [switch]$Pruefen)
+param([switch]$Anwenden, [switch]$Pruefen, [string]$HtmlDatei)
 
 $ErrorActionPreference = 'Stop'
 
@@ -66,20 +66,27 @@ function Read-KrautlArtikel($Headers) {
 }
 
 function Invoke-KrautlLokalTest {
-    param([switch]$Anwenden, [switch]$Pruefen)
+    param([switch]$Anwenden, [switch]$Pruefen, [string]$HtmlDatei)
     if ($Anwenden -and $Pruefen) { throw 'Nur Anwenden oder Pruefen verwenden.' }
     $ordner = Join-Path $env:LOCALAPPDATA 'Krautl'
     $journal = Join-Path $ordner 'jtl-lokal-html-40047-1000.json'
+    if ($HtmlDatei) { $journal = Join-Path $ordner 'jtl-lokal-faq-vollstaendig-40047-1000.json' }
     $secureKey = Import-Clixml -LiteralPath (Join-Path $ordner 'jtl-lokal-key.xml')
     $headers = @{'Authorization'=('Wawi ' + ([Net.NetworkCredential]::new('', $secureKey)).Password); 'x-appid'='krautl-lokal'; 'x-appversion'='0.1.0'}
     try {
         if ($Pruefen) {
-            $daten = Get-Content -LiteralPath $journal -Raw | ConvertFrom-Json
+            $daten = Get-Content -LiteralPath $journal -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($daten.artikelnummer -cne '40047-1000' -or $daten.artikel_id -ne '770f139d-18dd-405c-9f84-322132010000') { throw 'Falsches Journal.' }
             $aktuell = Read-KrautlArtikel $headers
             return (Compare-KrautlAttribute $daten.vorher $daten.ziel $aktuell.attributes)
         }
         if ($Anwenden -and (Test-Path -LiteralPath $journal)) { throw 'Journal existiert. Nur -Pruefen verwenden; nicht erneut schreiben.' }
+        $html = '<p>Krautl FAQ Schreibtest 40047-1000</p>'
+        if ($HtmlDatei) {
+            $pfad = (Resolve-Path -LiteralPath $HtmlDatei).ProviderPath
+            $html = [IO.File]::ReadAllText($pfad, [Text.UTF8Encoding]::new($false, $true))
+            if ([string]::IsNullOrWhiteSpace($html) -or $html -notmatch '<[^>]+>') { throw 'HTML-Datei ist leer oder enthaelt kein HTML.' }
+        }
         $artikel = Read-KrautlArtikel $headers
         $ziel = $artikel.attributes | ConvertTo-Json -Depth 100 | ConvertFrom-Json
         $a = @($ziel.values | Where-Object attributeId -eq '29708817-225b-4208-9a57-5ff511000000')
@@ -88,10 +95,9 @@ function Invoke-KrautlLokalTest {
         if ($kanal.Count -ne 1) { throw 'Shopkanal nicht eindeutig vorhanden.' }
         $wert = @($kanal[0].values | Where-Object languageIso -eq 'de')
         if ($wert.Count -ne 1) { throw 'Deutscher Shopwert nicht eindeutig vorhanden.' }
-        $html = '<p>Krautl FAQ Schreibtest 40047-1000</p>'
         $wert[0].value = $html
         $request = @{attributes=@{values=@(@{attributeId='29708817-225b-4208-9a57-5ff511000000';salesChannelValues=@(@{salesChannelId='2-2-1';values=@(@{languageIso='de';value=$html})})})}}
-        if (-not $Anwenden) { return @{artikelnummer='40047-1000';vorschau=$true;inhalt=$html;journal=$journal} }
+        if (-not $Anwenden) { return @{artikelnummer='40047-1000';vorschau=$true;html_zeichen=$html.Length;journal=$journal} }
         $aktuell = Read-KrautlArtikel $headers
         if (-not (Compare-KrautlAttribute $artikel.attributes $ziel $aktuell.attributes).ausgangsstand_unveraendert) { throw 'Attribute inzwischen veraendert; Abbruch.' }
         if ((Compare-KrautlAttribute $artikel.attributes $ziel $aktuell.attributes).exakter_zielstand) { return @{bereits_vorhanden=$true;geschrieben=$false} }
@@ -118,7 +124,7 @@ function Invoke-KrautlLokalTest {
 
 if ($MyInvocation.InvocationName -ne '.') {
     try {
-        $result = Invoke-KrautlLokalTest -Anwenden:$Anwenden -Pruefen:$Pruefen
+        $result = Invoke-KrautlLokalTest -Anwenden:$Anwenden -Pruefen:$Pruefen -HtmlDatei $HtmlDatei
         $result | ConvertTo-Json -Depth 10
         if ($result.Contains('test_erfolgreich') -and -not $result.test_erfolgreich) { exit 1 }
     } catch {
