@@ -2,6 +2,45 @@
 
 Stand: 09.10.2026. Eigene interne Krautl-App; Werkel bleibt unverändert.
 
+## Direkter lokaler Test auf dem Wawi-Server
+
+Am 09.10.2026 nach Cloud-Diagnose eingerichtet: Windows-Dienst `Krautl-API-lokal`,
+Profil Standard, Mandant eB-Standard / eazybusiness, nur `127.0.0.1:5883`.
+`/api/eazybusiness/info` meldet `2.1.1+Sha.6aebf42`. Cloud-Dienst bleibt bestehen.
+Eigene lokale App `krautl-lokal`, Version `0.1.0`, eigener gleichnamiger Benutzer,
+Scopes `items.read` und `items.write`. Registrierung abgeschlossen. API-Key liegt
+auf dem Wawi-Server als Windows-DPAPI-geschützter SecureString in
+`%LOCALAPPDATA%\Krautl\jtl-lokal-key.xml`, nur für den dortigen Benutzer/Rechner.
+Keine Schlüssel in Chat, Git oder Diagnoseausgaben kopieren.
+
+Zunächst HTTP 402 mit `No license available, rejecting request.` Nutzer hat die
+REST-API bestellt, Lizenz in Wawi aktualisiert; inzwischen authentifizierter GET
+des Kindes mit exakter ID/SKU bestätigt. Konkreter Abrechnungsbeginn nicht geprüft.
+Cloud-HTML-Versuch um 13:47:14 lieferte 403 text/html; zeitgleiche lokale Logs zeigen
+vorher/nachher GETs und GraphQL-Leseaufrufe, keinen PATCH. Verdacht auf Ablehnung
+vor lokaler Verarbeitung, genaue Cloud-Komponente weiterhin unbekannt.
+
+`scripts/teste_jtl_lokal.ps1` auf den Desktop des Wawi-Servers kopieren. Kein
+Krautl-App-Neubau erforderlich. Ausführung im Windows-Benutzerkonto der Registrierung:
+
+```powershell
+powershell.exe -NoProfile -File "$env:USERPROFILE\Desktop\teste_jtl_lokal.ps1" -Anwenden
+```
+
+Nur Kind `40047-1000`, feste UUID, nur bestehender Shopwert des Inhaltsattributs,
+Kanal `2-2-1`, Deutsch; Ziel `<p>Krautl FAQ Schreibtest 40047-1000</p>`.
+Der Titel wird nicht geschrieben. Vollständige Attribut-Sicherung und Zielzustand
+liegen in `%LOCALAPPDATA%\Krautl\jtl-lokal-html-40047-1000.json`; exklusive Erstellung
+vor PATCH, kein automatischer Retry/Restore. Danach Vergleich aller Attributwerte,
+inklusive anderer Sprachen und Kanäle. Bei vorhandenem Journal ausschließlich
+`-Pruefen` statt `-Anwenden`; ohne beide Flags nur Vorschau. Journale nicht löschen,
+um erneut zu schreiben. Ein erfolgreicher Absatztest ist noch keine Abnahme des
+vollständigen FAQ-Exports oder der erstmaligen Attributzuordnung.
+
+Dieser lokale HTML-Test ist vorbereitet und mit gemockten HTTP-Antworten geprüft,
+noch nicht live abgenommen. Die dauerhafte Verbindung vom Krautl-Server zur lokalen
+Wawi-API ist ebenfalls noch nicht eingerichtet. Keine öffentliche Portfreigabe erfolgt.
+
 ## Bestätigter Einrichtungsstand
 
 - `krautl-intern` Version `0.1.0` im Partnerportal registriert und im Hub für
