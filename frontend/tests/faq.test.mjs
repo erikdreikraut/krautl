@@ -23,7 +23,8 @@ test("FAQ zeigt Artikelnummern und nur zwei unabhängige Auswahlhaken", async t 
   const buttons = () => view.root.findAllByType("button");
   await act(async () => buttons().find(b => b.children.includes("FAQ")).props.onClick());
   await act(async () => buttons().find(b => b.children.includes("Testprodukt")).props.onClick());
-  assert.match(JSON.stringify(view.toJSON()), /FAQ · Testprodukt · Art.-Nr.: 00123/);
+  assert.equal(view.root.findAllByType("strong").filter(el => el.children.includes("00123")).length, 2);
+  assert.doesNotMatch(JSON.stringify(view.toJSON()), /Art.-Nr.:|nicht hinterlegt/);
   assert.equal(view.root.findAllByType("input").filter(i => i.props.type === "checkbox").length, 2);
   const faqHaken = () => view.root.findByProps({"aria-label": "In FAQ aufnehmen: Frage?"});
   await act(async () => faqHaken().props.onChange({target: {checked: true}}));

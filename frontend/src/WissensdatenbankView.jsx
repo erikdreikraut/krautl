@@ -278,7 +278,7 @@ Das Löschen kann nicht rückgängig gemacht werden.`)) return;
       {gefilterteProdukte.map((p) => <div key={p.id} className="flex items-start">
         <button onClick={() => setAuswahl(`produkt:${p.id}`)} className="flex-1 min-w-0 text-left px-2.5 py-2" style={{ ...ui, fontSize: "12px", fontWeight: produktId === p.id ? 600 : 400, color: produktId === p.id ? farben.mossDeep : farben.muted, background: produktId === p.id ? farben.mossPale : "transparent", borderRadius: "5px", overflowWrap: "anywhere" }}>
           {p.name}
-          <strong className="block" style={{ ...mono, fontSize: "11px", fontWeight: 700 }}>Art.-Nr.: {p.artikelnummer || "nicht hinterlegt"}</strong>
+          {p.artikelnummer && <strong className="block" style={{ ...mono, fontSize: "9.5px", fontWeight: 700 }}>{p.artikelnummer}</strong>}
         </button>
         <button title="Produkt bearbeiten" onClick={() => setEditor({ typ: "produkt", id: p.id, daten: { ...p, familie: familienNachId[p.produktfamilie_id]?.name || "", aliasesText: (p.aliases || []).join(", ") } })} className="shrink-0 p-2" style={{ color: farben.muted }}><Pencil size={12}/></button>
       </div>)}
@@ -303,7 +303,7 @@ Das Löschen kann nicht rückgängig gemacht werden.`)) return;
       </>}
       {bereich === "faq" && <>
         <FaqDokumentImport produkte={produkte} onReload={onReload}/>
-        <div className="flex justify-between mb-4"><h3 style={{ ...serif, fontWeight: 700 }}>{produkt ? `FAQ · ${produkt.name} · Art.-Nr.: ${produkt.artikelnummer || "nicht hinterlegt"}` : "FAQ"}</h3>{produkt && <button onClick={exportieren} className="flex items-center gap-1.5 px-3 py-2" style={{ ...ui, fontSize: "12px", color: farben.mossDeep, border: `1px solid ${farben.line}`, borderRadius: "5px" }}><Download size={13}/> Aktuelles JTL-HTML kopieren</button>}</div>
+        <div className="flex justify-between mb-4"><h3 style={{ ...serif, fontWeight: 700 }}>{produkt ? <>FAQ · {produkt.name}{produkt.artikelnummer && <strong className="ml-2" style={{ ...mono, fontSize: "11px", fontWeight: 700 }}>{produkt.artikelnummer}</strong>}</> : "FAQ"}</h3>{produkt && <button onClick={exportieren} className="flex items-center gap-1.5 px-3 py-2" style={{ ...ui, fontSize: "12px", color: farben.mossDeep, border: `1px solid ${farben.line}`, borderRadius: "5px" }}><Download size={13}/> Aktuelles JTL-HTML kopieren</button>}</div>
         {[...new Set(faq.map((f) => f.kategorie))].map((g) => <div key={g} className="mb-5">
             <div className="mb-2" style={{ ...mono, fontSize: "10.5px", color: farben.muted }}>{g.toUpperCase()}</div>
             {faq.filter((f) => f.kategorie === g).map((f) => <article key={f.id} className="p-3 mb-2" style={eintragRahmen(imFaq(f) ? "freigegeben" : "entwurf")}>
@@ -312,8 +312,10 @@ Das Löschen kann nicht rückgängig gemacht werden.`)) return;
                 <div className="mt-1" style={{ ...serif, fontSize: "14px", color: farben.muted }}>{f.antwort}</div>
               </button>
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                <FaqAuswahl faqId={f.id} frage={f.frage} ausgewaehlt={imFaq(f)} onGespeichert={faqAuswahlGespeichert}/>
-                <GoogleFaqAuswahl faqId={f.id} frage={f.frage} ausgewaehlt={f.include_in_google_product_qa} onGespeichert={googleAuswahlGespeichert}/>
+                <div className="flex flex-wrap items-center gap-2">
+                  <FaqAuswahl faqId={f.id} frage={f.frage} ausgewaehlt={imFaq(f)} onGespeichert={faqAuswahlGespeichert}/>
+                  <GoogleFaqAuswahl faqId={f.id} frage={f.frage} ausgewaehlt={f.include_in_google_product_qa} onGespeichert={googleAuswahlGespeichert}/>
+                </div>
                 <button type="button" disabled={loescht} onClick={() => faqLoeschen(f)} aria-label={`FAQ löschen: ${f.frage}`} className="flex items-center gap-1.5 px-2 py-1" style={{ ...ui, fontSize: "12px", color: "#9A4332", border: `1px solid ${farben.line}`, borderRadius: "5px", opacity: loescht ? 0.5 : 1 }}><Trash2 size={13}/> Löschen</button>
               </div>
             </article>)}

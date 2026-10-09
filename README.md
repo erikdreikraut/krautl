@@ -514,8 +514,9 @@ Haken und die unabhängige Google-Auswahl; das FAQ-Status-Dropdown entfällt. Oh
 FAQ-Haken bleibt der Eintrag ein Entwurf. Intern setzt der Haken gemeinsam
 `status=freigegeben` und `aktiv=true`, Abwählen setzt `entwurf` und `aktiv=false`.
 Bestehende Exportauswahlen bleiben erhalten; hierfür ist keine neue Migration nötig.
-Die Artikelnummer steht in Produktliste und FAQ-Überschrift; fehlende Nummern
-werden als „nicht hinterlegt“ angezeigt. Der HTML-Block kann als Ganzes in JTL eingefügt werden.
+Die Artikelnummer steht klein und fett ohne Präfix in Produktliste und FAQ-Überschrift.
+Fehlende Nummern werden nicht als Platzhalter angezeigt. Beide Auswahlhaken stehen
+links nebeneinander, „Löschen“ rechts. Der HTML-Block kann als Ganzes in JTL eingefügt werden.
 Die einmalige Migration `python -m scripts.migrate_faq_freigabe` stellt bisher
 aktive Entwürfe auf „freigegeben“, weil sie zur bisherigen Exportauswahl gehörten.
 Inaktive und veraltete Einträge werden nicht freigegeben. Ein dauerhafter
@@ -528,6 +529,12 @@ aus der öffentlichen JTL-Produktübersicht ein. Vorhandene Produkte werden übe
 Artikelnummer, Produktadresse oder Namen wiedererkannt; manuell gepflegte
 Produktfamilien und Suchbegriffe bleiben erhalten. Der Abgleich verändert
 keine Wissens- oder FAQ-Einträge.
+Fehlt die Nummer in der Übersicht, liest der Import die eindeutige SKU aus der
+Produktseite, einschließlich Bindestrichen und führenden Nullen. Bereits fehlende
+Nummern lassen sich gezielt ergänzen, ohne andere Produktdaten zu ändern:
+`docker compose run --rm --no-deps app python -m scripts.ergaenze_artikelnummern --anwenden`.
+Ohne `--anwenden` zeigt der Befehl nur eine Vorschau. Vorhandene Nummern bleiben
+erhalten; nicht eindeutige oder bereits belegte Nummern werden ausgelassen und gemeldet.
 
 Als Test für die einmalige FAQ-Erstbefüllung können acht redaktionell zu prüfende
 Entwürfe für die Chlorella-Presslinge eingespielt werden. Der Import arbeitet

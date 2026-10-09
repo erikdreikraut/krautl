@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import html
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -111,6 +111,44 @@ def _seite_laden(url: str) -> str:
         return antwort.read().decode("utf-8", errors="replace")
 
 
+class _SkuParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.werte = set()
+        self.tag = None
+        self.teile = []
+
+    def handle_starttag(self, tag, attrs):
+        attribute = dict(attrs)
+        if "sku" in (attribute.get("itemprop") or "").split():
+            if attribute.get("content"):
+                self.werte.add(attribute["content"].strip())
+            else:
+                self.tag, self.teile = tag, []
+
+    def handle_data(self, data):
+        if self.tag:
+            self.teile.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == self.tag:
+            self.werte.add("".join(self.teile).strip())
+            self.tag = None
+
+
+def artikelnummer_aus_detail(text: str) -> str | None:
+    parser = _SkuParser()
+    parser.feed(text)
+    werte = {wert for wert in parser.werte if wert and len(wert) <= 100}
+    return next(iter(werte)) if len(werte) == 1 else None
+
+
+def artikelnummer_nachladen(url: str) -> str | None:
+    if not _ist_shop_produkt_url(url):
+        raise ValueError("Keine dreikraut-Produktseite")
+    return artikelnummer_aus_detail(_seite_laden(url))
+
+
 def shop_katalog_laden() -> list[ShopProdukt]:
     erste_seite = _seite_laden(ERSTE_PRODUKTSEITE)
     seiten = [erste_seite]
@@ -125,7 +163,9 @@ def shop_katalog_laden() -> list[ShopProdukt]:
             nach_url[produkt.website_url.casefold()] = produkt
     if not nach_url:
         raise RuntimeError("Der Shop hat keine Produkte geliefert")
-    return list(nach_url.values())
+    return [produkt if produkt.artikelnummer else replace(
+        produkt, artikelnummer=artikelnummer_nachladen(produkt.website_url)
+    ) for produkt in nach_url.values()]
 
 
 async def shop_katalog_speichern(session, katalog: list[ShopProdukt]) -> dict[str, int]:
