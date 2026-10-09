@@ -3,6 +3,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from uuid import uuid4
 
@@ -125,13 +126,71 @@ async def uebertragen(client, html, journal, anwenden=False):
             os.fsync(verzeichnis)
         finally:
             os.close(verzeichnis)
+    bericht["ergebnis"] = await senden(client, daten, journal, token)
+    return bericht
+
+
+def antwortdiagnose(antwort, geheimnisse):
+    def bereinigen(wert):
+        text = str(wert)
+        for geheimnis in geheimnisse:
+            if geheimnis:
+                text = text.replace(geheimnis, "[entfernt]")
+        return text[:1000]
+    bericht = {"http_status": antwort.status_code}
+    for name in ("content-type", "server", "cf-ray", "x-request-id", "x-correlation-id"):
+        if name in antwort.headers:
+            bericht[name] = bereinigen(antwort.headers[name])
+    try:
+        body = antwort.json()
+    except ValueError:
+        treffer = re.search(r"<title[^>]*>(.*?)</title>", antwort.text, re.I | re.S)
+        if treffer:
+            bericht["html_titel"] = bereinigen(treffer.group(1))
+        bericht["antwortformat"] = "kein JSON"
+    else:
+        if isinstance(body, dict):
+            for name in ("code", "errorCode", "error", "title", "message", "detail", "traceId"):
+                if isinstance(body.get(name), (str, int)):
+                    bericht[name] = bereinigen(body[name])
+    return bericht
+
+
+async def senden(client, daten, journal, token):
     try:
         antwort = await client.http.patch(ERP_URL + "/v2/items/" + ITEM,
             headers={"Authorization": "Bearer " + token, "X-Tenant-ID": TENANT,
-                     "Idempotency-Key": key}, json={"attributes": nachher})
+                     "Idempotency-Key": daten["idempotency_key"]}, json={"attributes": daten["nachher"]})
     except httpx.HTTPError as exc:
         raise JtlFehler("Versandergebnis unklar. Nicht wiederholen; mit --pruefen rücklesen.") from exc
+    diagnose = antwortdiagnose(antwort, [token, client.client_secret])
+    pfad = str(journal) + ".antwort-" + str(uuid4()) + ".json"
+    with os.fdopen(os.open(pfad, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8") as datei:
+        json.dump(diagnose, datei, ensure_ascii=False, indent=2)
+        datei.flush()
+        os.fsync(datei.fileno())
     if antwort.status_code != 200:
-        raise JtlFehler(f"JTL-PATCH HTTP {antwort.status_code}. Journal gesichert; mit --pruefen rücklesen, nicht wiederholen.")
-    bericht["ergebnis"] = await pruefen(client, journal)
-    return bericht
+        raise JtlFehler("JTL-Schreibantwort: " + json.dumps(diagnose, ensure_ascii=False) +
+                       ". Journal gesichert; mit --pruefen rücklesen, nicht wiederholen.")
+    return await pruefen(client, journal)
+
+
+async def diagnose403(client, html, journal):
+    """Explizit ausgelöster, einmaliger Diagnoseversuch des abgelehnten Auftrags."""
+    daten = json.loads(Path(journal).read_text(encoding="utf-8"))
+    if daten.get("tenant") != TENANT or daten.get("artikel_id") != ITEM:
+        raise JtlFehler("Journal gehört nicht zu diesem Test.")
+    if signatur(daten["nachher"]) != signatur(zielattribute(daten["vorher"], html)):
+        raise JtlFehler("Die FAQ-Auswahl wurde inzwischen verändert; kein veraltetes HTML übertragen.")
+    aktuell = signatur(await artikel(client))
+    if aktuell == signatur(daten["nachher"]):
+        return {"ergebnis": "Ziel bereits vorhanden; kein Schreibzugriff."}
+    if aktuell != signatur(daten["vorher"]):
+        raise JtlFehler("Wawi-Ausgangsstand verändert; kein Diagnose-Schreibzugriff.")
+    token = await client._token()
+    # Permanente separate Sperre; ursprüngliches Journal niemals löschen/ersetzen.
+    with os.fdopen(os.open(str(journal) + ".diagnose403", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as datei:
+        datei.write(daten["idempotency_key"])
+        datei.flush()
+        os.fsync(datei.fileno())
+    return {"ergebnis": await senden(client, daten, journal, token)}

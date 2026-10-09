@@ -5,7 +5,7 @@ import json
 import sys
 
 from app.jtl_client import JtlClient, JtlFehler
-from app.jtl_faq_test import SKU, pruefen, uebertragen
+from app.jtl_faq_test import SKU, pruefen, uebertragen, diagnose403
 
 
 async def main():
@@ -13,6 +13,7 @@ async def main():
     modus = parser.add_mutually_exclusive_group()
     modus.add_argument("--anwenden", action="store_true")
     modus.add_argument("--pruefen", action="store_true")
+    modus.add_argument("--diagnose-403", action="store_true", help="Einmaliger kontrollierter Wiederholungsversuch mit Originalauftrag und Originalschlüssel")
     parser.add_argument("--journal", default="/jtl-test/spirulina.json")
     args = parser.parse_args()
     try:
@@ -37,7 +38,8 @@ async def main():
                     if not faq:
                         raise JtlFehler("Keine ausgewählten FAQ vorhanden; dieser Ersttest löscht keine Wawi-Werte.")
                     html = faq_als_jtl_html(produkt, faq)
-                bericht = await uebertragen(client, html, args.journal, args.anwenden)
+                bericht = (await diagnose403(client, html, args.journal) if args.diagnose_403
+                           else await uebertragen(client, html, args.journal, args.anwenden))
                 bericht["faq_anzahl"] = len(faq)
                 print(json.dumps(bericht, ensure_ascii=False, indent=2))
             finally:

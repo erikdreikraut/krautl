@@ -3,14 +3,46 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import httpx
 
 from app.jtl_client import JtlClient, JtlFehler
-from app.jtl_faq_test import TENANT, SKU, ITEM, NAME, INHALT, KANAL, TITEL, zielattribute, signatur, uebertragen, pruefen
+from app.jtl_faq_test import TENANT, SKU, ITEM, NAME, INHALT, KANAL, TITEL, zielattribute, signatur, uebertragen, pruefen, antwortdiagnose, diagnose403
 
 
 class FaqSchreibtest(unittest.IsolatedAsyncioTestCase):
+    def test_diagnose_entfernt_geheimnisse_und_liest_html_titel(self):
+        d = antwortdiagnose(httpx.Response(403, json={"message": "TOKEN SECRET", "access_token": "TOKEN"}), ["TOKEN", "SECRET"])
+        self.assertNotIn("TOKEN", json.dumps(d))
+        self.assertNotIn("SECRET", json.dumps(d))
+        d = antwortdiagnose(httpx.Response(403, text='<html><title>Blocked</title>private</html>'), [])
+        self.assertEqual(d["html_titel"], "Blocked")
+        self.assertNotIn("private", json.dumps(d))
+
+    async def test_diagnose403_nur_originalauftrag_und_einmal(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            journal = Path(tmp) / 'journal.json'
+            daten = {"tenant": TENANT, "artikel_id": ITEM, "idempotency_key": "original",
+                     "vorher": self.vorher, "nachher": zielattribute(self.vorher, "FAQ")}
+            journal.write_text(json.dumps(daten), encoding="utf-8")
+            client = SimpleNamespace(tenant_id=TENANT, client_secret="secret", _token=AsyncMock(return_value="token"),
+                artikel_lesen=AsyncMock(return_value={"id": ITEM, "attributes": self.vorher}),
+                http=SimpleNamespace(patch=AsyncMock(return_value=httpx.Response(403, json={"code":"Forbidden"}))))
+            with self.assertRaisesRegex(JtlFehler, "FAQ-Auswahl"):
+                await diagnose403(client, "GEAENDERT", journal)
+            client.http.patch.assert_not_awaited()
+            with self.assertRaisesRegex(JtlFehler, "Forbidden"):
+                await diagnose403(client, "FAQ", journal)
+            self.assertEqual(client.http.patch.await_args.kwargs["headers"]["Idempotency-Key"], "original")
+            self.assertEqual(client.http.patch.await_args.kwargs["json"], {"attributes": daten["nachher"]})
+            with self.assertRaises(FileExistsError):
+                await diagnose403(client, "FAQ", journal)
+            self.assertEqual(client.http.patch.await_count, 1)
+            self.assertEqual(json.loads(journal.read_text()), daten)
+            self.assertEqual(len(list(Path(tmp).glob('*.antwort-*.json'))), 1)
+
     def setUp(self):
         self.vorher = {"values": [
             {"attributeId": "anderes", "defaultValues": [{"languageIso": None, "value": "24"}]},

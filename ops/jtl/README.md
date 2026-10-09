@@ -13,6 +13,11 @@ Stand: 09.10.2026. Eigene interne Krautl-App; Werkel bleibt unverändert.
 - Tenant `5bb11f28-30fd-4966-84c5-f59d3841c64b`: lesender API-Zugriff am
   09.10.2026 mit eigenen Krautl-Zugangsdaten für `40047-000` und `30014` bestätigt.
 - Noch offen: tatsächliche Schreibabnahme auf dem Server und Wawi-Shopabgleich.
+- Erster Spirulina-PATCH am 09.10.2026: HTTP 403. Rücklesen bestätigt exakt den
+  gesicherten Ausgangsstand. Hub, registriertes Manifest und der vom Server
+  ausgestellte Token enthalten `items.read` und `items.write`; Client-ID stimmt
+  mit `app-db191954-ccfa-4ec6-a066-4099db495e35` überein. Ursache noch ungeklärt.
+  Der erste Test speicherte keine Antwortdetails; aus 403 allein keine Ursache ableiten.
 
 ## Implementiert und noch offen
 
@@ -81,6 +86,30 @@ docker compose run --rm --no-deps -v /opt/app/krautl/var/jtl-test:/jtl-test app 
 Der einmalige Container erfordert keinen Neustart der laufenden Anwendung. Für die
 reguläre Übernahme des gebauten App-Images anschließend `docker compose up -d --wait app worker`.
 Auch eine erfolgreiche Rückleseprüfung belegt noch keinen erfolgten Wawi-Shopabgleich.
+
+### Kontrollierte Diagnose des bestätigten 403
+
+`--diagnose-403` ist ein ausdrücklich gestarteter weiterer Schreibversuch, keine
+rein lesende Diagnose. Er verwendet ausschließlich den ursprünglichen gesicherten
+Auftrag und denselben Idempotenzschlüssel, prüft vorher den unveränderten Wawi-Stand
+und die weiterhin identische aktuelle FAQ-Auswahl. Ist das Ziel bereits vorhanden,
+wird nicht geschrieben. Eine separate dauerhafte `.diagnose403`-Datei begrenzt den
+Versuch auf einmal; Originaljournal und Sperre niemals zur Wiederholung löschen.
+Alle PATCH-Antworten werden jetzt in separaten `.antwort-<UUID>.json`-Dateien neben
+dem Journal mit ausgewählten Fehlerfeldern und Diagnose-Headern gespeichert.
+Token und Client-Secret werden herausgefiltert; vollständige Antwortkörper und
+vollständige Request-/Response-Header werden nicht gespeichert.
+
+Nach Aktualisierung der Arbeitskopie und `docker compose build app`:
+
+```bash
+cd /opt/app/krautl &&
+docker compose run --rm --no-deps -v /opt/app/krautl/var/jtl-test:/jtl-test app \
+  python -m scripts.teste_jtl_spirulina --diagnose-403
+```
+
+Bei weiterem Fehler die Diagnose auswerten und ausschließlich mit `--pruefen`
+rücklesen. Keine Rechteänderung oder Neuinstallation allein aufgrund des Statuscodes.
 
 ## Bestätigter fachlicher Umfang
 
