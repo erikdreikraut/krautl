@@ -162,6 +162,11 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(daten),
     }),
+  faqAuswahl: (id, ausgewaehlt) =>
+    anfrage(`/faq/${id}/auswahl`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ include_in_faq: ausgewaehlt }),
+    }),
   faqGoogleAuswahl: (id, ausgewaehlt) =>
     anfrage(`/faq/${id}/google-product-qa`, {
       method: "PATCH",

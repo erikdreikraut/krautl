@@ -509,8 +509,13 @@ Absätze, Aufzählungen, `**Fettdruck**` und Weblinks ist kein HTML nötig. Für
 jedes Produkt erzeugt **Aktuelles JTL-HTML kopieren** ausschließlich freigegebene,
 aktive FAQ in einem vollständigen Schema.org-`FAQPage`-Accordion mit den bei dreikraut
 verwendeten Bootstrap-/JTL-Attributen. Der bisherige Haken „Im aktuellen FAQ enthalten“
-entfällt. Speichern mit Status „Freigegeben“ aktiviert den FAQ; „Entwurf“ und
-„Veraltet“ deaktivieren ihn. Der Block kann als Ganzes in JTL eingefügt werden.
+heißt jetzt **„In FAQ aufnehmen“**. In Übersicht und Editor gibt es nur diesen
+Haken und die unabhängige Google-Auswahl; das FAQ-Status-Dropdown entfällt. Ohne
+FAQ-Haken bleibt der Eintrag ein Entwurf. Intern setzt der Haken gemeinsam
+`status=freigegeben` und `aktiv=true`, Abwählen setzt `entwurf` und `aktiv=false`.
+Bestehende Exportauswahlen bleiben erhalten; hierfür ist keine neue Migration nötig.
+Die Artikelnummer steht in Produktliste und FAQ-Überschrift; fehlende Nummern
+werden als „nicht hinterlegt“ angezeigt. Der HTML-Block kann als Ganzes in JTL eingefügt werden.
 Die einmalige Migration `python -m scripts.migrate_faq_freigabe` stellt bisher
 aktive Entwürfe auf „freigegeben“, weil sie zur bisherigen Exportauswahl gehörten.
 Inaktive und veraltete Einträge werden nicht freigegeben. Ein dauerhafter

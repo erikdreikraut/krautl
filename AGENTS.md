@@ -17,7 +17,7 @@
 
 ## FAQ-Freigabe und geplante JTL-Synchronisierung
 
-- Der separate Haken „Im aktuellen FAQ enthalten“ entfällt. Nur FAQ mit `status=freigegeben` und `aktiv=true` gehören in den HTML-Export und den geplanten JTL-Abgleich. Beim Speichern im Editor aktiviert „Freigegeben“ den Eintrag; Entwurf/veraltet deaktivieren ihn.
+- FAQ haben in Übersicht und Editor nur die unabhängigen Auswahlhaken „In FAQ aufnehmen“ und „Für Google ausgewählt“. Kein FAQ-Status-Dropdown und keine separate Freigabeanzeige. Der FAQ-Haken steuert HTML-Export und geplanten JTL-Abgleich; ohne Haken ist der Eintrag ein Entwurf. Intern bleiben `status=freigegeben` und `aktiv=true` als gemeinsame Speicherung der Auswahl erhalten; Abwählen setzt `entwurf` und `aktiv=false`. Wissenseinträge behalten ihre eigene Statuslogik.
 - Bestehende aktive Entwürfe gehörten zur alten Exportauswahl und sollen einmalig durch `scripts.migrate_faq_freigabe` freigegeben werden. Die Migration nicht ohne ihren dauerhaften Ausführungsnachweis nachbauen oder erneut per pauschalem UPDATE ausführen.
 - Bestätigte JTL-Ziele: `tab1 name` = `Fragen / Antworten`, `tab1 inhalt` = bestehender HTML-Export; ausschließlich Deutsch im dreikraut JTL-Shop. Entfällt der letzte übertragbare FAQ, beide Zielwerte leeren. Andere Attribute, Sprachen und Kanäle erhalten.
 - Google-Zusatzfeed bleibt unabhängig. Eigene Krautl-JTL-App und eigene Zugangsdaten verwenden; Werkel bleibt unverändert. Stand und noch fehlende Schreibabnahme in `ops/jtl/README.md` beachten.

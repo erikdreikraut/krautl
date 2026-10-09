@@ -196,6 +196,11 @@ class FaqAenderung(BaseModel):
     sortierung: int = 0
     aktiv: bool = True
     include_in_google_product_qa: bool = False
+    include_in_faq: bool | None = Field(default=None, strict=True)
+
+
+class FaqAuswahl(BaseModel):
+    include_in_faq: bool = Field(strict=True)
 
 
 class FaqGoogleAuswahl(BaseModel):
@@ -1902,7 +1907,10 @@ async def _faq_daten(session, aenderung: FaqAenderung) -> dict:
     if aenderung.produkt_id and not await session.get(Produkt, aenderung.produkt_id):
         raise HTTPException(status_code=422, detail="Produkt nicht gefunden")
     daten = aenderung.model_dump()
-    daten["aktiv"] = aenderung.status == "freigegeben"
+    auswahl = daten.pop("include_in_faq")
+    if auswahl is not None:
+        daten["status"] = "freigegeben" if auswahl else "entwurf"
+    daten["aktiv"] = daten["status"] == "freigegeben"
     return daten
 
 
@@ -1965,6 +1973,19 @@ async def faq_loeschen(faq_id: int, session: AsyncSession = Depends(get_session)
     await session.delete(eintrag)
     await session.commit()
     return Response(status_code=204)
+
+
+@app.patch("/faq/{faq_id}/auswahl")
+async def faq_auswahl(
+    faq_id: int, aenderung: FaqAuswahl, session: AsyncSession = Depends(get_session)
+):
+    eintrag = await session.get(FaqEintrag, faq_id)
+    if eintrag is None:
+        raise HTTPException(status_code=404, detail="FAQ-Eintrag nicht gefunden")
+    eintrag.aktiv = aenderung.include_in_faq
+    eintrag.status = "freigegeben" if aenderung.include_in_faq else "entwurf"
+    await session.commit()
+    return eintrag
 
 
 @app.patch("/faq/{faq_id}/google-product-qa")

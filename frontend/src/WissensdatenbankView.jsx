@@ -3,7 +3,11 @@ import { Check, Database, Download, Pencil, Plus, RefreshCw, Save, Search, Spark
 import { api } from "./api.js";
 import { FaqDokumentImport } from "./FaqDokumentImport.jsx";
 import { GoogleFaqFeed } from "./GoogleFaqFeed.jsx";
+import { FaqAuswahl } from "./FaqAuswahl.jsx";
 import { GoogleFaqAuswahl } from "./GoogleFaqAuswahl.jsx";
+
+const imFaq = f => f.aktiv && f.status === "freigegeben";
+const faqEditorDaten = f => ({...f, include_in_faq: imFaq(f)});
 
 const farben = {
   paperRaised: "#FDFCEE", ink: "#242A1F", muted: "#6C6F5F", line: "#DDD9C4",
@@ -80,15 +84,15 @@ function Formular({ editor, setEditor, speichern, produkte, familien, faqGruppen
     </div>}
     {editor.typ === "faq" && <div className="grid grid-cols-2 gap-3 knowledge-form-grid">
       <div><input list="faq-gruppen" className="w-full px-3 py-2" style={feld} placeholder="Gruppe, z. B. Anwendung & Praktisches" value={d.kategorie} onChange={(e) => set("kategorie", e.target.value)}/><datalist id="faq-gruppen">{faqGruppen.map((g) => <option key={g} value={g}/>)}</datalist></div>
-      <select className="px-3 py-2" style={feld} value={d.status} onChange={(e) => set("status", e.target.value)}><option value="entwurf">Entwurf</option><option value="freigegeben">Freigegeben</option><option value="veraltet">Veraltet</option></select>
+      <label className="flex items-center gap-2" style={ui}><input type="checkbox" checked={!!d.include_in_faq} onChange={(e) => set("include_in_faq", e.target.checked)}/> In FAQ aufnehmen</label>
       <select className="col-span-2 px-3 py-2" style={feld} value={d.produkt_id || ""} onChange={(e) => set("produkt_id", e.target.value ? Number(e.target.value) : null)}><option value="">Allgemeine FAQ (kein Produkt)</option>{produkte.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
       <input className="col-span-2 px-3 py-2" style={feld} placeholder="Frage" value={d.frage} onChange={(e) => set("frage", e.target.value)}/>
       <textarea className="col-span-2 px-3 py-2" style={feld} rows={7} placeholder="Antwort – Absätze, - Aufzählungen und **Fettdruck** sind möglich" value={d.antwort} onChange={(e) => set("antwort", e.target.value)}/>
       <input className="px-3 py-2" style={feld} placeholder="Quelle" value={d.quelle || ""} onChange={(e) => set("quelle", e.target.value)}/>
       <input className="px-3 py-2" style={feld} type="number" placeholder="Reihenfolge" value={d.sortierung} onChange={(e) => set("sortierung", Number(e.target.value))}/>
-      <p className="col-span-2" style={{ ...ui, fontSize: "12px", color: farben.muted }}>Nur freigegebene, aktive FAQ werden im JTL-HTML ausgegeben. Freigeben aktiviert den Eintrag.</p>
+      <p className="col-span-2" style={{ ...ui, fontSize: "12px", color: farben.muted }}>Mit „In FAQ aufnehmen“ gehört dieser Eintrag zum FAQ. Ohne Haken bleibt er ein Entwurf.</p>
       <div className="col-span-2">
-        <label className="flex items-center gap-2" style={{ ...ui, fontSize: "12.5px" }}><input type="checkbox" checked={!!d.include_in_google_product_qa} onChange={(e) => set("include_in_google_product_qa", e.target.checked)}/> Ergänzt die Artikelbeschreibung</label>
+        <label className="flex items-center gap-2" style={{ ...ui, fontSize: "12.5px" }}><input type="checkbox" checked={!!d.include_in_google_product_qa} onChange={(e) => set("include_in_google_product_qa", e.target.checked)}/> Für Google ausgewählt</label>
         <p className="mt-1" style={{ ...ui, fontSize: "12px", color: farben.muted }}>Mit diesem Haken wird das Frage/Antwort-Paar für den öffentlichen Google-Export ausgewählt, unabhängig vom FAQ-Status. Es gelten die Google-Format- und Größenlimits. Der JTL-HTML-Export bleibt unverändert.</p>
       </div>
     </div>}
@@ -156,7 +160,7 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
     if (typ === "wissen") return setEditor({ typ, daten: { wissensart: produkt ? "produkt" : familie ? "produktfamilie" : auswahl === "ablauf" ? "ablauf" : "allgemein", titel: "", inhalt: "", produkt_id: produkt?.id || null, produktfamilie_id: familie?.id || produkt?.produktfamilie_id || null, quelle: "", stand: "", status: "entwurf", sensibel: false, schlagwoerter: [] } });
     const familienProdukte = familie ? produkte.filter((p) => p.produktfamilie_id === familie.id) : [];
     const faqProdukt = produkt || (familienProdukte.length === 1 ? familienProdukte[0] : null);
-    setEditor({ typ, daten: { produkt_id: faqProdukt?.id || null, kategorie: "Allgemeines", frage: "", antwort: "", quelle: faqProdukt?.website_url || "", status: "entwurf", sortierung: 0, aktiv: true, include_in_google_product_qa: false } });
+    setEditor({ typ, daten: { produkt_id: faqProdukt?.id || null, kategorie: "Allgemeines", frage: "", antwort: "", quelle: faqProdukt?.website_url || "", include_in_faq: false, sortierung: 0, include_in_google_product_qa: false } });
   };
   const speichern = async () => {
     const { typ, daten, id } = editor;
@@ -166,6 +170,12 @@ export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onRe
       else await api.faqSpeichern(id, daten);
       setEditor(null); setMeldung("Gespeichert."); await onReload();
     } catch (fehler) { setMeldung(`Speichern fehlgeschlagen: ${fehler.message}`); }
+  };
+  const faqAuswahlGespeichert = async (eintrag) => {
+    setEditor(aktuell => aktuell?.typ === "faq" && aktuell.id === eintrag.id
+      ? {...aktuell, daten: {...aktuell.daten, include_in_faq: imFaq(eintrag)}} : aktuell);
+    setExportHtml(null);
+    await onReload();
   };
   const googleAuswahlGespeichert = async (eintrag) => {
     setEditor((aktuell) => aktuell?.typ === "faq" && aktuell.id === eintrag.id
@@ -215,7 +225,7 @@ Das Löschen kann nicht rückgängig gemacht werden.`)) return;
     const ergebnis = await api.faqExport(produkt.id);
     if (!ergebnis.anzahl) {
       setExportHtml(null);
-      setMeldung("Keine freigegebenen, aktiven FAQ-Punkte vorhanden.");
+      setMeldung("Keine FAQ-Punkte mit „In FAQ aufnehmen“ ausgewählt.");
       return;
     }
 
@@ -268,7 +278,7 @@ Das Löschen kann nicht rückgängig gemacht werden.`)) return;
       {gefilterteProdukte.map((p) => <div key={p.id} className="flex items-start">
         <button onClick={() => setAuswahl(`produkt:${p.id}`)} className="flex-1 min-w-0 text-left px-2.5 py-2" style={{ ...ui, fontSize: "12px", fontWeight: produktId === p.id ? 600 : 400, color: produktId === p.id ? farben.mossDeep : farben.muted, background: produktId === p.id ? farben.mossPale : "transparent", borderRadius: "5px", overflowWrap: "anywhere" }}>
           {p.name}
-          {p.artikelnummer ? <strong className="block" style={{ ...mono, fontSize: "9.5px", fontWeight: 700 }}>{p.artikelnummer}</strong> : <span className="block" style={{ ...mono, fontSize: "9.5px" }}>{familienNachId[p.produktfamilie_id]?.name}</span>}
+          <strong className="block" style={{ ...mono, fontSize: "11px", fontWeight: 700 }}>Art.-Nr.: {p.artikelnummer || "nicht hinterlegt"}</strong>
         </button>
         <button title="Produkt bearbeiten" onClick={() => setEditor({ typ: "produkt", id: p.id, daten: { ...p, familie: familienNachId[p.produktfamilie_id]?.name || "", aliasesText: (p.aliases || []).join(", ") } })} className="shrink-0 p-2" style={{ color: farben.muted }}><Pencil size={12}/></button>
       </div>)}
@@ -293,28 +303,27 @@ Das Löschen kann nicht rückgängig gemacht werden.`)) return;
       </>}
       {bereich === "faq" && <>
         <FaqDokumentImport produkte={produkte} onReload={onReload}/>
-        <div className="flex justify-between mb-4"><h3 style={{ ...serif, fontWeight: 700 }}>{produkt ? `FAQ · ${produkt.name}` : "FAQ"}</h3>{produkt && <button onClick={exportieren} className="flex items-center gap-1.5 px-3 py-2" style={{ ...ui, fontSize: "12px", color: farben.mossDeep, border: `1px solid ${farben.line}`, borderRadius: "5px" }}><Download size={13}/> Aktuelles JTL-HTML kopieren</button>}</div>
-        <StatusAbschnitte eintraege={faq}>{(gruppe) =>
-          [...new Set(gruppe.map((f) => f.kategorie))].map((g) => <div key={g} className="mb-5">
+        <div className="flex justify-between mb-4"><h3 style={{ ...serif, fontWeight: 700 }}>{produkt ? `FAQ · ${produkt.name} · Art.-Nr.: ${produkt.artikelnummer || "nicht hinterlegt"}` : "FAQ"}</h3>{produkt && <button onClick={exportieren} className="flex items-center gap-1.5 px-3 py-2" style={{ ...ui, fontSize: "12px", color: farben.mossDeep, border: `1px solid ${farben.line}`, borderRadius: "5px" }}><Download size={13}/> Aktuelles JTL-HTML kopieren</button>}</div>
+        {[...new Set(faq.map((f) => f.kategorie))].map((g) => <div key={g} className="mb-5">
             <div className="mb-2" style={{ ...mono, fontSize: "10.5px", color: farben.muted }}>{g.toUpperCase()}</div>
-            {gruppe.filter((f) => f.kategorie === g).map((f) => <article key={f.id} className="p-3 mb-2" style={eintragRahmen(f.status)}>
-              <button onClick={() => setEditor({ typ: "faq", id: f.id, daten: { ...f } })} className="block w-full text-left">
-                <div className="flex justify-between items-start gap-3"><b style={serif}>{f.frage}</b><StatusMarke status={f.status}/></div>
+            {faq.filter((f) => f.kategorie === g).map((f) => <article key={f.id} className="p-3 mb-2" style={eintragRahmen(imFaq(f) ? "freigegeben" : "entwurf")}>
+              <button onClick={() => setEditor({ typ: "faq", id: f.id, daten: faqEditorDaten(f) })} className="block w-full text-left">
+                <div className="flex justify-between items-start gap-3"><b style={serif}>{f.frage}</b></div>
                 <div className="mt-1" style={{ ...serif, fontSize: "14px", color: farben.muted }}>{f.antwort}</div>
               </button>
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <FaqAuswahl faqId={f.id} frage={f.frage} ausgewaehlt={imFaq(f)} onGespeichert={faqAuswahlGespeichert}/>
                 <GoogleFaqAuswahl faqId={f.id} frage={f.frage} ausgewaehlt={f.include_in_google_product_qa} onGespeichert={googleAuswahlGespeichert}/>
                 <button type="button" disabled={loescht} onClick={() => faqLoeschen(f)} aria-label={`FAQ löschen: ${f.frage}`} className="flex items-center gap-1.5 px-2 py-1" style={{ ...ui, fontSize: "12px", color: "#9A4332", border: `1px solid ${farben.line}`, borderRadius: "5px", opacity: loescht ? 0.5 : 1 }}><Trash2 size={13}/> Löschen</button>
               </div>
             </article>)}
-          </div>)
-        }</StatusAbschnitte>
+          </div>)}
         {faq.length === 0 && <LeereAnsicht text="Noch keine FAQ für diese Auswahl." aktion={() => neu("faq")} label="Erstes FAQ anlegen"/>}
       </>}
       {bereich === "vorschlaege" && <><div className="flex items-center gap-2"><Sparkles size={16} color={farben.amber}/><h3 style={{ ...serif, fontWeight: 700 }}>Ergänzungen aus bearbeiteten Antworten</h3></div><p style={{ ...ui, fontSize: "12.5px", color: farben.muted }}>Nur wiederverwendbare Ergänzungen; nichts wird automatisch freigegeben.</p><div className="flex flex-col gap-3 mt-4">{vorschlaege.map((v) => <div key={v.id} className="p-4" style={{ background: farben.paperRaised, border: `1px solid ${farben.line}`, borderLeft: `4px solid ${farben.amber}` }}><div className="flex justify-between"><Marke warn>{(v.ziel === "faq" ? "FAQ" : v.wissensart).toUpperCase()}</Marke><span style={{ ...mono, fontSize: "10px" }}>Mail #{v.quelle_mail_id}</span></div><b className="block mt-2" style={serif}>{v.titel}</b><div style={{ ...serif, fontSize: "14px" }}>{v.inhalt}</div>{v.begruendung && <small style={{ ...ui, color: farben.muted }}>{v.begruendung}</small>}<div className="flex gap-2 mt-3"><button onClick={async () => { await api.wissensvorschlagUebernehmen(v.id, { ziel: v.ziel, wissensart: v.wissensart, produkt_id: v.produkt_id, titel: v.titel, inhalt: v.inhalt, kategorie: "Kundenfragen" }); await onReload(); }} className="flex items-center gap-1 px-3 py-1.5" style={{ ...ui, fontSize: "12px", color: "#fff", background: farben.moss }}><Check size={12}/> Als Entwurf übernehmen</button><button onClick={async () => { await api.wissensvorschlagVerwerfen(v.id); await onReload(); }} className="px-3 py-1.5" style={{ ...ui, fontSize: "12px", border: `1px solid ${farben.line}` }}>Verwerfen</button></div></div>)}</div>{vorschlaege.length === 0 && <LeereAnsicht text="Keine offenen Vorschläge. Sie entstehen nur, wenn eine bearbeitete Antwort wirklich neues Wissen enthält."/>}</>}
       {bereich === "google" && <GoogleFaqFeed produkt={produkt} produkte={produkte} faqEintraege={faqEintraege} onGoogleAuswahlGespeichert={googleAuswahlGespeichert} onBearbeiten={(id) => {
         const faq = faqEintraege.find((f) => f.id === id);
-        if (faq) { setBereich("faq"); setEditor({ typ: "faq", id, daten: { ...faq } }); }
+        if (faq) { setBereich("faq"); setEditor({ typ: "faq", id, daten: faqEditorDaten(faq) }); }
       }}/>}
       {exportHtml !== null && <div className="mt-5 p-4" style={{ background: farben.paperRaised, border: `1px solid ${farben.line}` }}><div className="flex justify-between"><b style={ui}>JTL-HTML · vollständig</b><button onClick={() => setExportHtml(null)}><X size={14}/></button></div><textarea readOnly value={exportHtml} onFocus={(e) => e.target.select()} rows={16} className="w-full mt-2 px-3 py-2" style={{ ...mono, fontSize: "11px", background: "#fff", border: `1px solid ${farben.line}` }}/></div>}
     </main></div>

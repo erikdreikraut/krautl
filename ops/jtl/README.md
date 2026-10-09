@@ -34,8 +34,8 @@ Verdacht. Die Diagnoseroutine führt ausschließlich lesende ERP-Operationen aus
 - Deutsch, dreikraut JTL-Shop: `tab1 name` = `Fragen / Antworten`, `tab1 inhalt` =
   der vorhandene HTML-Export (`faq_als_jtl_html`). Andere Kanäle/Sprachen und
   Attribute bleiben erhalten. „tab2 name“ war ein inzwischen geklärter Versprecher.
-- Nur freigegebene und aktive FAQ übertragen. Der frühere Haken „Im aktuellen FAQ
-  enthalten“ entfällt. Die bisherigen aktiven Entwürfe werden beim Deployment
+- Nur über „In FAQ aufnehmen“ ausgewählte FAQ übertragen (intern freigegeben und
+  aktiv). Die Auswahl ist in Übersicht und Editor verfügbar; kein Status-Dropdown. Die bisherigen aktiven Entwürfe werden beim Deployment
   einmalig freigegeben; neue Entwürfe bleiben ausgeschlossen.
 - Beim Entfernen/Deaktivieren des letzten übertragbaren FAQ sowohl Titel als auch
   Inhalt leeren. Google-FAQ-Auswahl beeinflusst den JTL-Abgleich nicht.

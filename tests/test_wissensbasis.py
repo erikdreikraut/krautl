@@ -20,9 +20,25 @@ from app.wissensbasis import (
     wissenszuwachs_nach_antwort_pruefen,
 )
 from app.main import FaqRubrikAenderung, faq_export, faq_rubrik_umbenennen
+from app.main import FaqAuswahl, FaqAenderung, faq_auswahl, faq_anlegen
 
 
 class WissensbasisTest(unittest.IsolatedAsyncioTestCase):
+    async def test_faq_haken_steuert_export_ohne_google_oder_inhalt_zu_aendern(self):
+        async with SessionLocal() as session:
+            eintrag = await faq_anlegen(FaqAenderung(
+                produkt_id=self.produkt_id, kategorie="Test", frage="Neu?", antwort="Antwort.",
+                include_in_faq=False, include_in_google_product_qa=True,
+            ), session)
+            self.assertEqual((eintrag.status, eintrag.aktiv), ("entwurf", False))
+            for wert, status in [(True, "freigegeben"), (False, "entwurf")]:
+                await faq_auswahl(eintrag.id, FaqAuswahl(include_in_faq=wert), session)
+                self.assertEqual((eintrag.status, eintrag.aktiv), (status, wert))
+                self.assertTrue(eintrag.include_in_google_product_qa)
+                self.assertEqual(eintrag.antwort, "Antwort.")
+                export = await faq_export(self.produkt_id, session)
+                self.assertEqual("Neu?" in export["html"], wert)
+
     async def asyncSetUp(self):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
