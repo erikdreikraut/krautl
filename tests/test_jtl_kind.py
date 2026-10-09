@@ -29,6 +29,31 @@ SCHEMA = {"ChangeItemCommandRequestInput": {"itemId": "ID!", "attributes": "Attr
 
 
 class KindTest(unittest.IsolatedAsyncioTestCase):
+    async def test_ergebnisversuch_bewahrt_original_und_sperrt_wiederholung(self):
+        vorher = {"values": []}
+        request = {"itemId": "child-id", "attributes": zielattribute(vorher, "FAQ")}
+        daten = {"tenant": TENANT, "artikelnummer": SKU, "artikel_id": "child-id", "vorher": vorher,
+                 "ziel": request["attributes"], "request": request, "idempotency_key": "original"}
+        schema = {"data": {"__schema": {"types": [
+            {"name": n, "inputFields": [{"name": k, "type": typ(v)} for k,v in fields.items()]}
+            for n,fields in SCHEMA.items()]}}}
+        client = SimpleNamespace(tenant_id=TENANT, client_secret="secret",
+            artikel_lesen=AsyncMock(return_value={"id":"child-id", "attributes":vorher}),
+            _lesen=AsyncMock(return_value=schema), _token=AsyncMock(return_value="token"),
+            http=SimpleNamespace(post=AsyncMock(return_value=httpx.Response(200,
+                json={"data":{"ChangeItem":{"__typename":"ChangeItemCommandResponse"}}}))))
+        with tempfile.TemporaryDirectory() as tmp:
+            journal = Path(tmp)/'kind.json'
+            journal.write_text(json.dumps(daten), encoding='utf-8')
+            result = await testen(client, 'FAQ', journal, ergebnis_test=True)
+            self.assertFalse(result['api_erfolg'])
+            self.assertFalse(result['test_erfolgreich'])
+            self.assertEqual(json.loads(journal.read_text()), daten)
+            self.assertEqual(client.http.post.await_args.kwargs['headers']['Idempotency-Key'], 'original')
+            with self.assertRaises(FileExistsError):
+                await testen(client, 'FAQ', journal, ergebnis_test=True)
+            self.assertEqual(client.http.post.await_count,1)
+
     async def test_teilupdate_erhaelt_oder_erkennt_verlust_und_keine_wiederholung(self):
         for ersetzt in (False, True):
             vorher = {"values": [{"attributeId": "other", "defaultValues": [{"value": "neutral"}]}]}
@@ -49,7 +74,8 @@ class KindTest(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(len(request["attributes"]["values"]), 2)
                     self.assertNotIn("neutral", json.dumps(request))
                     state = request["attributes"] if ersetzt else zielattribute(vorher, "FAQ")
-                    return httpx.Response(200, json={"data": {"ChangeItem": {"__typename": "ChangeItemCommandResponse"}}})
+                    self.assertIn("item { id }", kwargs["json"]["query"])
+                    return httpx.Response(200, json={"data": {"ChangeItem": {"item": {"id": "child-id"}}}})
                 client = SimpleNamespace(tenant_id=TENANT, client_secret="secret", artikel_lesen=lesen,
                     _token=AsyncMock(return_value="token"), _lesen=AsyncMock(return_value=schema),
                     http=SimpleNamespace(post=AsyncMock(side_effect=post)))

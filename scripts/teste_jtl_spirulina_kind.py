@@ -54,7 +54,7 @@ async def ruecklesen(client, daten):
     return vergleich(daten["vorher"], daten["ziel"], aktuell.get("attributes") or {"values": []})
 
 
-async def testen(client, html, journal, anwenden=False):
+async def testen(client, html, journal, anwenden=False, ergebnis_test=False):
     if not html:
         raise JtlFehler("Keine freigegebenen FAQ; kein Schreibtest.")
     artikel = await lesen(client)
@@ -73,10 +73,18 @@ async def testen(client, html, journal, anwenden=False):
         raise JtlFehler("Auftrag nicht schemakonform: " + json.dumps(befunde, ensure_ascii=False))
     bericht = {"artikelnummer": SKU, "artikel_id": artikel["id"], "html_zeichen": len(html),
                "schema_befunde": befunde, "gesendete_attributanzahl": 2}
-    if not anwenden:
+    if not anwenden and not ergebnis_test:
         return bericht
-    if Path(journal).exists():
+    if Path(journal).exists() and not ergebnis_test:
         raise JtlFehler("Kind-Journal existiert bereits. Nur --pruefen verwenden; nicht erneut schreiben.")
+    original = None
+    if ergebnis_test:
+        original = json.loads(Path(journal).read_text(encoding="utf-8"))
+        if (original.get("tenant") != TENANT or original.get("artikelnummer") != SKU
+                or original.get("artikel_id") != artikel["id"] or original.get("request") != request):
+            raise JtlFehler("Ursprünglicher Auftrag stimmt nicht mehr überein; Abbruch.")
+        if signatur(vorher) != signatur(original["vorher"]):
+            raise JtlFehler("Kind-Ausgangsstand verändert; nur rücklesen, kein weiterer Schreibzugriff.")
     if signatur(vorher) == signatur(ziel):
         return {**bericht, "ergebnis": "Ziel bereits vorhanden; kein Schreibzugriff und keine neue Teilupdate-Abnahme."}
     aktuell = await lesen(client)
@@ -85,27 +93,32 @@ async def testen(client, html, journal, anwenden=False):
     token = await client._token()
     daten = {"tenant": TENANT, "artikelnummer": SKU, "artikel_id": artikel["id"],
              "vorher": vorher, "ziel": ziel, "request": request, "idempotency_key": str(uuid4())}
-    sichern(journal, daten)
+    if original:
+        daten = original
+    ausgabe = str(journal) + (".item-ergebnis" if ergebnis_test else "")
+    sichern(ausgabe, daten)
     try:
         antwort = await client.http.post(ERP_URL + "/v2/graphql", headers={
             "Authorization": "Bearer " + token, "X-Tenant-ID": TENANT,
             "Idempotency-Key": daten["idempotency_key"]}, json={
-            "query": "mutation KrautlKindTest($request: ChangeItemCommandRequestInput!) { ChangeItem(request: $request) { __typename } }",
+            "query": "mutation KrautlKindTest($request: ChangeItemCommandRequestInput!) { ChangeItem(request: $request) { item { id } } }",
             "variables": {"request": request}})
     except httpx.HTTPError as exc:
         raise JtlFehler("Versandergebnis unklar. Journal behalten und nur --pruefen verwenden.") from exc
     diagnose = antwortdiagnose(antwort, [token, client.client_secret])
-    sichern(str(journal) + ".antwort.json", diagnose)
     try:
         body = antwort.json()
-        api_ok = antwort.status_code == 200 and isinstance(body, dict) and not body.get("errors") and bool((body.get("data") or {}).get("ChangeItem"))
+        ergebnis_id = (((body.get("data") or {}).get("ChangeItem") or {}).get("item") or {}).get("id") if isinstance(body, dict) else None
+        diagnose["ergebnis_artikel_id"] = ergebnis_id
+        api_ok = antwort.status_code == 200 and isinstance(body, dict) and not body.get("errors") and ergebnis_id == artikel["id"]
     except (ValueError, AttributeError):
         api_ok = False
+    sichern(ausgabe + ".antwort.json", diagnose)
     # Auch bei einer API-Fehlermeldung den tatsächlichen Zustand zurücklesen.
     pruefung = await ruecklesen(client, daten)
     bericht.update({"api_erfolg": api_ok, "antwort": diagnose, "ruecklesepruefung": pruefung,
                     "test_erfolgreich": api_ok and pruefung["exakter_zielstand"]})
-    sichern(str(journal) + ".ergebnis.json", bericht)
+    sichern(ausgabe + ".ergebnis.json", bericht)
     return bericht
 
 
@@ -133,6 +146,7 @@ async def main():
     modus = parser.add_mutually_exclusive_group()
     modus.add_argument("--anwenden", action="store_true")
     modus.add_argument("--pruefen", action="store_true")
+    modus.add_argument("--ergebnis-test", action="store_true", help="Einmaliger Originalauftrag mit fachlicher item-Rückgabe, nur bei unverändertem Ausgangsstand")
     parser.add_argument("--journal", default="/jtl-test/spirulina-kind-40047-1000.json")
     args = parser.parse_args()
     try:
@@ -140,7 +154,7 @@ async def main():
             if args.pruefen:
                 result = await ruecklesen(client, json.loads(Path(args.journal).read_text(encoding="utf-8")))
             else:
-                result = await testen(client, await faq_html(), args.journal, args.anwenden)
+                result = await testen(client, await faq_html(), args.journal, args.anwenden, args.ergebnis_test)
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 1 if result.get("test_erfolgreich") is False else 0
     except (JtlFehler, OSError, ValueError, KeyError) as exc:

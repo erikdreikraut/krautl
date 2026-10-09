@@ -69,6 +69,18 @@ aufrufen. Erfolg erfordert erfolgreichen API-Aufruf und den exakten vollständig
 Zielstand, einschließlich aller unveränderten anderen Attributwerte. Kein Neustart
 der laufenden App erforderlich. Ergebnis gilt zunächst nur für diesen Artikeltest.
 
+Erster Kind-Aufruf lieferte HTTP 200 ohne GraphQL-Fehler, aber sofortiges und späteres
+Rücklesen bestätigen den unveränderten Ausgangsstand. Bisher wurde nur `__typename`
+angefordert; das beweist keine ausgeführte Änderung. Die offizielle Antwortstruktur
+enthält `item` (geänderter Artikel). Der Kind-Test fordert jetzt `item { id }` an und
+verlangt die passende ID sowie den vollständigen Rücklesenachweis. Ob die frühere
+Typabfrage die Ausführung verhindert hat, ist noch unbestätigt.
+
+Einmalig kann `--ergebnis-test` statt `--anwenden` verwendet werden. Dafür müssen
+der ursprüngliche Auftrag, die aktuelle FAQ-Auswahl und der Wawi-Ausgangsstand
+übereinstimmen. Originaljournal und Idempotenzschlüssel bleiben erhalten; eine
+separate `.item-ergebnis`-Datei sperrt Wiederholungen. Bei Fehler nur `--pruefen`.
+
 ## Implementiert und noch offen
 
 Implementiert: Manifest, serverseitiger OAuth-Client, exakte Artikelnummern-Auflösung
