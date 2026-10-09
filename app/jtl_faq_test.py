@@ -138,7 +138,7 @@ def antwortdiagnose(antwort, geheimnisse):
                 text = text.replace(geheimnis, "[entfernt]")
         return text[:1000]
     bericht = {"http_status": antwort.status_code}
-    for name in ("content-type", "server", "cf-ray", "x-request-id", "x-correlation-id"):
+    for name in ("content-type", "server", "cf-ray", "x-request-id", "x-correlation-id", "x-azure-ref", "date"):
         if name in antwort.headers:
             bericht[name] = bereinigen(antwort.headers[name])
     try:
@@ -150,17 +150,26 @@ def antwortdiagnose(antwort, geheimnisse):
         bericht["antwortformat"] = "kein JSON"
     else:
         if isinstance(body, dict):
+            if isinstance(body.get("errors"), list):
+                bericht["graphql_fehler"] = [bereinigen(e.get("message", "GraphQL-Fehler"))
+                    for e in body["errors"][:10] if isinstance(e, dict)]
             for name in ("code", "errorCode", "error", "title", "message", "detail", "traceId"):
                 if isinstance(body.get(name), (str, int)):
                     bericht[name] = bereinigen(body[name])
     return bericht
 
 
-async def senden(client, daten, journal, token):
+async def senden(client, daten, journal, token, graphql=False):
     try:
-        antwort = await client.http.patch(ERP_URL + "/v2/items/" + ITEM,
-            headers={"Authorization": "Bearer " + token, "X-Tenant-ID": TENANT,
-                     "Idempotency-Key": daten["idempotency_key"]}, json={"attributes": daten["nachher"]})
+        headers = {"Authorization": "Bearer " + token, "X-Tenant-ID": TENANT,
+                   "Idempotency-Key": daten["idempotency_key"]}
+        if graphql:
+            antwort = await client.http.post(ERP_URL + "/v2/graphql", headers=headers, json={
+                "query": "mutation KrautlFaqTest($request: ChangeItemCommandRequestInput!) { ChangeItem(request: $request) { __typename } }",
+                "variables": {"request": {"itemId": ITEM, "attributes": daten["nachher"]}}})
+        else:
+            antwort = await client.http.patch(ERP_URL + "/v2/items/" + ITEM,
+                headers=headers, json={"attributes": daten["nachher"]})
     except httpx.HTTPError as exc:
         raise JtlFehler("Versandergebnis unklar. Nicht wiederholen; mit --pruefen rücklesen.") from exc
     diagnose = antwortdiagnose(antwort, [token, client.client_secret])
@@ -169,13 +178,20 @@ async def senden(client, daten, journal, token):
         json.dump(diagnose, datei, ensure_ascii=False, indent=2)
         datei.flush()
         os.fsync(datei.fileno())
-    if antwort.status_code != 200:
+    graphql_ok = True
+    if graphql:
+        try:
+            body = antwort.json()
+            graphql_ok = isinstance(body, dict) and not body.get("errors") and bool((body.get("data") or {}).get("ChangeItem"))
+        except (ValueError, AttributeError):
+            graphql_ok = False
+    if antwort.status_code != 200 or not graphql_ok:
         raise JtlFehler("JTL-Schreibantwort: " + json.dumps(diagnose, ensure_ascii=False) +
                        ". Journal gesichert; mit --pruefen rücklesen, nicht wiederholen.")
     return await pruefen(client, journal)
 
 
-async def diagnose403(client, html, journal):
+async def diagnose403(client, html, journal, graphql=False):
     """Explizit ausgelöster, einmaliger Diagnoseversuch des abgelehnten Auftrags."""
     daten = json.loads(Path(journal).read_text(encoding="utf-8"))
     if daten.get("tenant") != TENANT or daten.get("artikel_id") != ITEM:
@@ -189,8 +205,8 @@ async def diagnose403(client, html, journal):
         raise JtlFehler("Wawi-Ausgangsstand verändert; kein Diagnose-Schreibzugriff.")
     token = await client._token()
     # Permanente separate Sperre; ursprüngliches Journal niemals löschen/ersetzen.
-    with os.fdopen(os.open(str(journal) + ".diagnose403", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as datei:
+    with os.fdopen(os.open(str(journal) + (".graphql" if graphql else ".diagnose403"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as datei:
         datei.write(daten["idempotency_key"])
         datei.flush()
         os.fsync(datei.fileno())
-    return {"ergebnis": await senden(client, daten, journal, token)}
+    return {"ergebnis": await senden(client, daten, journal, token, graphql=graphql)}

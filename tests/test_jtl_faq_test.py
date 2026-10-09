@@ -12,6 +12,37 @@ from app.jtl_faq_test import TENANT, SKU, ITEM, NAME, INHALT, KANAL, TITEL, ziel
 
 
 class FaqSchreibtest(unittest.IsolatedAsyncioTestCase):
+    async def test_graphql_erfolg_fehler_und_einmaliger_aufruf(self):
+        from types import SimpleNamespace
+        for fehler in (False, True):
+            with tempfile.TemporaryDirectory() as tmp:
+                journal = Path(tmp) / 'journal.json'
+                ziel = zielattribute(self.vorher, "FAQ")
+                daten = {"tenant": TENANT, "artikel_id": ITEM, "idempotency_key": "original",
+                         "vorher": self.vorher, "nachher": ziel}
+                journal.write_text(json.dumps(daten), encoding="utf-8")
+                client = SimpleNamespace(tenant_id=TENANT, client_secret="secret", _token=AsyncMock(return_value="token"),
+                    artikel_lesen=AsyncMock(return_value={"id": ITEM, "attributes": self.vorher}),
+                    http=SimpleNamespace(post=AsyncMock()))
+                async def post(*args, **kwargs):
+                    self.assertEqual(kwargs['json']['variables'], {'request': {'itemId': ITEM, 'attributes': ziel}})
+                    self.assertIn('ChangeItem(request:', kwargs['json']['query'])
+                    if fehler:
+                        return httpx.Response(200, json={'errors': [{'message': 'Forbidden'}], 'data': None})
+                    client.artikel_lesen.return_value = {"id": ITEM, "attributes": ziel}
+                    return httpx.Response(200, json={'data': {'ChangeItem': {'__typename': 'ChangeItemCommandResponse'}}})
+                client.http.post.side_effect = post
+                if fehler:
+                    with self.assertRaisesRegex(JtlFehler, 'Forbidden'):
+                        await diagnose403(client, "FAQ", journal, graphql=True)
+                    with self.assertRaises(FileExistsError):
+                        await diagnose403(client, "FAQ", journal, graphql=True)
+                else:
+                    result = await diagnose403(client, "FAQ", journal, graphql=True)
+                    self.assertIn('Erfolgreich', result['ergebnis'])
+                    await diagnose403(client, "FAQ", journal, graphql=True)
+                self.assertEqual(client.http.post.await_count, 1)
+
     def test_diagnose_entfernt_geheimnisse_und_liest_html_titel(self):
         d = antwortdiagnose(httpx.Response(403, json={"message": "TOKEN SECRET", "access_token": "TOKEN"}), ["TOKEN", "SECRET"])
         self.assertNotIn("TOKEN", json.dumps(d))

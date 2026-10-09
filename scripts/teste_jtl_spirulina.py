@@ -13,6 +13,7 @@ async def main():
     modus = parser.add_mutually_exclusive_group()
     modus.add_argument("--anwenden", action="store_true")
     modus.add_argument("--pruefen", action="store_true")
+    modus.add_argument("--graphql", action="store_true", help="Gesicherten Auftrag einmalig über die bestätigte ChangeItem-Mutation übertragen")
     modus.add_argument("--diagnose-403", action="store_true", help="Einmaliger kontrollierter Wiederholungsversuch mit Originalauftrag und Originalschlüssel")
     parser.add_argument("--journal", default="/jtl-test/spirulina.json")
     args = parser.parse_args()
@@ -38,7 +39,7 @@ async def main():
                     if not faq:
                         raise JtlFehler("Keine ausgewählten FAQ vorhanden; dieser Ersttest löscht keine Wawi-Werte.")
                     html = faq_als_jtl_html(produkt, faq)
-                bericht = (await diagnose403(client, html, args.journal) if args.diagnose_403
+                bericht = (await diagnose403(client, html, args.journal, graphql=args.graphql) if args.diagnose_403 or args.graphql
                            else await uebertragen(client, html, args.journal, args.anwenden))
                 bericht["faq_anzahl"] = len(faq)
                 print(json.dumps(bericht, ensure_ascii=False, indent=2))

@@ -18,6 +18,12 @@ Stand: 09.10.2026. Eigene interne Krautl-App; Werkel bleibt unverändert.
   ausgestellte Token enthalten `items.read` und `items.write`; Client-ID stimmt
   mit `app-db191954-ccfa-4ec6-a066-4099db495e35` überein. Ursache noch ungeklärt.
   Der erste Test speicherte keine Antwortdetails; aus 403 allein keine Ursache ableiten.
+- Zweiter REST-Versuch ebenfalls HTTP 403 mit `text/html`, danach Ausgangsstand
+  erneut bestätigt. Lesende GraphQL-Abfragen mit und ohne vollständigen gesicherten
+  Attributinhalt liefern HTTP 200. Keine Proxy-Umgebungsvariable auf dem Server.
+  Live-Introspektion bestätigt `ChangeItem(request: ChangeItemCommandRequestInput!)`
+  mit `itemId: ID!`, `attributes: UpdateItemAttributesInput` und Objektantwort
+  `ChangeItemCommandResponse!`. Die Ursache des REST-403 ist damit noch nicht bewiesen.
 
 ## Implementiert und noch offen
 
@@ -110,6 +116,28 @@ docker compose run --rm --no-deps -v /opt/app/krautl/var/jtl-test:/jtl-test app 
 
 Bei weiterem Fehler die Diagnose auswerten und ausschließlich mit `--pruefen`
 rücklesen. Keine Rechteänderung oder Neuinstallation allein aufgrund des Statuscodes.
+
+### Bestätigter GraphQL-Schreibweg
+
+Nach gesichert unverändertem Ausgangsstand ist mit `--graphql` ein einzelner Versuch
+über die reguläre, in dieser Installation bestätigte `ChangeItem`-Mutation möglich.
+Der Originalauftrag, Tenant-/Artikelbindung, FAQ-Vergleich und Rücklesevergleich
+bleiben erhalten. Ein vorhandener Zielstand löst keinen Schreibzugriff aus.
+Die separate dauerhafte `.graphql`-Sperre verhindert Wiederholungen auch bei Timeout.
+Es wird der ursprüngliche Idempotenzschlüssel mitgesendet; seine Unterstützung für
+GraphQL wird nicht vorausgesetzt. Keine automatische Wiederholung über irgendeinen Transport.
+HTTP 200 mit GraphQL-Fehlern oder ohne `data.ChangeItem` gilt nicht als Erfolg.
+Die Antwortdiagnose erfasst nun auch Azure-Referenz, Datum und GraphQL-Fehlermeldungen.
+
+```bash
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git switch main &&
+git pull --ff-only origin main &&
+docker compose build app &&
+docker compose run --rm --no-deps -v /opt/app/krautl/var/jtl-test:/jtl-test app \
+  python -m scripts.teste_jtl_spirulina --graphql
+```
 
 ## Bestätigter fachlicher Umfang
 
