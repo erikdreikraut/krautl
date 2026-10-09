@@ -1,6 +1,17 @@
 # JTL-FAQ-Anbindung: Einrichtung und Abnahme
 
-Stand: 07.10.2026. Eigene interne Krautl-App; Werkel bleibt unverändert.
+Stand: 09.10.2026. Eigene interne Krautl-App; Werkel bleibt unverändert.
+
+## Bestätigter Einrichtungsstand
+
+- `krautl-intern` Version `0.1.0` im Partnerportal registriert und im Hub für
+  `dreikraut e.K.` erfolgreich installiert; Artikelverwaltung Lesen/Schreiben.
+- App-ID: `db191954-ccfa-4ec6-a066-4099db495e35` (keine Tenant-ID).
+- Eigener Service-Account erstellt. Client-ID und Secret sind laut Nutzer in der
+  Server-`.env` hinterlegt; keine Zugangsdaten hier dokumentieren.
+- Hub-Verbindungsstatus: JTL-Wawi verbunden, Version `2.1.1+Sha.6aebf42`.
+- Noch offen: ERP-Tenant-ID bestätigen, lesende Artikeldiagnose und Schreibabnahme.
+  Die erfolgreiche Installation belegt noch keinen geprüften Krautl-API-Aufruf.
 
 ## Implementiert und noch offen
 
