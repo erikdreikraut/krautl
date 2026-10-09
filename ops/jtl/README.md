@@ -24,6 +24,14 @@ Stand: 09.10.2026. Eigene interne Krautl-App; Werkel bleibt unverändert.
   Live-Introspektion bestätigt `ChangeItem(request: ChangeItemCommandRequestInput!)`
   mit `itemId: ID!`, `attributes: UpdateItemAttributesInput` und Objektantwort
   `ChangeItemCommandResponse!`. Die Ursache des REST-403 ist damit noch nicht bewiesen.
+- GraphQL-Schreibversuch: HTTP 400, `An unexpected error occurred.` Anschließend
+  Ausgangsstand unverändert rückgelesen. Noch kein erfolgreicher Schreibnachweis.
+  Konkreter Prüfpunkt: Bestand enthält `languageIso: null`, während das REST-
+  Schreibschema eine Zeichenkette verlangt. Nicht ungeprüft in `de` umwandeln.
+  `scripts.pruefe_jtl_schreibschema` prüft den gesicherten Auftrag anhand der Live-
+  GraphQL-Inputtypen ausschließlich lesend. Es überträgt keine Attributwerte und
+  meldet Feldpfade statt Inhalte. Ein gültiges Inputschema beweist noch keine
+  gültigen Geschäftsregeln und keine sichere partielle Aktualisierungssemantik.
 
 ## Implementiert und noch offen
 
