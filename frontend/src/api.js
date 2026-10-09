@@ -65,6 +65,7 @@ export const api = {
     }),
   logout: () => anfrage("/auth/logout", { method: "POST" }),
   health: () => anfrage("/health"),
+  jtlSyncStatus: (signal) => anfrage("/jtl-sync/status", { signal, cache: "no-store" }),
   mails: (alle = false) => anfrage(alle ? "/mails?alle=true" : "/mails"),
   mailZaehler: () => anfrage("/mails/zaehler"),
   mailReservieren: (mailId) =>

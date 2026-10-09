@@ -22,6 +22,7 @@ services:
     env_file: .env
     volumes:
       - krautl_feeds:/app/var/feeds
+      - ./var/jtl-sync:/app/var/jtl-sync:ro
     depends_on:
       db:
         condition: service_healthy
@@ -60,6 +61,12 @@ services:
     volumes:
       - ./var/jtl-sync:/app/var/jtl-sync
       - ./var/jtl-tls:/app/var/jtl-tls:ro
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.jtl_sync_status"]
+      interval: 60s
+      timeout: 10s
+      retries: 1
+      start_period: 120s
     depends_on:
       db:
         condition: service_healthy

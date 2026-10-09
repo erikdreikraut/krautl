@@ -16,7 +16,9 @@ Nutzer hat ausdrücklich die einmalige Annahme dieser konkreten Abweichung geneh
 Journal `versuch-72a7f960fc4542cab7aa0709804ddde0.json`, erhält das Original,
 schreibt einen Freigabenachweis und löst nur diesen Vorgang auf. Kein Wawi-PATCH.
 Andere Abweichungen werden weiterhin abgewiesen. Dienst vor Ausführung stoppen;
-ohne `--anwenden` nur lesende Prüfung. Ausführung auf dem Server noch ausstehend.
+ohne `--anwenden` nur lesende Prüfung. Auf dem Server erfolgreich ausgeführt:
+`angewendet: true`, keine Wawi-Schreibzugriffe. Nach Wiederanlauf ein weiterer
+Artikel erfolgreich geschrieben, keine Fehler (Nutzernachweis vom 09.10.2026).
 
 ```bash
 docker compose stop jtl-sync
@@ -30,9 +32,11 @@ Der vollständige FAQ-HTML-Export wurde am 09.10.2026 am Kind `40047-1000`
 lokal erfolgreich geschrieben und exakt zurückgelesen; alle übrigen Attributwerte
 blieben erhalten. Nutzer hat auch die Darstellung in Wawi bestätigt.
 
-Implementiert ist ein eigener Docker-Dienst `jtl-sync` (Profil gleichen Namens).
-Aktivierung steht noch aus: öffentliche HTTPS-Adresse, Zertifikat, Firewall mit
-Krautl-IP als einzig erlaubter Quelle und Übergabe des lokalen API-Keys fehlen.
+Aktiv ist ein eigener Docker-Dienst `jtl-sync` (Profil gleichen Namens).
+HTTPS-Adresse: `https://81.90.38.170:5884/api/eazybusiness`; Zertifikat und eigener
+API-Key sind hinterlegt. Windows-Firewall ist aktiv mit Default-Inbound Block,
+die Krautl-Regel erlaubt `159.195.122.18`. Mögliche zusätzliche Freigaben wurden
+nicht abschließend geprüft; auf Wunsch des Nutzers keine weitere Prüfserie.
 Kein automatischer Wechsel zurück zum Cloud-Weg. Kein Windows-Pull-Dienst.
 
 - Ein Lauf, anschließend 300 Sekunden Pause; keine Überlappung oder Nachholschleife.
@@ -175,6 +179,41 @@ Vollständiges HTML anschließend live erfolgreich abgenommen. Tests decken lang
 separate Journale und UTF-8-Rücklesen unter Windows PowerShell 5.1 ab.
 
 ## Bestätigter Einrichtungsstand
+
+### Überwachung im laufenden Betrieb
+
+Unter der Navigation zeigt Krautl den JTL-Status auch auf der Startseite, alle
+30 Sekunden aktualisiert. Aufklappen zeigt letzten abgeschlossenen und letzten
+erfolgreichen Prüflauf, offene Artikel des letzten Plans, Sperren und Fehler.
+Fehler, Sperre, fehlende Statusdatei oder 15 Minuten ohne abgeschlossenen Lauf
+erscheinen als Warnung. Scheitert die Statusabfrage selbst, bleibt kein alter
+grüner Status stehen. Ein erfolgreicher Lauf ohne Änderungen zählt als Erfolg;
+er prüft jedoch nicht zusätzlich die Wawi-Erreichbarkeit.
+
+Der Worker schreibt `var/jtl-sync/status.json` atomar und ohne FAQ-Inhalte/Keys.
+Die Web-App erhält das Verzeichnis ausschließlich lesend. `/jtl-sync/status`
+verlangt die normale Krautl-Anmeldung. Keine Datenbankmigration erforderlich.
+Docker prüft den Status minütlich und markiert Probleme als `unhealthy`.
+Ein Healthcheck allein startet Docker-Container nicht neu; `unless-stopped`
+greift bei Prozessende. Einzelne asynchrone Prüfläufe werden nach zehn Minuten
+abgebrochen; offene Schreibjournale bleiben erhalten und verhindern blinde Retries.
+Ein vollständig blockierter Prozess wird über den veralteten Status erkannt.
+
+Nutzer wünscht ausschließlich Anzeige in Krautl, keine E-Mail und keinen externen
+Überwachungsdienst. Bei komplettem Server-/Web-App-Ausfall oder ohne geöffnete
+Krautl-Oberfläche gibt es deshalb keine unabhängige Benachrichtigung.
+Die neue Anzeige/Healthcheck erfordern Deployment von `app`, `frontend`, `jtl-sync`:
+
+```bash
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git pull --ff-only origin main &&
+docker compose build app frontend &&
+docker compose --profile jtl-sync up -d --no-deps app frontend jtl-sync
+```
+
+Nach dem ersten Lauf sollte `docker compose ps jtl-sync` den Zustand `healthy`
+zeigen. Eine bereits bestehende Sperre wird durch das Deployment nicht aufgehoben.
 
 - `krautl-intern` Version `0.1.0` im Partnerportal registriert und im Hub für
   `dreikraut e.K.` erfolgreich installiert; Artikelverwaltung Lesen/Schreiben.

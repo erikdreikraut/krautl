@@ -9,6 +9,7 @@ import { useWhatsAppEingang, WhatsAppChatPanel, WhatsAppArchiv } from "./WhatsAp
 import logo from "./assets/krautl-logo.png";
 import { WissensdatenbankViewNeu } from "./WissensdatenbankView.jsx";
 import { GesendeteAntwortenView } from "./GesendeteAntwortenView.jsx";
+import { JtlSyncStatus } from "./JtlSyncStatus.jsx";
 
 // Grün/Creme an den Logo-Farben ausgerichtet (#509B32 dunkelgrün,
 // #FFFFD2 creme, #BEDC0F helles Blattgrün) — Amber/Rost bleiben als
@@ -2942,6 +2943,8 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
           </div>
         </div>
       </header>
+
+      <JtlSyncStatus />
 
       {tab === "posteingang" && <PosteingangView
         mails={abgeleitet.mails}

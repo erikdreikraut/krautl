@@ -5,7 +5,6 @@ import json
 import logging
 import os
 from collections import defaultdict
-from datetime import datetime, timezone
 
 from sqlalchemy import select
 
@@ -14,6 +13,7 @@ from .jtl_client import JtlFehler
 from .jtl_faq_test import signatur, zielattribute
 from .jtl_onprem import OnPremClient
 from .jtl_sync_engine import Speicher, abgleichen, zielplan
+from .jtl_sync_status import status_speichern
 from .models import FaqEintrag, Produkt
 from .wissensbasis import faq_als_jtl_html
 
@@ -85,17 +85,18 @@ async def main():
                 return
             speicher.state["api_url"] = client.url
             speicher.speichern()
+            async def lauf():
+                return await abgleichen(client, speicher, await quellen_laden())
             while True:
                 try:
-                    result = await abgleichen(client, speicher, await quellen_laden())
-                    speicher.state["status"] = {"zeit": datetime.now(timezone.utc).isoformat(), **result}
-                    speicher.speichern()
+                    # Bounds DB/network stalls. A cancelled PATCH retains its journal.
+                    result = await asyncio.wait_for(lauf(), timeout=600)
+                    status_speichern(speicher, result)
                     logger.info("FAQ-Abgleich: %s", json.dumps(result, ensure_ascii=False))
                 except Exception as exc:
                     # Do not log request objects, headers, SQL or credentials.
                     detail = str(exc) if isinstance(exc, JtlFehler) else "Technischer Fehler: " + type(exc).__name__
-                    speicher.state["status"] = {"zeit": datetime.now(timezone.utc).isoformat(), "fehler": [detail]}
-                    speicher.speichern()
+                    status_speichern(speicher, {"fehler": [detail]})
                     logger.error("FAQ-Abgleich: %s", detail)
                 # No catch-up bursts after slow runs. No two runs overlap.
                 await asyncio.sleep(INTERVALL)

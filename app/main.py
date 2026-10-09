@@ -56,6 +56,7 @@ from .uebersetzungen import (
 
 from .gesendete_antworten import router as gesendet_router
 from .gesendet_ablage import versandkopien_ueberwachen
+from .jtl_sync_status import status_laden as jtl_status_laden
 
 app = FastAPI(title="Krautl API")
 app.include_router(gesendet_router)
@@ -447,6 +448,12 @@ async def health(session: AsyncSession = Depends(get_session)):
             "detail": worker.detail if worker else None,
         },
     }
+
+
+@app.get("/jtl-sync/status")
+async def jtl_sync_status():
+    # Normal session authentication applies; no public business details.
+    return jtl_status_laden()
 
 
 @app.get("/mails")
