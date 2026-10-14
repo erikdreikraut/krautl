@@ -5,10 +5,40 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from tests.test_google_product_qa import FeedApiTest
-from app.faq_import import Paar, dokument_inhalt, zuordnen
+from app.faq_import import Paar, dokument_inhalt, zuordnen, auswerten, strukturierte_paare
 
 
 class DokumentTest(unittest.TestCase):
+    def test_strukturiert_ohne_ki_und_ohne_erfundene_produktkennung(self):
+        text = "[Herkunft & Qualität]\n\nQ: Woher?\n\nA: Europa.\n\nZweiter Absatz.\n\n[Anwendung]\nQ: Wie?\nA: Als Tee."
+        with patch("app.faq_import.Anthropic") as ki:
+            paare = auswerten({"type": "text", "text": text})
+        ki.assert_not_called()
+        self.assertEqual(len(paare), 2)
+        self.assertEqual(paare[0].antwort, "Europa.\n\nZweiter Absatz.")
+        self.assertEqual(paare[0].kategorie, "Herkunft & Qualität")
+        self.assertEqual(paare[1].kategorie, "Anwendung")
+        self.assertEqual(paare[0].artikelnummer, "")
+        self.assertIsNone(paare[0].produkt_id)
+
+    def test_strukturiert_keine_teilvorschau(self):
+        for text in ("Q: Erste?\nA: Ja.\nQ: Zweite?", "Q: Leer?\nA: ",
+                     "Artikelnummer: 00123\nQ: F?\nA: A.", "Q: F?\nA: A.\n[Leer]",
+                     "Q: F?\nQ: Noch?\nA: A.", "[Eins]\n[Zwei]\nQ: F?\nA: A."):
+            with self.subTest(text=text):
+                self.assertIsNone(strukturierte_paare(text))
+
+    def test_ki_fehlende_kennungen_null(self):
+        block = SimpleNamespace(type="tool_use", name="faq_extrahieren", input={
+            "eintraege": [{"artikelnummer": None, "produktname": None,
+                           "produkt_id": None, "frage": "F?", "antwort": "A."}]})
+        with patch("app.faq_import.Anthropic") as ki:
+            ki.return_value.messages.create.return_value = SimpleNamespace(stop_reason="tool_use", content=[block])
+            paar = auswerten({"type": "text", "text": "Unstrukturierter Text"})[0]
+        self.assertEqual(paar.artikelnummer, "")
+        self.assertEqual(paar.produktname, "")
+        self.assertIsNone(paar.produkt_id)
+
     def test_artikelnummer_hat_vorrang_und_nullen_bleiben(self):
         produkte = [SimpleNamespace(id=1, name="Eins", artikelnummer="001"), SimpleNamespace(id=2, name="Zwei", artikelnummer="2")]
         p = Paar(artikelnummer="001", produkt_id=2, produktname="Zwei", frage="F?", antwort="A")
@@ -51,6 +81,16 @@ class ImportApiTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(r.status_code, 200, r.text)
             self.assertEqual(r.json()["eintraege"][0]["produkt_id"], self.produkt_id)
             self.assertEqual((await self.client.get("/faq", headers=self.headers)).json(), [])
+
+    async def test_strukturierte_datei_vorschau_ohne_speicherung(self):
+        with patch("app.faq_import.Anthropic") as ki:
+            r = await self.client.post("/faq/import/analyse", headers=self.headers,
+                files={"datei": ("faq.txt", "[Qualität]\nQ: Woher?\nA: Europa.".encode())})
+        self.assertEqual(r.status_code, 200, r.text)
+        ki.assert_not_called()
+        self.assertIsNone(r.json()["eintraege"][0]["produkt_id"])
+        self.assertTrue(r.json()["eintraege"][0]["hinweis"])
+        self.assertEqual((await self.client.get("/faq", headers=self.headers)).json(), [])
 
     async def test_import_entwurf_inaktiv_und_wiederholung(self):
         daten = {"dateiname": "faq.txt", "eintraege": [self.paar(), self.paar()]}
