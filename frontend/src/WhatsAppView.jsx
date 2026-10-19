@@ -101,6 +101,7 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
   const gesperrt = !eigene || laeuft;
   const veraltet = basisRevision !== chat.revision && Boolean(text);
   const fensterOffen = chat.antwortfenster_bis && new Date(chat.antwortfenster_bis) > new Date();
+  const fensterAbgelaufen = !!chat.antwortfenster_bis && new Date(chat.antwortfenster_bis) <= new Date();
   const rest = fensterOffen ? Math.max(1, Math.ceil((new Date(chat.antwortfenster_bis) - new Date()) / 3600000)) : 0;
   const vorlage = vorlageIndex === "" ? null : vorlagen[Number(vorlageIndex)];
   const vorlagenText = vorlage ? parameter.reduce((t, p, i) => t.replaceAll(`{{${i+1}}}`, p), vorlage.text) : "";
@@ -172,8 +173,7 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
       <textarea ref={antwortRef} onKeyDown={antwortTaste} aria-describedby={`wa-tasten-${id}`} id={`wa-antwort-${id}`} value={text} disabled={gesperrt} rows={4} maxLength={datei ? 1024 : 4096} className="w-full p-3 rounded-md" style={{background: "#FDFCEE", border: "1px solid #DDD9C4"}} onChange={e => {setText(e.target.value);}} />
       <div id={`wa-tasten-${id}`} className="text-xs mt-1" style={{color: "#6C6F5F"}}>Enter: senden · Shift+Enter: Zeilenumbruch</div>
       {fensterOffen && <label className="block text-sm mt-2">Anhang (PDF bis 10 MB, JPG/PNG bis 5 MB)<input type="file" accept=".pdf,.jpg,.jpeg,.png" disabled={gesperrt} onChange={e => setDatei(e.target.files?.[0] || null)} className="block mt-1 max-w-full" /></label>}
-      {!fensterOffen && <div className="my-3 p-3" style={{background: "#F3E7D2"}}>
-        <button style={button} disabled={gesperrt} onClick={() => aktion(async () => setVorlagen(await api.whatsappVorlagen()))}>Freigegebene Textvorlagen laden</button>
+      {fensterAbgelaufen && vorlagen.length > 0 && <div className="my-3 p-3" style={{background: "#F3E7D2"}}>
         {vorlagen.length > 0 && <select aria-label="WhatsApp-Vorlage" style={button} className="block mt-2 w-full" value={vorlageIndex} onChange={e => {setVorlageIndex(e.target.value); setParameter(Array(vorlagen[Number(e.target.value)]?.parameter || 0).fill("")); versandAuftrag.current = null; setBasisRevision(chat.revision);}}><option value="">Vorlage wählen</option>{vorlagen.map((v,i) => <option key={`${v.name}-${v.sprache}`} value={i}>{v.name} · {v.sprache} · {v.kategorie}</option>)}</select>}
         {vorlage && <><div className="my-2 whitespace-pre-wrap text-sm">{vorlagenText}{vorlage.fusszeile && `\n${vorlage.fusszeile}`}</div>{vorlage.schnellantworten?.length > 0 && <div className="flex flex-wrap gap-2 my-2" aria-label="Schnellantworten für Kunden">{vorlage.schnellantworten.map((text, i) => <span key={i} style={{...button, cursor: "default"}}>{text}</span>)}</div>}{parameter.map((p,i) => <label key={i} className="block text-sm">Platzhalter {i+1}<input aria-label={`Vorlagenparameter ${i+1}`} disabled={gesperrt} value={p} maxLength={1000} className="block p-2 my-1 w-full" onChange={e => setParameter(alt => alt.map((wert, index) => index === i ? e.target.value : wert))} /></label>)}<p className="text-xs">Vorlagen können kostenpflichtig sein. Nur für die vom Kunden gewünschte Kommunikation verwenden.</p></>}
       </div>}
@@ -181,6 +181,7 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
         <button style={button} disabled={gesperrt} onClick={() => aktion(async () => {const result = await api.whatsappVorschlag(id); setText(result.text); setBasisRevision(result.revision); versandAuftrag.current = null;})}>✦ Antwort vorschlagen</button>
         <button style={button} disabled={gesperrt || veraltet} onClick={() => aktion(() => api.whatsappAendern(id, "entwurf", {text, revision: chat.revision}))}>Entwurf speichern</button>
         <button style={{...button, background: "#2C5A18", color: "white"}} disabled={versandGesperrt} onClick={antwortSenden}>{laeuft ? "Bitte warten …" : (vorlage ? "Vorlage senden" : "Antwort senden")}</button>
+        {fensterAbgelaufen && <button style={button} disabled={gesperrt} onClick={() => aktion(async () => setVorlagen(await api.whatsappVorlagen()))}>Chat wieder aufgreifen</button>}
       </div>
       <label className="block text-sm mt-5">Interne Notiz<textarea value={notiz} disabled={gesperrt} onChange={e => setNotiz(e.target.value)} rows={2} className="w-full p-2 mt-1" style={{background: "#FDFCEE", border: "1px solid #DDD9C4"}} /></label>
       <button style={button} disabled={gesperrt} onClick={() => aktion(() => api.whatsappAendern(id, "notiz", {text: notiz, revision: chat.revision}))}>Notiz speichern</button>

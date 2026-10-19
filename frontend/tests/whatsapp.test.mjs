@@ -52,7 +52,7 @@ test("WhatsApp-Antworten ohne echten Versand", async t => {
     const c = await chatOeffnen(t, {fensterOffen: false});
     t.mock.method(api, "whatsappVorlagen", async () => [{name: "anfrage_aufgreifen", sprache: "de",
       text: "Ihre Anfrage zu {{1}}", parameter: 1, kategorie: "UTILITY", schnellantworten: ["Ja, bitte antworten"]}]);
-    const laden = c.view.root.findAllByType("button").find(b => b.children.includes("Freigegebene Textvorlagen laden"));
+    const laden = c.view.root.findAllByType("button").find(b => b.children.includes("Chat wieder aufgreifen"));
     await act(async () => laden.props.onClick());
     await act(async () => c.view.root.findByProps({"aria-label": "WhatsApp-Vorlage"}).props.onChange({target: {value: "0"}}));
     assert.match(JSON.stringify(c.view.toJSON()), /Ja, bitte antworten/);
