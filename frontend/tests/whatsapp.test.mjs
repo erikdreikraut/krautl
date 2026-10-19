@@ -57,6 +57,12 @@ test("WhatsApp-Antworten ohne echten Versand", async t => {
     await act(async () => c.view.root.findByProps({"aria-label": "WhatsApp-Vorlage"}).props.onChange({target: {value: "0"}}));
     assert.match(JSON.stringify(c.view.toJSON()), /Ja, bitte antworten/);
     assert.equal(c.senden.mock.callCount(), 0);
+    assert.match(JSON.stringify(c.view.toJSON()), /Bitte zuerst/);
+    assert.match(JSON.stringify(c.view.toJSON()), /Ihre Anfrage zu \{\{1\}\}/);
+    const gesperrt = c.view.root.findAllByType("button").find(b => b.children.includes("Vorlage senden"));
+    assert.equal(gesperrt.props.disabled, true);
+    await act(async () => gesperrt.props.onClick());
+    assert.equal(c.senden.mock.callCount(), 0);
     await act(async () => c.view.root.findByProps({"aria-label": "Vorlagenparameter 1"}).props.onChange({target: {value: "7-Kräuter"}}));
     const senden = c.view.root.findAllByType("button").find(b => b.children.includes("Vorlage senden"));
     assert.equal(senden.props.disabled, false);
