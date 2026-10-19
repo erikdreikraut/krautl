@@ -40,13 +40,31 @@ test("WhatsApp-Antworten ohne echten Versand", async t => {
     });
     const antwort = () => view.root.findByProps({id: "wa-antwort-1"});
     const button = () => view.root.findAllByType("button").find(b => b.children.includes("Antwort senden"));
-    return {senden, feld, chat, antwort, button,
+    return {view, senden, feld, chat, antwort, button,
       schreiben: async value => act(async () => antwort().props.onChange({target: {value}})),
       taste: async (extra = {}) => act(async () => antwort().props.onKeyDown({key: "Enter", nativeEvent: {}, preventDefault() {}, currentTarget: feld, ...extra})),
       fokus: async wert => act(async () => { fokus = wert; win.dispatchEvent(new Event(wert ? "focus" : "blur")); }),
       sichtbar: async wert => act(async () => { doc.visibilityState = wert ? "visible" : "hidden"; doc.dispatchEvent(new Event("visibilitychange")); }),
     };
   }
+
+  await t.test("Genehmigte Schnellantwort-Vorlage anzeigen und manuell senden", async t => {
+    const c = await chatOeffnen(t, {fensterOffen: false});
+    t.mock.method(api, "whatsappVorlagen", async () => [{name: "anfrage_aufgreifen", sprache: "de",
+      text: "Ihre Anfrage zu {{1}}", parameter: 1, kategorie: "UTILITY", schnellantworten: ["Ja, bitte antworten"]}]);
+    const laden = c.view.root.findAllByType("button").find(b => b.children.includes("Freigegebene Textvorlagen laden"));
+    await act(async () => laden.props.onClick());
+    await act(async () => c.view.root.findByProps({"aria-label": "WhatsApp-Vorlage"}).props.onChange({target: {value: "0"}}));
+    assert.match(JSON.stringify(c.view.toJSON()), /Ja, bitte antworten/);
+    assert.equal(c.senden.mock.callCount(), 0);
+    await act(async () => c.view.root.findByProps({"aria-label": "Vorlagenparameter 1"}).props.onChange({target: {value: "7-Kräuter"}}));
+    const senden = c.view.root.findAllByType("button").find(b => b.children.includes("Vorlage senden"));
+    assert.equal(senden.props.disabled, false);
+    await act(async () => senden.props.onClick());
+    assert.equal(c.senden.mock.callCount(), 1);
+    assert.equal(c.senden.mock.calls[0].arguments[1].template_name, "anfrage_aufgreifen");
+    assert.deepEqual(c.senden.mock.calls[0].arguments[1].parameter, ["7-Kräuter"]);
+  });
 
   for (const weg of ["Enter", "Button"]) await t.test(`${weg} sendet genau einmal`, async t => {
     const c = await chatOeffnen(t);

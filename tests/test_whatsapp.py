@@ -225,6 +225,57 @@ class WhatsAppTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(send.call_args.args[1], "Hallo Testkunde")
             self.assertEqual(send.call_args.args[2]["name"], "service")
 
+    async def test_quick_reply_template_loading_filters_unsupported_templates(self):
+        def vorlage(name, extra=None, status="APPROVED"):
+            return {"name": name, "language": "de", "status": status, "category": "UTILITY",
+                    "components": [{"type": "BODY", "text": "Anfrage zu {{1}}"}] + (extra or [])}
+        quick = {"type": "BUTTONS", "buttons": [{"type": "QUICK_REPLY", "text": "Ja, bitte antworten"}]}
+        daten = [vorlage("anfrage_aufgreifen", [quick]), vorlage("plain"),
+                 vorlage("pending", [quick], "PENDING"),
+                 vorlage("url", [{"type": "BUTTONS", "buttons": [{"type": "URL", "text": "Web", "url": "https://example.test"}]}]),
+                 vorlage("media", [{"type": "HEADER", "format": "IMAGE"}]),
+                 vorlage("empty", [{"type": "BUTTONS", "buttons": []}]),
+                 vorlage("dynamic", [{"type": "BUTTONS", "buttons": [{"type": "QUICK_REPLY", "text": "{{1}}"}]}])]
+        response = httpx.Response(200, json={"data": daten}, request=httpx.Request("GET", "https://example.test"))
+        fake = AsyncMock()
+        fake.__aenter__.return_value.get.return_value = response
+        with patch.dict(os.environ, {"WHATSAPP_WABA_ID": "test-waba"}), patch("app.whatsapp.httpx.AsyncClient", return_value=fake):
+            result = await whatsapp.vorlagen_laden()
+        self.assertEqual([v["name"] for v in result], ["anfrage_aufgreifen", "plain"])
+        self.assertEqual(result[0]["schnellantworten"], ["Ja, bitte antworten"])
+        self.assertEqual(result[1]["schnellantworten"], [])
+
+    async def test_quick_reply_send_and_customer_reply_reopens_chat(self):
+        chat = await self.eingang(self.payload(zeit=datetime.now(timezone.utc)-timedelta(days=2)))
+        body = {"text": "preview", "revision": chat.revision, "auftrag_id": str(uuid4()),
+                "template_name": "anfrage_aufgreifen", "template_sprache": "de", "parameter": ["7-Kräuter"]}
+        vorlage = {"name": "anfrage_aufgreifen", "sprache": "de", "text": "Anfrage zu {{1}}", "parameter": 1,
+                   "schnellantworten": ["Ja, bitte antworten"]}
+        with patch("app.whatsapp.vorlagen_laden", new_callable=AsyncMock, return_value=[vorlage]), patch("app.whatsapp.api_senden", new_callable=AsyncMock, return_value="out-button") as send:
+            response = await self.client.post(f"/whatsapp/chats/{chat.id}/senden", headers=self.admin, json=body)
+            self.assertEqual(response.status_code, 200, response.text)
+            components = send.call_args.args[2]["components"]
+            self.assertEqual(components, [
+                {"type": "body", "parameters": [{"type": "text", "text": "7-Kräuter"}]},
+                {"type": "button", "sub_type": "quick_reply", "index": "0",
+                 "parameters": [{"type": "payload", "payload": "krautl:quick_reply:0"}]}])
+            await self.client.post(f"/whatsapp/chats/{chat.id}/senden", headers=self.admin, json=body)
+            send.assert_awaited_once()
+        async with self.sessions() as session:
+            wartet = await session.get(Chat, chat.id)
+            self.assertEqual(wartet.status, "wartet_auf_kunde")
+            self.assertLess(whatsapp.fenster(wartet), whatsapp.jetzt())
+        payload = self.payload(mid="reply-button", zeit=datetime.now(timezone.utc)+timedelta(seconds=2))
+        msg = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+        msg.pop("text")
+        msg.update(type="button", button={"text": "Ja, bitte antworten", "payload": "krautl:quick_reply:0"})
+        neu = await self.eingang(payload)
+        self.assertEqual(neu.status, "offen")
+        self.assertGreater(whatsapp.fenster(neu), whatsapp.jetzt())
+        async with self.sessions() as session:
+            antwort = (await session.execute(select(Nachricht).where(Nachricht.message_id == "reply-button"))).scalar_one()
+            self.assertEqual(antwort.text, "Ja, bitte antworten")
+
     async def test_template_missing_or_invalid_params_no_send(self):
         chat = await self.eingang()
         with patch("app.whatsapp.vorlagen_laden", new_callable=AsyncMock, return_value=[]), patch("app.whatsapp.api_senden", new_callable=AsyncMock) as send:

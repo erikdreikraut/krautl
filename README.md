@@ -130,8 +130,7 @@ alte Kontaktlisten und Chatverläufe werden nicht importiert.
 
 Nach 24 Stunden seit letzter Kundennachricht ist freier API-Versand gesperrt.
 Krautl lädt freigegebene Textvorlagen (BODY, optional FOOTER, positionale
-Textplatzhalter) und prüft sie vor Versand erneut beim Anbieter. Medienvorlagen,
-Buttonvorlagen und benannte Platzhalter sind im Pilot nicht auswählbar. Es gibt
+Textplatzhalter), auch mit statischen Schnellantwort-Buttons, und prüft sie vor Versand erneut beim Anbieter. Die Schnellantworten werden in der Vorschau angezeigt. Ein Klick des Kunden kommt als neue Nachricht an und öffnet das Antwortfenster erneut. Medienvorlagen, andere Buttonarten (z. B. URL/Telefon) und benannte Platzhalter sind im Pilot nicht auswählbar. Es gibt
 keinen automatischen Vorlagenversand und keine Kampagnen. Vorlagen können
 kostenpflichtig sein; passende Kundenanfrage/Einwilligung beachten.
 

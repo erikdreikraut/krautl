@@ -456,6 +456,11 @@ async def _senden(ident, body, request, session, media=None):
         template = {"name": vorlage["name"], "language": {"code": vorlage["sprache"]}}
         if body.parameter:
             template["components"] = [{"type": "body", "parameters": [{"type": "text", "text": p} for p in body.parameter]}]
+        for index, _ in enumerate(vorlage.get("schnellantworten", [])):
+            template.setdefault("components", []).append({
+                "type": "button", "sub_type": "quick_reply", "index": str(index),
+                "parameters": [{"type": "payload", "payload": f"krautl:quick_reply:{index}"}],
+            })
     if not template and (not fenster(chat) or fenster(chat) <= jetzt()):
         raise HTTPException(409, "24-Stunden-Fenster abgelaufen. Freie API-Antwort nicht möglich.")
     if not body.text.strip():
@@ -571,8 +576,16 @@ async def vorlagen_laden():
             if v.get("status", "").upper() != "APPROVED":
                 continue
             components = v.get("components", [])
-            # Nur reine Textvorlagen: keine versteckten Medien oder Buttonparameter.
-            if any(c.get("type", "").upper() not in {"BODY", "FOOTER"} for c in components):
+            # Textvorlagen mit statischen Schnellantworten; keine Medien/URL-Parameter.
+            if any(c.get("type", "").upper() not in {"BODY", "FOOTER", "BUTTONS"} for c in components):
+                continue
+            button_gruppen = [c for c in components if c.get("type", "").upper() == "BUTTONS"]
+            buttons = button_gruppen[0].get("buttons", []) if button_gruppen else []
+            if len(button_gruppen) > 1 or (button_gruppen and not buttons) or len(buttons) > 10:
+                continue
+            if any(b.get("type", "").upper() != "QUICK_REPLY"
+                   or not isinstance(b.get("text"), str) or not b["text"].strip()
+                   or len(b["text"]) > 40 or "{{" in b["text"] for b in buttons):
                 continue
             body = next((c for c in components if c.get("type", "").upper() == "BODY"), {})
             text = body.get("text", "")
@@ -581,6 +594,7 @@ async def vorlagen_laden():
                 continue
             result.append({"name": v["name"], "sprache": v["language"], "text": text,
                 "parameter": len(nummern), "kategorie": v.get("category", ""),
+                "schnellantworten": [b["text"] for b in buttons],
                 "fusszeile": "\n".join(c.get("text", "") for c in components if c.get("type", "").upper() == "FOOTER")})
         return result
     except Exception:
