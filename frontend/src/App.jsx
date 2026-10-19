@@ -2927,6 +2927,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
             />
             {workerAnzeige.text}
           </span>
+          <JtlSyncStatus />
           <PenLine className="header-drafts-icon" size={13} style={{ color: tokens.amber }} />
           <span className="header-drafts-text" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{entwuerfeOffen} Entwürfe warten auf Freigabe</span>
           <div className="flex items-center gap-1.5 pl-3 ml-1 header-user" style={{ borderLeft: `1px solid ${tokens.line}` }}>
@@ -2943,8 +2944,6 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
           </div>
         </div>
       </header>
-
-      <JtlSyncStatus />
 
       {tab === "posteingang" && <PosteingangView
         mails={abgeleitet.mails}
