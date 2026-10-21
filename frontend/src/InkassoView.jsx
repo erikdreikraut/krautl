@@ -15,6 +15,29 @@ const geld = (wert, waehrung) => new Intl.NumberFormat("de-DE", { style: "curren
 const zelle = { padding: "13px 16px", borderBottom: "1px solid #DDD9C4" };
 const knopf = { padding: "6px 10px", border: "1px solid #DDD9C4", borderRadius: "5px", color: "#2C5A18", cursor: "pointer" };
 
+export function Bestellung({ row }) {
+  if (!row.bestellungen?.length) return <span>Noch nicht abgerufen</span>;
+  return <details>
+    <summary style={{ cursor: "pointer", color: "#2C5A18", whiteSpace: "nowrap" }}>Bestellung ansehen</summary>
+    <div style={{ minWidth: "320px", maxWidth: "620px", paddingTop: "12px" }}>
+      {row.bestellungen.map(order => <section key={order.id} style={{ marginBottom: "16px" }}>
+        <strong>Auftrag {order.nummer}</strong>
+        <p>{order.kanal}{order.datum ? ` · ${String(order.datum).split("T")[0].split("-").reverse().join(".")}` : ""}</p>
+        {order.betrag != null && <p>Auftragsbetrag: {geld(order.betrag, order.waehrung || row.waehrung)}</p>}
+        <p style={{ margin: "8px 0", color: "#6C6F5F" }}>Abgerechnete Positionen dieser Rechnung:</p>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr><th scope="col">Artikel / SKU</th><th scope="col">Menge</th><th scope="col">Einzelpreis brutto</th></tr></thead>
+          <tbody>{order.positionen.map((item, index) => <tr key={index}>
+            <td style={{ padding: "6px 8px 6px 0" }}>{item.artikel || "Position"}{item.sku && <small style={{ display: "block" }}>{item.sku}</small>}</td>
+            <td style={{ padding: "6px" }}>{item.menge ?? "—"}</td>
+            <td style={{ padding: "6px", whiteSpace: "nowrap" }}>{item.einzelpreis == null ? "—" : geld(item.einzelpreis, row.waehrung)}</td>
+          </tr>)}</tbody>
+        </table>
+      </section>)}
+    </div>
+  </details>;
+}
+
 export function InkassoListe({ daten }) {
   const [feld, setFeld] = useState("datum");
   const [richtung, setRichtung] = useState(1);
@@ -41,19 +64,26 @@ export function InkassoListe({ daten }) {
       <div style={{ overflowX: "auto", background: "#FDFCEE", border: "1px solid #DDD9C4", borderRadius: "6px" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
           <thead><tr>
-            {[["datum", "Rechnungsdatum"], ["nummer", "Rechnungs-Nr."], ["kunde", "Kundenname"], ["betrag", "Betrag"], ["offen", "Offener Betrag"]].map(([key, label]) =>
+            {[["datum", "Rechnungsdatum"], ["nummer", "Rechnungs-Nr."], ["kunde", "Kundenname"], ["kanal", "Kanal"], ["betrag", "Betrag"], ["offen", "Offener Betrag"]].map(([key, label]) =>
               <th key={key} scope="col" aria-sort={feld === key ? richtung === 1 ? "ascending" : "descending" : "none"}
                 style={{ ...zelle, fontSize: "12px", fontWeight: 500, whiteSpace: "nowrap", textAlign: ["betrag", "offen"].includes(key) ? "right" : "left" }}>
                 <button onClick={() => waehlen(key)} style={{ cursor: "pointer", color: "#2C5A18" }}>{label}{feld === key ? richtung === 1 ? " ↑" : " ↓" : " ↕"}</button>
               </th>)}
+            <th scope="col" style={zelle}>Telefonnummer(n)</th>
+            <th scope="col" style={zelle}>Bestellung</th>
             <th scope="col" style={zelle}>Hinweis</th>
           </tr></thead>
           <tbody>{rows.slice(aktuelle * 50, (aktuelle + 1) * 50).map(row => <tr key={row.id}>
             <td style={{ ...zelle, whiteSpace: "nowrap" }}>{row.datum.split("-").reverse().join(".")}</td>
             <td style={zelle}>{row.nummer}</td>
             <td style={{ ...zelle, fontWeight: 500 }}>{row.kunde}</td>
+            <td style={zelle}>{row.kanal || "Noch nicht abgerufen"}</td>
             <td style={{ ...zelle, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{geld(row.betrag, row.waehrung)}</td>
             <td style={{ ...zelle, textAlign: "right", whiteSpace: "nowrap", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{geld(row.offen, row.waehrung)}</td>
+            <td style={zelle}>{row.telefone?.length ? row.telefone.map(nummer =>
+              <a key={nummer} href={`tel:${nummer.replace(/[^+0-9]/g, "")}`} style={{ display: "block", whiteSpace: "nowrap", color: "#2C5A18" }}>{nummer}</a>)
+              : row.telefone ? "Nicht hinterlegt" : "Noch nicht abgerufen"}</td>
+            <td style={zelle}><Bestellung row={row} /></td>
             <td style={zelle}>{row.mahnsperre ? "Mahnsperre in Wawi" : "—"}</td>
           </tr>)}</tbody>
         </table>
@@ -91,7 +121,7 @@ export function InkassoView() {
   }, []);
   return <section style={{ padding: "24px 16px", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: "13px", color: "#242A1F" }}>
     <h2 style={{ fontFamily: "'Source Serif 4', serif", fontWeight: 700, fontSize: "20px", color: "#2C5A18" }}>Inkasso</h2>
-    <p style={{ color: "#6C6F5F", marginTop: "4px" }}>Offene JTL-Shop-Rechnungen der letzten zwölf Monate, einschließlich noch nicht fälliger Rechnungen. Bereits erfasste offene Fälle bleiben auch danach in der Liste.</p>
+    <p style={{ color: "#6C6F5F", marginTop: "4px" }}>Offene Rechnungen aus JTL-Shop und JTL-Wawi der letzten zwölf Monate, einschließlich noch nicht fälliger Rechnungen. Bereits erfasste offene Fälle bleiben auch danach in der Liste. Telefonnummern stammen aus den Rechnungsadressen von Rechnung und Auftrag.</p>
     {fehler && <p role="alert" style={{ color: "#A5462F", marginTop: "16px" }}>{fehler}</p>}
     {!daten && !fehler && <p role="status" style={{ marginTop: "16px" }}>Rechnungsstand wird geladen …</p>}
     {daten && <InkassoListe daten={daten} />}

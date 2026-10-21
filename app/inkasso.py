@@ -12,6 +12,7 @@ from .berechtigungen import ist_admin
 from .jtl_client import JtlFehler
 
 KANAL = "2-2-1"  # Confirmed dreikraut shop, also used by FAQ integration.
+KANAELE = {KANAL: "JTL-Shop", "1-1-0": "JTL-Wawi"}
 INTERVALL = timedelta(days=1)
 router = APIRouter(prefix="/inkasso")
 
@@ -147,7 +148,28 @@ async def offene_rechnungen(client):
     return result
 
 
-async def shop_zuordnung(client, ident, cache):
+def telefonnummern(*adressen):
+    result, gesehen = [], set()
+    for adresse in adressen:
+        if not isinstance(adresse, dict):
+            continue
+        for key in ("PhoneNumber", "MobilePhoneNumber"):
+            value = adresse.get(key)
+            if not isinstance(value, str) or not value.strip():
+                continue
+            value = value.strip()
+            normal = "".join(c for c in value if c.isdigit())
+            if normal and normal not in gesehen:
+                gesehen.add(normal)
+                result.append(value)
+    return result
+
+
+def optionaler_betrag(value):
+    return None if value is None else str(betrag(value))
+
+
+async def bestelluebersicht(client, ident, cache):
     rows = await api_lesen(client, f"/v1/invoices/{ident}/lineitems", expected_type=list)
     auftraege = set()
     for row in rows:
@@ -166,11 +188,28 @@ async def shop_zuordnung(client, ident, cache):
             data = await api_lesen(client, f"/v1/salesOrders/{order}")
             if identitaet(data.get("Id")) != order or not isinstance(data.get("SalesChannelId"), str) or not data["SalesChannelId"]:
                 raise JtlFehler("JTL-Auftrags-ID oder Verkaufskanal fehlt/ist widersprüchlich.")
-            cache[order] = data["SalesChannelId"]
-        kanaele.add(cache[order])
-    if KANAL in kanaele and len(kanaele) != 1:
-        raise JtlFehler("Rechnung enthält Aufträge aus mehreren Verkaufskanälen; manuelle Prüfung erforderlich.")
-    return kanaele == {KANAL}
+            cache[order] = data
+        kanaele.add(cache[order]["SalesChannelId"])
+    if kanaele.intersection(KANAELE) and not kanaele.issubset(KANAELE):
+        raise JtlFehler("Rechnung mischt erlaubte und fremde Verkaufskanäle; manuelle Prüfung erforderlich.")
+    if not kanaele.issubset(KANAELE):
+        return None
+    bestellungen, adressen = [], []
+    for order in sorted(auftraege):
+        data = cache[order]
+        adressen.append(data.get("BillingAddress"))
+        payment = data.get("SalesOrderPaymentDetails") or {}
+        positionen = [{"artikel": str(row.get("Name") or ""), "sku": str(row.get("SKU") or ""),
+                       "menge": optionaler_betrag(row.get("Quantity")),
+                       "einzelpreis": optionaler_betrag(row.get("SalesPriceGross"))}
+                      for row in rows if str(row.get("SalesOrderId")) == order]
+        bestellungen.append({"id": order, "nummer": str(data.get("Number") or order),
+                             "datum": data.get("SalesOrderDate"),
+                             "kanal": KANAELE[data["SalesChannelId"]],
+                             "betrag": optionaler_betrag(payment.get("TotalGrossAmount")),
+                             "waehrung": payment.get("CurrencyIso"), "positionen": positionen})
+    return {"kanaele": sorted(kanaele), "kanal": " / ".join(KANAELE[k] for k in sorted(kanaele)),
+            "bestellungen": bestellungen, "telefone": telefonnummern(*adressen)}
 
 
 async def abrufen(client, bestand=None, zeit=None):
@@ -184,11 +223,11 @@ async def abrufen(client, bestand=None, zeit=None):
     kanaele = await api_lesen(client, "/v2/sales-channels", expected_type=list)
     if any(not isinstance(k, dict) for k in kanaele):
         raise JtlFehler("Ungültige JTL-Verkaufskanalliste.")
-    # Live Wawi 2.1.1 reports type=0 for both Wawi and JTL-Shop.
-    # Only the independently confirmed exact channel ID identifies our shop.
-    treffer = [k for k in kanaele if k.get("id") == KANAL]
-    if len(treffer) != 1 or type(treffer[0].get("type")) is not int or treffer[0]["type"] != 0:
-        raise JtlFehler("Der bestätigte JTL-Shopkanal wurde nicht mit der bestätigten ID und dem bestätigten Typ gefunden.")
+    # Both exact IDs are user-confirmed. Type=0 alone does not identify a channel.
+    for kanal in KANAELE:
+        treffer = [k for k in kanaele if k.get("id") == kanal]
+        if len(treffer) != 1 or type(treffer[0].get("type")) is not int or treffer[0]["type"] != 0:
+            raise JtlFehler("Ein bestätigter Inkasso-Kanal fehlt oder hat einen anderen Typ: " + kanal)
     rows = await offene_rechnungen(client)
     geprueft = len(rows)
     # Previously captured cases are checked individually even outside the window,
@@ -211,11 +250,18 @@ async def abrufen(client, bestand=None, zeit=None):
         if vorher is None and (item["status"] != "offen" or not start <= item["datum"] <= ende):
             continue
         if item["status"] == "offen":
-            passt = await shop_zuordnung(client, ident, cache)
-            if not passt:
+            details = await bestelluebersicht(client, ident, cache)
+            if details is None:
                 if vorher is not None:
                     raise JtlFehler("Verkaufskanal einer erfassten Rechnung hat sich geändert.")
                 continue
+            item.update(details)
+            item["telefone"] = telefonnummern(row.get("BillingAddress"),
+                *[{"PhoneNumber": nummer} for nummer in details["telefone"]])
+        elif vorher:
+            for key in ("kanaele", "kanal", "bestellungen", "telefone"):
+                if key in vorher:
+                    item[key] = vorher[key]
         item.update(erfasst_am=vorher["erfasst_am"] if vorher else zeit.isoformat(),
                     geprueft_am=zeit.isoformat())
         if item["status"] != "offen":
@@ -225,7 +271,7 @@ async def abrufen(client, bestand=None, zeit=None):
             "rechnungen": sorted((f for f in faelle.values() if f["status"] == "offen"),
                                  key=lambda x: (x["datum"], x["id"])),
             "geprueft": geprueft, "aufnahme_ab": start,
-            "shop": treffer[0].get("name") or KANAL, "kanal": KANAL}
+            "shop": "JTL-Shop und JTL-Wawi", "kanaele": list(KANAELE)}
 
 
 def status(data, zeit=None):

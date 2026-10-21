@@ -41,3 +41,24 @@ test("Unbekannt ist nicht leer; veraltete und fehlerhafte Stände warnen", async
   assert.match(JSON.stringify(view.toJSON()), /Datenstand ist veraltet/);
   assert.equal(view.root.findAllByProps({role: "alert"}).length, 1);
 });
+
+test("Kanal, Telefonnummern und lokale Bestellübersicht; alter Snapshot bleibt nutzbar", async t => {
+  const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" });
+  t.after(() => server.close());
+  const { InkassoListe } = await server.ssrLoadModule("/src/InkassoView.jsx");
+  const row = { ...rows[0], kanal: "JTL-Wawi", telefone: ["0123 456", "+49 170 111"],
+    bestellungen: [{ id: "9", nummer: "AU-9", kanal: "JTL-Wawi", datum: "2026-10-01T12:00:00",
+      betrag: "99", waehrung: "EUR", positionen: [{ artikel: "Testartikel", sku: "SKU-9", menge: "2", einzelpreis: "12.50" }] }] };
+  let view;
+  t.after(() => view?.unmount());
+  await act(async () => { view = create(React.createElement(InkassoListe, { daten: {
+    rechnungen: [row, rows[1]], status: "ok", letzter_erfolg: "2026-10-21T12:00:00Z"
+  } })); });
+  assert.deepEqual(view.root.findAllByType("a").map(a => a.props.href), ["tel:0123456", "tel:+49170111"]);
+  assert.equal(view.root.findAllByType("details").length, 1);
+  assert.equal(view.root.findByType("summary").children.join(""), "Bestellung ansehen");
+  const text = JSON.stringify(view.toJSON());
+  for (const expected of [/JTL-Wawi/, /AU-9/, /Testartikel/, /SKU-9/, /Abgerechnete Positionen/, /Noch nicht abgerufen/]) {
+    assert.match(text, expected);
+  }
+});

@@ -24,7 +24,7 @@ async def lauf(folder=None, client_factory=client_aus_umgebung):
             result = await asyncio.wait_for(abrufen(client, data), timeout=3600)
         data.update(result)
         data.update(letzter_erfolg=jetzt().isoformat(), status="ok", fehler=None)
-        logger.info("Inkasso: %s offene Shoprechnungen; %s Rechnungen geprüft.",
+        logger.info("Inkasso: %s offene Rechnungen (JTL-Shop/JTL-Wawi); %s Rechnungen geprüft.",
                     len(result["rechnungen"]), result["geprueft"])
     except Exception as exc:
         detail = str(exc) if isinstance(exc, JtlFehler) else "Technischer Abruffehler: " + type(exc).__name__

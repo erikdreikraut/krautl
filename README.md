@@ -715,19 +715,28 @@ vorbereitet. Der automatische Schreibabgleich ist noch nicht implementiert oder
 aktiviert. Einrichtung, bestätigte Zielattribute und offene Abnahme: siehe
 [ops/jtl/README.md](ops/jtl/README.md).
 
-### Inkasso: offene JTL-Shop-Rechnungen (nur Admin)
+### Inkasso: offene Rechnungen aus JTL-Shop und JTL-Wawi (nur Admin)
 
 Der Hauptmenüpunkt **Inkasso** steht rechts neben **Rechnungen** ausschließlich
 Administratoren zur Verfügung. Auch `GET /inkasso` prüft die Adminrolle und
 antwortet mit `Cache-Control: no-store`. Die Übersicht zeigt Rechnungsdatum,
 Rechnungsnummer, Kundenname aus der Rechnungsadresse, Bruttobetrag, offenen
-Restbetrag und Mahnsperre. Alle vier gewünschten Spalten sind sortierbar,
+Restbetrag, Kanal, Telefonnummern und Mahnsperre. Eine ausklappbare
+Bestellspalte zeigt Auftragsnummer, Datum, Auftragsbetrag sowie die zu dieser
+Rechnung abgerechneten Positionen (Artikel, SKU, Menge, Einzelpreis brutto).
+Bei Teilrechnungen ist dies keine vollständige Positionsliste des gesamten
+Auftrags. Mehrere verknüpfte Aufträge werden einzeln angezeigt. Alle
+Details stammen aus dem letzten erfolgreichen Import; Klicks fragen Wawi
+nicht erneut ab. Telefonnummern aus den BillingAddress-Feldern PhoneNumber
+und MobilePhoneNumber von Rechnung und Auftrag werden zusammengeführt,
+Dopplungen entfernt. Kein zusätzlicher Kundenstammabruf; fehlende Nummern
+werden als nicht hinterlegt angezeigt. Alle vier gewünschten Spalten sind sortierbar,
 standardmäßig Datum aufsteigend; 50 Zeilen pro Seite. Noch nicht fällige
 Rechnungen sind enthalten. Es werden keine Mahnungen versendet und keine
 Zahlungen oder Rechnungen in Wawi verändert.
 
 **Aufnahme und dauerhafter Bestand:** Neu aufgenommen werden ausschließlich offene
-Rechnungen des bestätigten dreikraut-Shops `2-2-1` mit Rechnungsdatum zwischen
+Rechnungen der bestätigten Kanäle dreikraut-Shop `2-2-1` und JTL-Wawi `1-1-0` mit Rechnungsdatum zwischen
 heute minus zwölf Kalendermonaten und heute (jeweils einschließlich, Europe/Berlin;
 29. Februar wird im Vorjahr auf den 28. Februar begrenzt). Einmal erfasste Fälle
 werden unabhängig vom Alter weiter geprüft. Zahlung bzw. Storno entfernt sie
@@ -750,11 +759,13 @@ bietet keinen Rechnungsdatumfilter; ältere Kandidaten müssen daher technisch
 mitgelesen werden, werden aber nicht neu gespeichert oder einem Shop zugeordnet.
 Die Auftrags-IDs aus allen Rechnungspositionen führen über
 `/v1/salesOrders/{salesOrderId}` zum `SalesChannelId`. Alle verknüpften Aufträge
-müssen zum bestätigten Shop gehören. Gemischte Shop-/Fremdkanalrechnungen oder
+müssen zu einem der beiden bestätigten Kanäle gehören. Shop und Wawi
+dürfen gemeinsam vorkommen und werden beide angezeigt. Gemischte Rechnungen
+mit weiteren Kanälen oder
 fehlende Zuordnungen erzeugen einen Fehler statt eines geschätzten Filters.
-`GET /v2/sales-channels` muss die exakte ID `2-2-1` einmal mit dem live
+`GET /v2/sales-channels` muss beide exakten IDs `2-2-1` und `1-1-0` je einmal mit dem live
 bestätigten `type=0` liefern (Name: `JTL-Shop: dreikraut JTL-Shop`). Auch
-`JTL-Wawi` hat dort `type=0`; der Typ allein ist daher kein Shopfilter. Die
+`JTL-Wawi` hat dort `type=0`; der Typ allein ist daher kein Kanalfilter. Die
 vorherige Annahme `type=1` wurde durch die Live-Ausgabe am 21.10.2026 widerlegt.
 Kein Filter anhand von Rechnungsnummern oder `IsExternalInvoice`.
 
@@ -838,7 +849,9 @@ docker compose --profile inkasso up -d --no-deps app frontend inkasso-sync &&
 docker compose logs --tail=40 inkasso-sync
 ```
 
-Serverabnahme noch ausstehend: dauerhafte App registrieren, Auftragsleserecht
-bestätigen, vollständigen Erstimport durchführen und Stichproben gegen Wawi
-prüfen (Shop, Datum, Name, Gesamt-/Restbetrag). Admin-Zugang und Ablehnung als
+Bisherige Serverabnahme: dauerhafte App registriert, alle drei Lesezugriffe
+HTTP 200, erster Shop-Import erfolgreich (13.020 Kandidaten, zwei offene
+Shoprechnungen; Nutzer hat diese Zahl bestätigt). Noch ausstehend: erweiterter
+Import mit JTL-Wawi und Stichproben zu Kanal, Datum, Name, Gesamt-/Restbetrag,
+Telefonnummern und Bestellübersicht. Admin-Zugang und Ablehnung als
 Sachbearbeiter prüfen. Lokal getesteter Code und ein Push sind kein Deployment.

@@ -29,7 +29,7 @@ def invoice(n=1, date="2026-01-02T23:00:00", payment=1, due=25.5, cancelled=Fals
 class Server:
     def __init__(self, rows=(), details=None, channels=None, orders=None, lines=None):
         self.rows, self.details = list(rows), details or {}
-        self.channels = channels if channels is not None else [{"id": inkasso.KANAL, "type": 0, "name": "dreikraut"}]
+        self.channels = channels if channels is not None else [{"id": inkasso.KANAL, "type": 0, "name": "dreikraut"}, {"id": "1-1-0", "type": 0, "name": "JTL-Wawi"}]
         self.orders, self.lines, self.requests = orders or {}, lines or {}, []
         self.failure = None
         self.broken_page = None
@@ -52,10 +52,10 @@ class Server:
             return httpx.Response(200, json=data)
         if path.endswith("/lineitems"):
             n = int(path.split("/")[-2])
-            return httpx.Response(200, json=self.lines.get(n, [{"InvoiceId": n, "SalesOrderId": n}]))
+            return httpx.Response(200, json=self.lines.get(n, [{"InvoiceId": n, "SalesOrderId": n, "Name": "Artikel", "SKU": "SKU1", "Quantity": 2, "SalesPriceGross": 12.5}]))
         if path.startswith("/v1/salesOrders/"):
             n = int(path.rsplit("/", 1)[1])
-            return httpx.Response(200, json={"Id": n, "SalesChannelId": self.orders.get(n, inkasso.KANAL)})
+            return httpx.Response(200, json={"Id": n, "SalesChannelId": self.orders.get(n, inkasso.KANAL), "Number": f"AU-{n}", "BillingAddress": {"PhoneNumber": "0123 456", "MobilePhoneNumber": "0170 111"}})
         if path.startswith("/v1/invoices/"):
             n = int(path.rsplit("/", 1)[1])
             return httpx.Response(200, json=self.details[n]) if n in self.details else httpx.Response(404)
@@ -154,13 +154,32 @@ class AbrufTest(unittest.IsolatedAsyncioTestCase):
             with self.subTest(lines=lines), self.assertRaises(JtlFehler):
                 await Server([invoice()], lines={1: lines}, orders={2: "amazon"}).run()
 
+    async def test_phones_and_order_overview(self):
+        row = invoice()
+        row["BillingAddress"].update(PhoneNumber="0123-456", MobilePhoneNumber="")
+        result = await Server([row]).run()
+        item = result["rechnungen"][0]
+        self.assertEqual(item["telefone"], ["0123-456", "0170 111"])
+        self.assertEqual(item["bestellungen"][0]["nummer"], "AU-1")
+        self.assertEqual(item["bestellungen"][0]["positionen"][0]["menge"], "2")
+        self.assertEqual(item["bestellungen"][0]["positionen"][0]["einzelpreis"], "12.5")
+        closed = await Server(details={1: invoice(due=0, payment=2)}).run(result)
+        self.assertEqual(closed["faelle"]["1"]["bestellungen"], item["bestellungen"])
+
+    async def test_combined_allowed_channels(self):
+        lines = {1: [{"InvoiceId": 1, "SalesOrderId": n} for n in (1, 2)]}
+        result = await Server([invoice()], lines=lines, orders={2: "1-1-0"}).run()
+        self.assertEqual(len(result["rechnungen"]), 1)
+        self.assertEqual(len(result["rechnungen"][0]["bestellungen"]), 2)
+        self.assertEqual(result["rechnungen"][0]["kanaele"], ["1-1-0", inkasso.KANAL])
+
     async def test_orders_cached_per_run(self):
         lines = {n: [{"InvoiceId": n, "SalesOrderId": 1}] for n in (1, 2)}
         server = Server([invoice(1), invoice(2)], lines=lines)
         self.assertEqual(len((await server.run())["rechnungen"]), 2)
         self.assertEqual(sum("salesOrders" in r.url.path for r in server.requests), 1)
 
-    async def test_live_channel_types_do_not_include_wawi_or_marketplaces(self):
+    async def test_live_channel_types_include_wawi_but_not_marketplaces(self):
         channels = [
             {"id": "1-1-0", "type": 0, "name": "JTL-Wawi"},
             {"id": "2-2-1", "type": 0, "name": "JTL-Shop: dreikraut JTL-Shop"},
@@ -170,8 +189,9 @@ class AbrufTest(unittest.IsolatedAsyncioTestCase):
         server = Server([invoice(1), invoice(2), invoice(3)], channels=channels,
                         orders={2: "1-1-0", 3: "6-51-1"})
         result = await server.run()
-        self.assertEqual([r["id"] for r in result["rechnungen"]], ["1"])
-        self.assertEqual(result["shop"], "JTL-Shop: dreikraut JTL-Shop")
+        self.assertEqual([r["id"] for r in result["rechnungen"]], ["1", "2"])
+        self.assertEqual(result["shop"], "JTL-Shop und JTL-Wawi")
+        self.assertEqual(result["rechnungen"][1]["kanal"], "JTL-Wawi")
         for invalid in (channels[:1], [channels[1], channels[1]],
                         [channels[1] | {"type": 1}], [channels[1] | {"type": 9}]):
             with self.subTest(channels=invalid), self.assertRaises(JtlFehler):
