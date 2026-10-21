@@ -325,3 +325,58 @@ class RegistrierungTest(unittest.IsolatedAsyncioTestCase):
             inkasso_zugang.sichern(Path(folder)/"schluesselantwort.json", {"phase": "abruf_gestartet"})
             with self.assertRaisesRegex(JtlFehler, "Nicht erneut"):
                 await inkasso_zugang.registrieren(True)
+
+class AuswahlAktualisierenTest(unittest.IsolatedAsyncioTestCase):
+    async def test_exact_ids_credit_closes_and_others_unchanged(self):
+        before = await Server([invoice(1), invoice(2), invoice(3)]).run()
+        before.update(letzter_erfolg=NOW.isoformat(), letzter_versuch=NOW.isoformat(), status="ok")
+        original = deepcopy(before)
+        server = Server(details={1: invoice(1, due=0, payment=0), 2: invoice(2, due=1.25)})
+        async with server.client() as c:
+            result = await inkasso.auswahl_abrufen(c, before, ["1", "2"], NOW+timedelta(hours=1))
+        self.assertEqual([r.url.path for r in server.requests], [
+            "/api/eazybusiness/v1/invoices/1", "/api/eazybusiness/v1/invoices/2"])
+        self.assertTrue(all(r.method == "GET" for r in server.requests))
+        self.assertEqual(result["faelle"]["1"]["status"], "bezahlt")
+        self.assertEqual(result["faelle"]["2"]["offen"], "1.25")
+        self.assertEqual(result["faelle"]["3"], original["faelle"]["3"])
+        self.assertEqual(result["letzter_erfolg"], original["letzter_erfolg"])
+        self.assertEqual(result["letzter_versuch"], original["letzter_versuch"])
+        self.assertEqual(before, original)
+
+    async def test_job_failure_keeps_entire_snapshot_and_can_retry(self):
+        from app import inkasso_auftrag as jobs
+        with tempfile.TemporaryDirectory() as folder, tempfile.TemporaryDirectory() as queue, patch.dict(os.environ, {"INKASSO_AUFTRAG_DIR": queue}):
+            before = await Server([invoice(1), invoice(2)]).run()
+            inkasso.speichern(before, folder)
+            jobs.anlegen(["1", "2"])
+            with self.assertRaises(BlockingIOError):
+                jobs.anlegen(["1"])
+            # First response would close invoice 1, second is missing: no partial save.
+            self.assertTrue(await inkasso_service.auswahl_lauf(folder, Server(details={1: invoice(1, due=0)}).client))
+            self.assertEqual(inkasso.lesen(folder), before)
+            self.assertEqual(jobs.lesen()["status"], "fehler")
+            jobs.anlegen(["1"])
+            self.assertTrue(await inkasso_service.auswahl_lauf(folder, Server(details={1: invoice(1, due=0)}).client))
+            self.assertEqual(jobs.lesen()["status"], "ok")
+            self.assertEqual([r["id"] for r in inkasso.lesen(folder)["rechnungen"]], ["2"])
+            self.assertFalse(await inkasso_service.auswahl_lauf(folder, Server().client))
+
+    async def test_admin_only_known_ids_and_duplicate_requests(self):
+        with tempfile.TemporaryDirectory() as folder, tempfile.TemporaryDirectory() as queue, patch.dict(os.environ, {
+                "KRAUTL_SESSION_SECRET": "inkasso-test-secret", "INKASSO_DIR": folder, "INKASSO_AUFTRAG_DIR": queue}):
+            inkasso.speichern(await Server([invoice()]).run(), folder)
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="https://test") as web:
+                self.assertEqual((await web.post("/inkasso/aktualisieren", json={"ids": ["1"]})).status_code, 401)
+                def cookie(user):
+                    return {"Cookie": f"{COOKIE_NAME}={sitzung_erstellen(user)}"}
+                self.assertEqual((await web.post("/inkasso/aktualisieren", headers=cookie("ludwig"), json={"ids": ["1"]})).status_code, 403)
+                self.assertEqual((await web.post("/inkasso/aktualisieren", headers=cookie("erik"), json={"ids": ["999"]})).status_code, 409)
+                self.assertEqual((await web.post("/inkasso/aktualisieren", headers=cookie("erik"), json={"ids": []})).status_code, 422)
+                response = await web.post("/inkasso/aktualisieren", headers=cookie("erik"), json={"ids": ["1", "1"]})
+                self.assertEqual(response.status_code, 202)
+                self.assertEqual(response.json()["anzahl"], 1)
+                self.assertNotIn("ids", response.json())
+                self.assertEqual((await web.post("/inkasso/aktualisieren", headers=cookie("erik"), json={"ids": ["1"]})).status_code, 409)
+                response = await web.get("/inkasso", headers=cookie("erik"))
+                self.assertEqual(response.json()["aktualisierung"]["status"], "wartet")

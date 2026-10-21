@@ -60,7 +60,7 @@ const zahlungsarten = [
   [1, "Bar"], [2, "Überweisung"], [6, "PayPal"],
 ];
 
-export function InkassoListe({ daten }) {
+export function InkassoListe({ daten, onAuftrag = () => {} }) {
   const [feld, setFeld] = useState("datum");
   const [richtung, setRichtung] = useState(1);
   const [seite, setSeite] = useState(0);
@@ -70,6 +70,27 @@ export function InkassoListe({ daten }) {
     (zahlungsart === "alle" ? zahlungsarten.some(([id]) => id === row.zahlungsart_id)
       : row.zahlungsart_id === Number(zahlungsart))), feld, richtung),
     [daten.rechnungen, feld, richtung, zahlungsart, filterBereit]);
+  const [sendet, setSendet] = useState(false);
+  const [auftragsfehler, setAuftragsfehler] = useState(null);
+  const sendesperre = useRef(false);
+  const job = daten.aktualisierung;
+  const beschaeftigt = sendet || ["wartet", "laeuft"].includes(job?.status);
+  async function aktualisieren() {
+    if (sendesperre.current || beschaeftigt || !rows.length) return;
+    sendesperre.current = true;
+    setSendet(true);
+    setAuftragsfehler(null);
+    try {
+      const result = await api.inkassoAktualisieren(rows.map(row => row.id));
+      onAuftrag(result);
+    } catch (error) {
+      setAuftragsfehler(error.message);
+      onAuftrag();
+    } finally {
+      sendesperre.current = false;
+      setSendet(false);
+    }
+  }
   const letzte = Math.max(0, Math.ceil(rows.length / 50) - 1);
   const aktuelle = Math.min(seite, letzte);
   const waehlen = key => {
@@ -87,7 +108,8 @@ export function InkassoListe({ daten }) {
       {daten.veraltet && daten.letzter_erfolg && <p>Der Datenstand ist veraltet. Zahlungsstände vor weiterer Bearbeitung prüfen.</p>}
     </div>
     {daten.letzter_erfolg && <>
-      <label style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "16px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+      <label style={{ display: "flex", gap: "12px", alignItems: "center" }}>
         Zahlungsart
         <select value={zahlungsart} disabled={!filterBereit} style={{ ...knopf, background: "#FDFCEE" }}
           onChange={event => { setZahlungsart(event.target.value); setSeite(0); }}>
@@ -95,6 +117,18 @@ export function InkassoListe({ daten }) {
           <option value="alle">Alle relevanten Zahlungsarten</option>
         </select>
       </label>
+      <button type="button" style={knopf} disabled={beschaeftigt || !filterBereit || rows.length === 0}
+        onClick={aktualisieren} title="Aktualisiert nur die Rechnungen des aktuellen Filters, auf allen Tabellenseiten.">
+        {beschaeftigt ? "Aktualisierung angefordert …" : `Auswahl aktualisieren (${rows.length})`}
+      </button>
+      </div>
+      {auftragsfehler && <p role="alert" style={{ marginBottom: "12px" }}>{auftragsfehler}</p>}
+      {job && <p role={job.status === "fehler" ? "alert" : "status"} style={{ marginBottom: "12px" }}>
+        {job.status === "wartet" && `${job.anzahl} Rechnungen warten auf Aktualisierung. Der Inkasso-Dienst muss laufen; ein laufender Tagesabgleich wird zuerst beendet.`}
+        {job.status === "laeuft" && `${job.anzahl} ausgewählte Rechnungen werden aktualisiert …`}
+        {job.status === "ok" && `${job.anzahl} ausgewählte Rechnungen aktualisiert: ${zeit(job.abgeschlossen_am)}.`}
+        {job.status === "fehler" && `Auswahl nicht aktualisiert: ${job.fehler}. Der bisherige Stand bleibt erhalten.`}
+      </p>}
       {!filterBereit && <p role="status" style={{ marginBottom: "16px" }}>Zahlungsarten fehlen im bisherigen Datenstand. Bis zum nächsten erfolgreichen Abgleich bleibt die Liste ungefiltert.</p>}
       <div style={{ overflowX: "auto", background: "#FDFCEE", border: "1px solid #DDD9C4", borderRadius: "6px" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
@@ -136,28 +170,33 @@ export function InkassoListe({ daten }) {
 export function InkassoView() {
   const [daten, setDaten] = useState(null);
   const [fehler, setFehler] = useState(null);
+  const [ladeVersion, setLadeVersion] = useState(0);
   useEffect(() => {
-    let aktiv = true, timer, controller;
+    let aktiv = true, timer, controller, intervall = 3000;
     async function laden() {
       controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
       try {
         const result = await api.inkasso(controller.signal);
         if (aktiv) { setDaten(result); setFehler(null); }
+        intervall = ["wartet", "laeuft"].includes(result.aktualisierung?.status) ? 3000 : 60000;
       } catch {
         if (aktiv) setFehler("Die Inkasso-Liste ist aktuell nicht erreichbar. Ein eventuell angezeigter Stand ist nicht bestätigt.");
       } finally {
         clearTimeout(timeout);
-        if (aktiv) timer = setTimeout(laden, 60000);
+        if (aktiv) timer = setTimeout(laden, intervall);
       }
     }
     laden();
     return () => { aktiv = false; clearTimeout(timer); controller?.abort(); };
-  }, []);
+  }, [ladeVersion]);
   return <section style={{ padding: "24px 16px", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: "13px", color: "#242A1F" }}>
     <h2 style={{ fontFamily: "'Source Serif 4', serif", fontWeight: 700, fontSize: "20px", color: "#2C5A18" }}>Inkasso</h2>
     {fehler && <p role="alert" style={{ color: "#A5462F", marginTop: "16px" }}>{fehler}</p>}
     {!daten && !fehler && <p role="status" style={{ marginTop: "16px" }}>Rechnungsstand wird geladen …</p>}
-    {daten && <InkassoListe daten={daten} />}
+    {daten && <InkassoListe daten={daten} onAuftrag={job => {
+      if (job) setDaten(alt => ({ ...alt, aktualisierung: job }));
+      setLadeVersion(value => value + 1);
+    }} />}
   </section>;
 }

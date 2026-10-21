@@ -22,7 +22,7 @@ test("Datum, Beträge und Kundenname sortieren; Klick kehrt Richtung um", async 
   t.after(() => view?.unmount());
   await act(async () => { view = create(React.createElement(InkassoListe, { daten: { rechnungen: rows, status: "ok", letzter_erfolg: "2026-10-21T12:00:00Z" } })); });
   assert.equal(view.root.findAllByType("th")[0].props["aria-sort"], "ascending");
-  await act(async () => { view.root.findAllByType("button")[0].props.onClick(); });
+  await act(async () => { view.root.findAllByType("th")[0].findByType("button").props.onClick(); });
   assert.equal(view.root.findAllByType("th")[0].props["aria-sort"], "descending");
   assert.match(JSON.stringify(view.toJSON()), /Mahnsperre in Wawi/);
 });
@@ -107,4 +107,29 @@ test("Zahlungsart: Apotheken als Standard, nur relevante Optionen, Auswahl bleib
   assert.equal(selection().props.disabled, true);
   assert.deepEqual(numbers(), ["R2", "R1"]);
   assert.match(JSON.stringify(view.toJSON()), /ungefiltert/);
+});
+
+test("Auswahl aktualisieren sendet nur gefilterte IDs aller Seiten und sperrt während eines Auftrags", async t => {
+  const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" });
+  t.after(() => server.close());
+  const { InkassoListe } = await server.ssrLoadModule("/src/InkassoView.jsx");
+  const { api } = await server.ssrLoadModule("/src/api.js");
+  const calls = [];
+  const original = api.inkassoAktualisieren;
+  t.after(() => { api.inkassoAktualisieren = original; });
+  api.inkassoAktualisieren = async ids => { calls.push(ids); return { status: "wartet", anzahl: ids.length }; };
+  const rechnungen = Array.from({ length: 51 }, (_, i) => ({ ...rows[0], id: String(i + 1), zahlungsart_id: 12 }));
+  rechnungen.push({ ...rows[1], id: "999", zahlungsart_id: 14 });
+  let view, accepted;
+  const data = { rechnungen, status: "ok", letzter_erfolg: "2026-10-21T12:00:00Z" };
+  t.after(() => view?.unmount());
+  await act(async () => { view = create(React.createElement(InkassoListe, { daten: data, onAuftrag: value => { accepted = value; } })); });
+  const button = () => view.root.findAllByType("button").find(b => b.props.title?.startsWith("Aktualisiert nur"));
+  await act(async () => { await button().props.onClick(); });
+  assert.equal(calls.length, 1);
+  assert.deepEqual(new Set(calls[0]), new Set(rechnungen.slice(0, 51).map(r => r.id)));
+  assert.equal(accepted.anzahl, 51);
+  await act(async () => view.update(React.createElement(InkassoListe, { daten: { ...data, aktualisierung: accepted } })));
+  assert.equal(button().props.disabled, true);
+  assert.match(JSON.stringify(view.toJSON()), /51 Rechnungen warten/);
 });

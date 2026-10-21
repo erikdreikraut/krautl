@@ -31,3 +31,5 @@
 - Dauerhafte eigene Lese-App `krautl-inkasso` mit `invoices.read`, `salesorders.read`, `saleschannels.read`; FAQ-Zugang unverändert lassen. API-v1-Rechnungen über Positionen und Aufträge dem Shop zuordnen. Registrierungs- und Betriebsablauf siehe README, Abschnitt Inkasso.
 
 - Inkasso-Zahlungsartfilter ohne eigene Spalte: Standard Rechnungskauf Apotheken (12); weitere Optionen Alliance Healthcare (14), Bar (1), Überweisung (2), PayPal (6) und alle diese relevanten Zahlungsarten. Andere Zahlungsarten nicht im Dropdown anbieten.
+
+- Inkasso „Auswahl aktualisieren“ liest ausschließlich Rechnungsdetails der aktuell gefilterten IDs (alle Seiten). Kein dadurch ausgelöster Gesamtabruf und keine Wawi-Schreibzugriffe/Gutschriftanlage. Teilaktualisierungen dürfen den globalen Datenstand nicht als frisch markieren.

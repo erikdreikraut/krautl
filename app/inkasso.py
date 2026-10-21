@@ -8,6 +8,7 @@ from calendar import monthrange
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request, Response
+from pydantic import BaseModel, Field, StrictStr
 from .berechtigungen import ist_admin
 from .jtl_client import JtlFehler
 
@@ -302,7 +303,58 @@ async def liste(request: Request, response: Response):
     response.headers["Cache-Control"] = "no-store"
     try:
         data = status(lesen())
+        from .inkasso_auftrag import oeffentlich
+        data["aktualisierung"] = oeffentlich()
         data.pop("faelle", None)
         return data
     except (OSError, ValueError, TypeError):
         raise HTTPException(status_code=503, detail="Inkasso-Datenstand nicht lesbar; Prüfung erforderlich.") from None
+
+
+class AuswahlAktualisierung(BaseModel):
+    ids: list[StrictStr] = Field(min_length=1, max_length=5000)
+
+
+@router.post("/aktualisieren", status_code=202)
+def aktualisieren(body: AuswahlAktualisierung, request: Request, response: Response):
+    if not ist_admin(request.state.benutzer):
+        raise HTTPException(status_code=403, detail="Nur für Administratoren")
+    response.headers["Cache-Control"] = "no-store"
+    ids = list(dict.fromkeys(body.ids))
+    try:
+        data = lesen()
+        offen = {r["id"] for r in data["rechnungen"]}
+        if not set(ids).issubset(offen):
+            raise HTTPException(status_code=409, detail="Auswahl hat sich geändert. Liste neu laden.")
+        from .inkasso_auftrag import anlegen
+        return anlegen(ids)
+    except BlockingIOError:
+        raise HTTPException(status_code=409, detail="Eine Auswahlaktualisierung wartet bereits oder läuft.") from None
+    except (OSError, ValueError, TypeError):
+        raise HTTPException(status_code=503, detail="Aktualisierungsauftrag konnte nicht gespeichert werden.") from None
+
+
+async def auswahl_abrufen(client, data, ids, zeit=None):
+    # Merge only explicitly selected invoices; no list, order or channel requests.
+    from copy import deepcopy
+    result = deepcopy(data)
+    zeit = (zeit or jetzt()).isoformat()
+    faelle = result.get("faelle", {})
+    for ident in ids:
+        if ident not in faelle or not ident.isdecimal() or int(ident) <= 0:
+            raise JtlFehler("Ausgewählte Rechnung fehlt im gespeicherten Bestand.")
+        row = await api_lesen(client, f"/v1/invoices/{ident}")
+        if identitaet(row.get("Id")) != ident:
+            raise JtlFehler("Rechnungsantwort bestätigt die ausgewählte ID nicht.")
+        item = rechnung(row)
+        fall = faelle[ident]
+        fall.update(item, geprueft_am=zeit)
+        if item["status"] != "offen":
+            fall["abgeschlossen_am"] = fall.get("abgeschlossen_am") or zeit
+        else:
+            fall.pop("abgeschlossen_am", None)
+    result["rechnungen"] = sorted((f for f in faelle.values() if f["status"] == "offen"),
+                                   key=lambda x: (x["datum"], x["id"]))
+    result["letzte_auswahlaktualisierung"] = zeit
+    # Global freshness and the daily schedule must not be advanced by a partial refresh.
+    return result

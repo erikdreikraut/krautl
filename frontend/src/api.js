@@ -39,6 +39,7 @@ function postForm(pfad, params) {
 }
 
 export const api = {
+  inkassoAktualisieren: (ids) => anfrage("/inkasso/aktualisieren", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) }),
   inkasso: (signal) => anfrage("/inkasso", { signal, cache: "no-store" }),
   faqDokumentAnalysieren: (form) => anfrage("/faq/import/analyse", { method: "POST", body: form }),
   faqDokumentUebernehmen: (daten) => anfrage("/faq/import/uebernehmen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(daten) }),

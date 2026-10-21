@@ -24,6 +24,7 @@ services:
       - krautl_feeds:/app/var/feeds
       - ./var/jtl-sync:/app/var/jtl-sync:ro
       - ./var/inkasso:/app/var/inkasso:ro
+      - ./var/inkasso-auftraege:/app/var/inkasso-auftraege
     depends_on:
       db:
         condition: service_healthy
@@ -81,6 +82,7 @@ services:
     env_file: .env
     volumes:
       - ./var/inkasso:/app/var/inkasso
+      - ./var/inkasso-auftraege:/app/var/inkasso-auftraege
       - ./var/inkasso-zugang:/app/var/inkasso-zugang
       - ./var/jtl-tls:/app/var/jtl-tls:ro
 

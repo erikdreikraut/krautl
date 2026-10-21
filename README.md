@@ -746,6 +746,32 @@ Bestand. Keine eigene Zahlungsartspalte. Bei alten Snapshots ohne diese IDs
 bleibt die Liste mit Hinweis ungefiltert und der Filter bis zum nächsten
 vollständigen Import deaktiviert. Bestehende Auswahl bleibt beim Polling erhalten.
 
+**Auswahl aktualisieren:** Der Button übergibt genau die IDs des aktuellen
+Zahlungsartfilters (alle Tabellenseiten, Anzahl am Button). Nur Admins dürfen
+`POST /inkasso/aktualisieren` verwenden. Zulässig sind ausschließlich aktuell
+bekannte offene Rechnungen, maximal 5.000 IDs, doppelte IDs werden entfernt.
+Die Web-App schreibt einen dauerhaften Auftrag nach `var/inkasso-auftraege/`;
+sie erhält weiterhin weder Schreibzugriff auf den Rechnungsbestand noch den
+Inkasso-Schlüssel. Dieser Ordner muss für App und Inkasso-Worker schreibbar sein
+(0700, nur interne IDs/Status, in Git/Build ausgeschlossen).
+
+Der dauerhafte Inkasso-Dienst prüft alle fünf Sekunden auf einen Auftrag und
+arbeitet ihn unter derselben exklusiven Workersperre wie den Tageslauf ab.
+Ein laufender Tageslauf wird zuerst beendet. Pro ausgewählter ID erfolgt nur
+`GET /v1/invoices/{id}`; keine Rechnungslisten-, Kanal-, Positions- oder
+Auftragsabfragen. Aktualisiert werden Rechnungs-/Zahlungsdaten einschließlich
+Restbetrag und Zahlungsart. Bestehende Telefon-/Bestellinformationen bleiben
+bei diesem gezielten Zahlungsabgleich erhalten. Gutschriften werden ausschließlich
+in Wawi erfasst; der Abgleich liest den resultierenden `StillToPay`.
+Ausgeglichene/stornierte Fälle verschwinden aus der offenen Liste und bleiben
+im Archiv. Nicht ausgewählte Fälle bleiben unverändert. Alle Antworten werden
+vor der atomaren Übernahme geprüft; ein Fehler erhält den gesamten vorherigen
+Stand. Keine Änderung am globalen Datenstandsdatum oder 24-Stunden-Termin durch
+Teilaktualisierungen. Der separate Auftragsstatus zeigt Zeitpunkt und Anzahl.
+Nach einem Workerabbruch darf der rein lesende Auftrag wiederaufgenommen werden.
+Während ein Auftrag wartet/läuft, wird kein zweiter angenommen. Der Browser
+fragt dann den lokalen Status alle drei Sekunden ab, sonst weiterhin minütlich.
+
 **Aufnahme und dauerhafter Bestand:** Neu aufgenommen werden ausschließlich offene
 Rechnungen der bestätigten Kanäle dreikraut-Shop `2-2-1` und JTL-Wawi `1-1-0` mit Rechnungsdatum zwischen
 heute minus zwölf Kalendermonaten und heute (jeweils einschließlich, Europe/Berlin;
@@ -822,8 +848,8 @@ Abnahme erhalten; ihre Zugangsdaten werden nicht automatisch übernommen/gelösc
 cd /opt/app/krautl &&
 git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
 git switch main && git pull --ff-only origin main &&
-mkdir -p var/inkasso var/inkasso-zugang &&
-chmod 700 var/inkasso var/inkasso-zugang &&
+mkdir -p var/inkasso var/inkasso-zugang var/inkasso-auftraege &&
+chmod 700 var/inkasso var/inkasso-zugang var/inkasso-auftraege &&
 docker compose build app frontend
 ```
 
