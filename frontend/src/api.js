@@ -39,6 +39,7 @@ function postForm(pfad, params) {
 }
 
 export const api = {
+  inkasso: (signal) => anfrage("/inkasso", { signal, cache: "no-store" }),
   faqDokumentAnalysieren: (form) => anfrage("/faq/import/analyse", { method: "POST", body: form }),
   faqDokumentUebernehmen: (daten) => anfrage("/faq/import/uebernehmen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(daten) }),
   whatsappVersandPruefen: (id, nachricht, daten) => anfrage(`/whatsapp/chats/${id}/nachrichten/${nachricht}/versand-pruefen`, {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(daten)}),

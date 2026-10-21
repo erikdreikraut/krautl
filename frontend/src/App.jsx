@@ -9,6 +9,7 @@ import { useWhatsAppEingang, WhatsAppChatPanel, WhatsAppArchiv } from "./WhatsAp
 import logo from "./assets/krautl-logo.png";
 import { WissensdatenbankViewNeu } from "./WissensdatenbankView.jsx";
 import { GesendeteAntwortenView } from "./GesendeteAntwortenView.jsx";
+import { InkassoView } from "./InkassoView.jsx";
 import { JtlSyncStatus } from "./JtlSyncStatus.jsx";
 
 // Grün/Creme an den Logo-Farben ausgerichtet (#509B32 dunkelgrün,
@@ -2903,6 +2904,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
           <NavTab icon={InboxIcon} label="Eingang" mobileLabel="Eingang" active={tab === "posteingang"} onClick={() => setTab("posteingang")} />
           <NavTab icon={Archive} label="Archiv" active={tab === "archiv"} onClick={() => setTab("archiv")} />
           <NavTab icon={Receipt} label="Rechnungen" count={offeneRechnungen} accent active={tab === "rechnungen"} onClick={() => setTab("rechnungen")} />
+          {benutzer.rolle === "admin" && <NavTab icon={Receipt} label="Inkasso" active={tab === "inkasso"} onClick={() => setTab("inkasso")} />}
           <NavTab icon={BookOpen} label="Wissensdatenbank" mobileLabel="Wissen" count={daten.wissensvorschlaege.length} accent active={tab === "wissen"} onClick={() => setTab("wissen")} />
           <EinstellungenMenu
             active={["klassifikationen", "aktionslog", "rollen"].includes(tab)}
@@ -2954,6 +2956,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         onAlleMailsAendern={setAlleMails}
         onReload={neuLaden}
       />}
+      {tab === "inkasso" && benutzer.rolle === "admin" && <InkassoView />}
       {tab === "rechnungen" && <RechnungenView rechnungen={daten.rechnungen} onReload={neuLaden} />}
       {tab === "wissen" && <WissensdatenbankViewNeu basis={daten.wissensbasis} faqEintraege={daten.faq} vorschlaege={daten.wissensvorschlaege} onReload={neuLaden} />}
       {tab === "klassifikationen" && <KlassifikationenView katalog={daten.katalog} onReload={neuLaden} />}

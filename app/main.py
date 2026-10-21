@@ -59,6 +59,8 @@ from .gesendet_ablage import versandkopien_ueberwachen
 from .jtl_sync_status import status_laden as jtl_status_laden
 
 app = FastAPI(title="Krautl API")
+from .inkasso import router as inkasso_router
+app.include_router(inkasso_router)
 app.include_router(gesendet_router)
 from .faq_import import router as faq_import_router
 app.include_router(faq_import_router)

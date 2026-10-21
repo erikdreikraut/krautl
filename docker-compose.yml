@@ -23,6 +23,7 @@ services:
     volumes:
       - krautl_feeds:/app/var/feeds
       - ./var/jtl-sync:/app/var/jtl-sync:ro
+      - ./var/inkasso:/app/var/inkasso:ro
     depends_on:
       db:
         condition: service_healthy
@@ -70,6 +71,17 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  inkasso-sync:
+    image: krautl-app
+    profiles: ["inkasso"]
+    restart: unless-stopped
+    init: true
+    command: ["python", "-m", "app.inkasso_service"]
+    env_file: .env
+    volumes:
+      - ./var/inkasso:/app/var/inkasso
+      - ./var/jtl-tls:/app/var/jtl-tls:ro
 
   frontend:
     build: ./frontend
