@@ -35,3 +35,5 @@
 - Inkasso „Auswahl aktualisieren“ liest Rechnungsdetails der aktuell gefilterten IDs (alle Seiten) und bei fehlenden Telefonnummern mit erweitertem Lesezugang gezielt deren Kundenstamm. Kein dadurch ausgelöster Gesamtabruf und keine Wawi-Schreibzugriffe/Gutschriftanlage. Teilaktualisierungen dürfen den globalen Datenstand nicht als frisch markieren.
 
 - Erweiterter Lesezugang: Parallelregistrierung `krautl-inkasso-lesen` mit `all.read` plus expliziten Rechnungs-, Auftrags-, Verkaufskanal- und Kundenleserechten. Alten Zugang erst nach erfolgreichen API-Pruefungen atomar ersetzen und sichern; FAQ/Werkel unveraendert. Fehlende Telefonnummern gezielt per CustomerId aus BillingAddress ergaenzen, Kundenantwort-ID validieren und pro Lauf cachen. Ablauf in README.
+
+- Inkasso-Anzeige nach Rechnungsalter trennen: ab 56 Kalendertagen oben, jüngere offene Rechnungen darunter unter „Noch nicht fällig“. Stichtag Europe/Berlin; reine Anzeigegruppierung unabhängig vom Wawi-Zahlungsziel. Filter/Auswahlaktualisierung gelten für beide Abschnitte.

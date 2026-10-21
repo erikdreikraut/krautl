@@ -10,6 +10,15 @@ export function sortieren(rechnungen, feld = "datum", richtung = 1) {
   });
 }
 
+export function altersgruppen(rows, jetzt = new Date()) {
+  const teile = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(jetzt).map(teil => [teil.type, teil.value]));
+  const grenze = new Date(Date.UTC(Number(teile.year), Number(teile.month) - 1, Number(teile.day) - 56))
+    .toISOString().slice(0, 10);
+  return [rows.filter(row => row.datum <= grenze), rows.filter(row => row.datum > grenze)];
+}
+
 const zeit = value => value ? new Date(value).toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) : "noch keiner";
 const geld = (wert, waehrung) => new Intl.NumberFormat("de-DE", { style: "currency", currency: waehrung }).format(Number(wert));
 const zelle = { padding: "13px 16px", borderBottom: "1px solid #DDD9C4" };
@@ -119,7 +128,7 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
   const [notizRow, setNotizRow] = useState(null);
   const [feld, setFeld] = useState("datum");
   const [richtung, setRichtung] = useState(1);
-  const [seite, setSeite] = useState(0);
+  const [seiten, setSeiten] = useState([0, 0]);
   const [zahlungsart, setZahlungsart] = useState("12");
   const filterBereit = daten.rechnungen.every(row => Number.isInteger(row.zahlungsart_id));
   const rows = useMemo(() => sortieren(daten.rechnungen.filter(row => !filterBereit ||
@@ -147,12 +156,11 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
       setSendet(false);
     }
   }
-  const letzte = Math.max(0, Math.ceil(rows.length / 50) - 1);
-  const aktuelle = Math.min(seite, letzte);
+  const gruppen = altersgruppen(rows);
   const waehlen = key => {
     setRichtung(feld === key ? -richtung : 1);
     setFeld(key);
-    setSeite(0);
+    setSeiten([0, 0]);
   };
   const warnung = daten.fehler || daten.veraltet || daten.status === "laeuft";
   return <>
@@ -168,7 +176,7 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
       <label style={{ display: "flex", gap: "12px", alignItems: "center" }}>
         Zahlungsart
         <select value={zahlungsart} disabled={!filterBereit} style={{ ...knopf, background: "#FDFCEE" }}
-          onChange={event => { setZahlungsart(event.target.value); setSeite(0); }}>
+          onChange={event => { setZahlungsart(event.target.value); setSeiten([0, 0]); }}>
           {zahlungsarten.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
           <option value="alle">Alle relevanten Zahlungsarten</option>
         </select>
@@ -186,6 +194,13 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
         {job.status === "fehler" && `Auswahl nicht aktualisiert: ${job.fehler}. Der bisherige Stand bleibt erhalten.`}
       </p>}
       {!filterBereit && <p role="status" style={{ marginBottom: "16px" }}>Zahlungsarten fehlen im bisherigen Datenstand. Bis zum nächsten erfolgreichen Abgleich bleibt die Liste ungefiltert.</p>}
+      {gruppen.map((gruppe, index) => {
+        const letzte = Math.max(0, Math.ceil(gruppe.length / 50) - 1);
+        const aktuelle = Math.min(seiten[index], letzte);
+        const blaettern = seite => setSeiten(alt => alt.map((wert, i) => i === index ? seite : wert));
+        if (index === 1 && gruppe.length === 0) return null;
+        return <section key={index} aria-label={index === 0 ? "Mindestens acht Wochen alt" : "Noch nicht fällig"}>
+        {index === 1 && <h3 style={{ margin: "28px 0 12px", fontSize: "18px", fontWeight: 600, color: "#2C5A18" }}>Noch nicht fällig</h3>}
       <div style={{ overflowX: "auto", background: "#FDFCEE", border: "1px solid #DDD9C4", borderRadius: "6px" }}>
         <table style={{ width: "100%", minWidth: "1400px", tableLayout: "fixed", borderCollapse: "collapse", textAlign: "left" }}>
           <colgroup>{[9, 8, 14, 7, 7, 8, 14, 10, 23].map((width, index) =>
@@ -200,7 +215,7 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
             <th scope="col" style={zelle}>Bestellung</th>
             <th scope="col" style={zelle}>Notiz / Letzte Aktion</th>
           </tr></thead>
-          <tbody>{rows.slice(aktuelle * 50, (aktuelle + 1) * 50).map(row => <tr key={row.id}>
+          <tbody>{gruppe.slice(aktuelle * 50, (aktuelle + 1) * 50).map(row => <tr key={row.id}>
             <td style={{ ...zelle, whiteSpace: "nowrap" }}>{row.datum.split("-").reverse().join(".")}</td>
             <td style={zelle}>{row.nummer}</td>
             <td style={{ ...zelle, fontWeight: 500, overflowWrap: "anywhere" }}>{row.kunde}</td>
@@ -231,11 +246,13 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
         </table>
         {rows.length === 0 && <p style={{ padding: "24px", textAlign: "center" }}>Keine offenen Rechnungen für die ausgewählte Zahlungsart.</p>}
       </div>
-      {rows.length > 50 && <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "12px" }}>
-        <button style={knopf} disabled={aktuelle === 0} onClick={() => setSeite(aktuelle - 1)}>Zurück</button>
+      {gruppe.length > 50 && <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "12px" }}>
+        <button style={knopf} disabled={aktuelle === 0} onClick={() => blaettern(aktuelle - 1)}>Zurück</button>
         <span>Seite {aktuelle + 1} von {letzte + 1}</span>
-        <button style={knopf} disabled={aktuelle === letzte} onClick={() => setSeite(aktuelle + 1)}>Weiter</button>
+        <button style={knopf} disabled={aktuelle === letzte} onClick={() => blaettern(aktuelle + 1)}>Weiter</button>
       </div>}
+        </section>;
+      })}
     </>}
     {notizRow && <HinweisEditor row={notizRow} onClose={() => setNotizRow(null)} onSaved={onHinweis} />}
   </>;

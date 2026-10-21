@@ -91,7 +91,7 @@ test("Zahlungsart: Apotheken als Standard, nur relevante Optionen, Auswahl bleib
   const selection = () => view.root.findByType("select");
   assert.equal(selection().props.value, "12");
   assert.deepEqual(view.root.findAllByType("option").map(o => o.props.value), ["12", "14", "1", "2", "6", "alle"]);
-  const numbers = () => view.root.findAllByType("tbody")[0].findAllByType("tr").map(tr => tr.findAllByType("td")[1].children.join(""));
+  const numbers = () => view.root.findAllByType("tbody").flatMap(body => body.findAllByType("tr")).map(tr => tr.findAllByType("td")[1].children.join(""));
   assert.deepEqual(numbers(), ["R1"]);
   await act(async () => selection().props.onChange({ target: { value: "14" } }));
   assert.deepEqual(numbers(), ["R2"]);
@@ -168,4 +168,17 @@ test("Hinweis: Entwurf bleibt beim Nachladen erhalten, Fehler behalten Text, Spe
   await act(async () => view.root.findByType("form").props.onSubmit({ preventDefault() {} }));
   assert.deepEqual(saved, ["1", { hinweis: true, hinweise: [{ text: "Telefoniert", nutzer: "erik", zeit: "2026-10-21T12:00:00Z" }] }]);
   assert.equal(view.root.findAllByType("dialog").length, 0);
+});
+
+
+test("Acht-Wochen-Grenze folgt Berliner Kalendertagen, auch beim Sommerzeitwechsel", async t => {
+  const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" });
+  t.after(() => server.close());
+  const { altersgruppen } = await server.ssrLoadModule("/src/InkassoView.jsx");
+  const daten = [{ id: "55", datum: "2026-08-27" }, { id: "56", datum: "2026-08-26" }, { id: "57", datum: "2026-08-25" }];
+  const split = date => altersgruppen(daten, new Date(date)).map(group => group.map(row => row.id));
+  assert.deepEqual(split("2026-10-21T12:00:00Z"), [["56", "57"], ["55"]]);
+  assert.deepEqual(split("2026-10-20T22:30:00Z"), [["56", "57"], ["55"]]);
+  const spring = altersgruppen([{ datum: "2026-02-02" }, { datum: "2026-02-03" }], new Date("2026-03-29T22:30:00Z"));
+  assert.deepEqual(spring.map(group => group.length), [1, 1]);
 });
