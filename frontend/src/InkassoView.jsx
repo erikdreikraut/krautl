@@ -71,11 +71,10 @@ export function InkassoListe({ daten }) {
   return <>
     <div role={warnung ? "alert" : "status"} style={{ margin: "16px 0", padding: "12px 16px", borderRadius: "6px", background: warnung ? "#F3E7D2" : "#E8F0C8" }}>
       {!daten.letzter_erfolg ? <p>Noch kein erfolgreicher Rechnungsabruf. Die Liste ist noch nicht verfügbar.</p>
-        : <p>{rows.length} offene Rechnungen · {daten.shop || "JTL-Shop"} · Datenstand: {zeit(daten.letzter_erfolg)}</p>}
+        : <p>{rows.length} offene Rechnungen · Datenstand: {zeit(daten.letzter_erfolg)}</p>}
       {daten.status === "laeuft" && <p>Rechnungsabruf läuft. Ein vorhandener Datenstand bleibt bis zum Abschluss sichtbar.</p>}
       {daten.fehler && <p>Abruf fehlgeschlagen: {daten.fehler}</p>}
       {daten.veraltet && daten.letzter_erfolg && <p>Der Datenstand ist veraltet. Zahlungsstände vor weiterer Bearbeitung prüfen.</p>}
-      <p style={{ fontSize: "12px", marginTop: "4px" }}>Letzter Abrufversuch: {zeit(daten.letzter_versuch)} · Aktualisierung einmal täglich</p>
     </div>
     {daten.letzter_erfolg && <>
       <div style={{ overflowX: "auto", background: "#FDFCEE", border: "1px solid #DDD9C4", borderRadius: "6px" }}>
@@ -138,7 +137,6 @@ export function InkassoView() {
   }, []);
   return <section style={{ padding: "24px 16px", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: "13px", color: "#242A1F" }}>
     <h2 style={{ fontFamily: "'Source Serif 4', serif", fontWeight: 700, fontSize: "20px", color: "#2C5A18" }}>Inkasso</h2>
-    <p style={{ color: "#6C6F5F", marginTop: "4px" }}>Offene Rechnungen aus JTL-Shop und JTL-Wawi der letzten zwölf Monate, einschließlich noch nicht fälliger Rechnungen. Bereits erfasste offene Fälle bleiben auch danach in der Liste. Telefonnummern stammen aus den Rechnungsadressen von Rechnung und Auftrag.</p>
     {fehler && <p role="alert" style={{ color: "#A5462F", marginTop: "16px" }}>{fehler}</p>}
     {!daten && !fehler && <p role="status" style={{ marginTop: "16px" }}>Rechnungsstand wird geladen …</p>}
     {daten && <InkassoListe daten={daten} />}
