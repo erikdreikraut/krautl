@@ -26,6 +26,6 @@
 
 ## Inkasso
 
-- Admin-only, eigener Hauptmenüpunkt rechts neben Rechnungen. Nur bestätigte Kanäle JTL-Shop `2-2-1` und JTL-Wawi `1-1-0`; Herkunft in der Kanalspalte anzeigen. Telefonnummern aus Rechnungs-/Auftragsrechnungsadressen und eine lokale aufklappbare Auftragsübersicht anbieten.
+- Admin-only, eigener Hauptmenüpunkt rechts neben Rechnungen. Nur bestätigte Kanäle JTL-Shop `2-2-1` und JTL-Wawi `1-1-0` (v1-Auftragsalias `1-1-1`, anhand RE315603 bestätigt); Herkunft in der Kanalspalte anzeigen. Telefonnummern aus Rechnungs-/Auftragsrechnungsadressen und eine lokale aufklappbare Auftragsübersicht anbieten.
 - Neuaufnahme offener Rechnungen maximal aus den letzten zwölf Kalendermonaten. Einmal erfasste Fälle unabhängig vom Alter weiter prüfen; bezahlte/stornierte Fälle als abgeschlossen erhalten. Abruffehler sind niemals ein Zahlungsnachweis.
 - Dauerhafte eigene Lese-App `krautl-inkasso` mit `invoices.read`, `salesorders.read`, `saleschannels.read`; FAQ-Zugang unverändert lassen. API-v1-Rechnungen über Positionen und Aufträge dem Shop zuordnen. Registrierungs- und Betriebsablauf siehe README, Abschnitt Inkasso.

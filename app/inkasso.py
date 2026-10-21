@@ -13,6 +13,8 @@ from .jtl_client import JtlFehler
 
 KANAL = "2-2-1"  # Confirmed dreikraut shop, also used by FAQ integration.
 KANAELE = {KANAL: "JTL-Shop", "1-1-0": "JTL-Wawi"}
+# Verified with RE315603 / AU433544: order ID differs from channel-list ID.
+AUFTRAGSKANAL_ALIAS = {"1-1-1": "1-1-0"}
 INTERVALL = timedelta(days=1)
 router = APIRouter(prefix="/inkasso")
 
@@ -189,7 +191,8 @@ async def bestelluebersicht(client, ident, cache):
             if identitaet(data.get("Id")) != order or not isinstance(data.get("SalesChannelId"), str) or not data["SalesChannelId"]:
                 raise JtlFehler("JTL-Auftrags-ID oder Verkaufskanal fehlt/ist widersprüchlich.")
             cache[order] = data
-        kanaele.add(cache[order]["SalesChannelId"])
+        raw_channel = cache[order]["SalesChannelId"]
+        kanaele.add(AUFTRAGSKANAL_ALIAS.get(raw_channel, raw_channel))
     if kanaele.intersection(KANAELE) and not kanaele.issubset(KANAELE):
         raise JtlFehler("Rechnung mischt erlaubte und fremde Verkaufskanäle; manuelle Prüfung erforderlich.")
     if not kanaele.issubset(KANAELE):
@@ -205,7 +208,8 @@ async def bestelluebersicht(client, ident, cache):
                       for row in rows if str(row.get("SalesOrderId")) == order]
         bestellungen.append({"id": order, "nummer": str(data.get("Number") or order),
                              "datum": data.get("SalesOrderDate"),
-                             "kanal": KANAELE[data["SalesChannelId"]],
+                             "kanal": KANAELE[AUFTRAGSKANAL_ALIAS.get(data["SalesChannelId"], data["SalesChannelId"])],
+                             "quellkanal_id": data["SalesChannelId"],
                              "betrag": optionaler_betrag(payment.get("TotalGrossAmount")),
                              "waehrung": payment.get("CurrencyIso"), "positionen": positionen})
     return {"kanaele": sorted(kanaele), "kanal": " / ".join(KANAELE[k] for k in sorted(kanaele)),

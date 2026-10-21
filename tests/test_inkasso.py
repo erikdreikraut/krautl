@@ -166,6 +166,23 @@ class AbrufTest(unittest.IsolatedAsyncioTestCase):
         closed = await Server(details={1: invoice(due=0, payment=2)}).run(result)
         self.assertEqual(closed["faelle"]["1"]["bestellungen"], item["bestellungen"])
 
+    async def test_re315603_wawi_order_channel_alias(self):
+        row = invoice(369597, date="2026-10-07T12:15:28.817+02:00", payment=0, due=38.7)
+        row["Number"] = "RE315603"
+        row["InvoicePaymentDetails"]["TotalGrossAmount"] = 38.7
+        lines = {369597: [{"InvoiceId": 369597, "SalesOrderId": 441222}]}
+        result = await Server([row], lines=lines, orders={441222: "1-1-1"}).run()
+        self.assertEqual(len(result["rechnungen"]), 1)
+        actual = result["rechnungen"][0]
+        self.assertEqual(actual["nummer"], "RE315603")
+        self.assertEqual(actual["offen"], "38.7")
+        self.assertEqual(actual["kanal"], "JTL-Wawi")
+        self.assertEqual(actual["kanaele"], ["1-1-0"])
+        self.assertEqual(actual["bestellungen"][0]["quellkanal_id"], "1-1-1")
+        for foreign in ("1-1-2", "1-2-1", "6-51-1"):
+            result = await Server([row], lines=lines, orders={441222: foreign}).run()
+            self.assertEqual(result["rechnungen"], [])
+
     async def test_combined_allowed_channels(self):
         lines = {1: [{"InvoiceId": 1, "SalesOrderId": n} for n in (1, 2)]}
         result = await Server([invoice()], lines=lines, orders={2: "1-1-0"}).run()

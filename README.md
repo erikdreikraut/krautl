@@ -767,6 +767,11 @@ fehlende Zuordnungen erzeugen einen Fehler statt eines geschätzten Filters.
 bestätigten `type=0` liefern (Name: `JTL-Shop: dreikraut JTL-Shop`). Auch
 `JTL-Wawi` hat dort `type=0`; der Typ allein ist daher kein Kanalfilter. Die
 vorherige Annahme `type=1` wurde durch die Live-Ausgabe am 21.10.2026 widerlegt.
+Die Live-Prüfung von RE315603 / AU433544 bestätigte eine Abweichung:
+JTL-Wawi steht in der Kanalliste als `1-1-0`, der zugehörige v1-Auftrag
+liefert `1-1-1`. Ausschließlich dieser explizite Alias wird auf `1-1-0`
+abgebildet. Die ursprüngliche ID bleibt als `quellkanal_id` an der gespeicherten
+Bestellübersicht erhalten. Keine Präfixerkennung; weitere IDs bleiben ausgeschlossen.
 Kein Filter anhand von Rechnungsnummern oder `IsExternalInvoice`.
 
 Bereits erfasste, nicht mehr in den offenen Zahlungsgruppen enthaltene Fälle
