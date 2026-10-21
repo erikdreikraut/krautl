@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
 
 export function sortieren(rechnungen, feld = "datum", richtung = 1) {
@@ -16,10 +16,25 @@ const zelle = { padding: "13px 16px", borderBottom: "1px solid #DDD9C4" };
 const knopf = { padding: "6px 10px", border: "1px solid #DDD9C4", borderRadius: "5px", color: "#2C5A18", cursor: "pointer" };
 
 export function Bestellung({ row }) {
+  const dialog = useRef(null);
   if (!row.bestellungen?.length) return <span>Noch nicht abgerufen</span>;
-  return <details>
-    <summary style={{ cursor: "pointer", color: "#2C5A18", whiteSpace: "nowrap" }}>Bestellung ansehen</summary>
-    <div style={{ minWidth: "320px", maxWidth: "620px", paddingTop: "12px" }}>
+  return <>
+    <button type="button" style={{ ...knopf, whiteSpace: "nowrap" }} aria-haspopup="dialog"
+      onClick={() => dialog.current.showModal()}>Bestellung ansehen</button>
+    <dialog ref={dialog} className="inkasso-bestellung" aria-label={`Bestellung zu Rechnung ${row.nummer}`}
+      onClick={event => {
+        if (event.target !== event.currentTarget) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.current.close();
+      }}
+      style={{ margin: "auto", width: "min(760px, calc(100vw - 32px))", maxHeight: "85vh", overflow: "auto",
+        padding: "24px", border: "1px solid #DDD9C4", borderRadius: "10px", background: "#FDFCEE", color: "#242A1F",
+        boxShadow: "0 16px 60px #0004", textAlign: "left" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", marginBottom: "16px" }}>
+        <h3 style={{ fontWeight: 600 }}>Bestellung zu Rechnung {row.nummer}</h3>
+        <button type="button" autoFocus style={knopf} onClick={() => dialog.current.close()}>Schließen</button>
+      </div>
+      <div style={{ overflowX: "auto" }}>
       {row.bestellungen.map(order => <section key={order.id} style={{ marginBottom: "16px" }}>
         <strong>Auftrag {order.nummer}</strong>
         <p>{order.kanal}{order.datum ? ` · ${String(order.datum).split("T")[0].split("-").reverse().join(".")}` : ""}</p>
@@ -34,8 +49,10 @@ export function Bestellung({ row }) {
           </tr>)}</tbody>
         </table>
       </section>)}
-    </div>
-  </details>;
+      </div>
+    </dialog>
+    <style>{".inkasso-bestellung::backdrop { background: rgba(0, 0, 0, 0.4); }"}</style>
+  </>;
 }
 
 export function InkassoListe({ daten }) {

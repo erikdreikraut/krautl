@@ -46,6 +46,8 @@ test("Kanal, Telefonnummern und lokale Bestellübersicht; alter Snapshot bleibt 
   const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" });
   t.after(() => server.close());
   const { InkassoListe } = await server.ssrLoadModule("/src/InkassoView.jsx");
+  let opened = 0, closed = 0;
+  const dialogMock = { showModal: () => opened++, close: () => closed++ };
   const row = { ...rows[0], kanal: "JTL-Wawi", telefone: ["0123 456", "+49 170 111"],
     bestellungen: [{ id: "9", nummer: "AU-9", kanal: "JTL-Wawi", datum: "2026-10-01T12:00:00",
       betrag: "99", waehrung: "EUR", positionen: [{ artikel: "Testartikel", sku: "SKU-9", menge: "2", einzelpreis: "12.50" }] }] };
@@ -53,10 +55,21 @@ test("Kanal, Telefonnummern und lokale Bestellübersicht; alter Snapshot bleibt 
   t.after(() => view?.unmount());
   await act(async () => { view = create(React.createElement(InkassoListe, { daten: {
     rechnungen: [row, rows[1]], status: "ok", letzter_erfolg: "2026-10-21T12:00:00Z"
-  } })); });
+  } }), { createNodeMock: element => element.type === "dialog" ? dialogMock : null }); });
   assert.deepEqual(view.root.findAllByType("a").map(a => a.props.href), ["tel:0123456", "tel:+49170111"]);
-  assert.equal(view.root.findAllByType("details").length, 1);
-  assert.equal(view.root.findByType("summary").children.join(""), "Bestellung ansehen");
+  assert.equal(view.root.findAllByType("details").length, 0);
+  assert.equal(view.root.findAllByType("dialog").length, 1);
+  await act(async () => view.root.findByProps({ "aria-haspopup": "dialog" }).props.onClick());
+  assert.equal(opened, 1);
+  const closeButton = view.root.findAllByType("button").find(b => b.children.join("") === "Schließen");
+  await act(async () => closeButton.props.onClick());
+  assert.equal(closed, 1);
+  const modal = view.root.findByType("dialog");
+  const target = { getBoundingClientRect: () => ({ left: 10, right: 100, top: 10, bottom: 100 }) };
+  modal.props.onClick({ target, currentTarget: target, clientX: 50, clientY: 50 });
+  assert.equal(closed, 1);
+  modal.props.onClick({ target, currentTarget: target, clientX: 0, clientY: 0 });
+  assert.equal(closed, 2);
   const text = JSON.stringify(view.toJSON());
   for (const expected of [/JTL-Wawi/, /AU-9/, /Testartikel/, /SKU-9/, /Abgerechnete Positionen/, /Noch nicht abgerufen/]) {
     assert.match(text, expected);

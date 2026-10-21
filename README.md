@@ -721,7 +721,7 @@ Der Hauptmenüpunkt **Inkasso** steht rechts neben **Rechnungen** ausschließlic
 Administratoren zur Verfügung. Auch `GET /inkasso` prüft die Adminrolle und
 antwortet mit `Cache-Control: no-store`. Die Übersicht zeigt Rechnungsdatum,
 Rechnungsnummer, Kundenname aus der Rechnungsadresse, Bruttobetrag, offenen
-Restbetrag, Kanal, Telefonnummern und Mahnsperre. Eine ausklappbare
+Restbetrag, Kanal, Telefonnummern und Mahnsperre. Ein modales Pop-up in der
 Bestellspalte zeigt Auftragsnummer, Datum, Auftragsbetrag sowie die zu dieser
 Rechnung abgerechneten Positionen (Artikel, SKU, Menge, Einzelpreis brutto).
 Bei Teilrechnungen ist dies keine vollständige Positionsliste des gesamten
