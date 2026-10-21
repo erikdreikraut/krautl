@@ -174,6 +174,20 @@ def telefonnummern(*adressen):
     return result
 
 
+async def kundentelefone(client, row, item, cache):
+    if item.get("telefone") or not getattr(client, "kunden_lesen", False):
+        return
+    customer = row.get("CustomerId")
+    if type(customer) is not int or customer <= 0:
+        return
+    if customer not in cache:
+        data = await api_lesen(client, f"/v1/customers/{customer}")
+        if data.get("Id") != customer:
+            raise JtlFehler("Kundenantwort bestätigt die angefragte ID nicht.")
+        cache[customer] = telefonnummern(data.get("BillingAddress"))
+    item["telefone"] = list(cache[customer])
+
+
 def optionaler_betrag(value):
     return None if value is None else str(betrag(value))
 
@@ -252,7 +266,7 @@ async def abrufen(client, bestand=None, zeit=None):
                 raise JtlFehler("Rechnungsdetails bestätigen die angefragte ID nicht.")
             rows[ident] = row
             geprueft += 1
-    faelle, cache = {}, {}
+    faelle, cache, kunden_cache = {}, {}, {}
     for ident, row in rows.items():
         vorher = alt.get(ident)
         if vorher is None and not start <= rechnungsdatum(row) <= ende:
@@ -269,6 +283,7 @@ async def abrufen(client, bestand=None, zeit=None):
             item.update(details)
             item["telefone"] = telefonnummern(row.get("BillingAddress"),
                 *[{"PhoneNumber": nummer} for nummer in details["telefone"]])
+            await kundentelefone(client, row, item, kunden_cache)
         elif vorher:
             for key in ("kanaele", "kanal", "bestellungen", "telefone"):
                 if key in vorher:
@@ -345,6 +360,7 @@ async def auswahl_abrufen(client, data, ids, zeit=None):
     result = deepcopy(data)
     zeit = (zeit or jetzt()).isoformat()
     faelle = result.get("faelle", {})
+    kunden_cache = {}
     for ident in ids:
         if ident not in faelle or not ident.isdecimal() or int(ident) <= 0:
             raise JtlFehler("Ausgewählte Rechnung fehlt im gespeicherten Bestand.")
@@ -358,6 +374,9 @@ async def auswahl_abrufen(client, data, ids, zeit=None):
             fall["abgeschlossen_am"] = fall.get("abgeschlossen_am") or zeit
         else:
             fall.pop("abgeschlossen_am", None)
+            if not fall.get("telefone"):
+                fall["telefone"] = telefonnummern(row.get("BillingAddress"))
+                await kundentelefone(client, row, fall, kunden_cache)
     result["rechnungen"] = sorted((f for f in faelle.values() if f["status"] == "offen"),
                                    key=lambda x: (x["datum"], x["id"]))
     result["letzte_auswahlaktualisierung"] = zeit

@@ -207,7 +207,7 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
             <td style={{ ...zelle, textAlign: "right", whiteSpace: "nowrap", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{geld(row.offen, row.waehrung)}</td>
             <td style={zelle}>{row.telefone?.length ? row.telefone.map(nummer =>
               <a key={nummer} href={`tel:${nummer.replace(/[^+0-9]/g, "")}`} style={{ display: "block", whiteSpace: "nowrap", color: "#2C5A18" }}>{nummer}</a>)
-              : row.telefone ? "Nicht hinterlegt" : "Noch nicht abgerufen"}</td>
+              : row.telefone ? "Keine Telefonnummer abgerufen" : "Noch nicht abgerufen"}</td>
             <td style={zelle}><Bestellung row={row} /></td>
             <td style={zelle}>
               <button type="button" style={knopf} title={row.hinweis ? "Hinweise ansehen" : "Hinweis hinzufügen"}

@@ -729,8 +729,8 @@ Auftrags. Mehrere verknüpfte Aufträge werden einzeln angezeigt. Alle
 Details stammen aus dem letzten erfolgreichen Import; Klicks fragen Wawi
 nicht erneut ab. Telefonnummern aus den BillingAddress-Feldern PhoneNumber
 und MobilePhoneNumber von Rechnung und Auftrag werden zusammengeführt,
-Dopplungen entfernt. Kein zusätzlicher Kundenstammabruf; fehlende Nummern
-werden als nicht hinterlegt angezeigt. Alle vier gewünschten Spalten sind sortierbar,
+Dopplungen entfernt. Mit erweitertem Lesezugang gezielter Kundenstammabruf bei fehlenden Nummern; fehlende Nummern
+werden als "Keine Telefonnummer abgerufen" angezeigt. Alle vier gewünschten Spalten sind sortierbar,
 standardmäßig Datum aufsteigend; 50 Zeilen pro Seite. Noch nicht fällige
 Rechnungen sind enthalten. Es werden keine Mahnungen versendet und keine
 Zahlungen oder Rechnungen in Wawi verändert.
@@ -904,3 +904,16 @@ Sachbearbeiter prüfen. Lokal getesteter Code und ein Push sind kein Deployment.
 Die Hinweis-Spalte bietet ein fortlaufendes Protokoll im Popup. Vorhandene Einträge sind unveränderbar; neue Texte werden mit dem Button Hinzufügen gespeichert. Der Server ergänzt die angemeldete Nutzerkennung und einen UTC-Zeitstempel (Anzeige Europe/Berlin). Leere Einträge werden abgewiesen. Eine eindeutige Anfrage-ID verhindert doppelte Einträge beim Wiederholen derselben Speicheranfrage. Nur Administratoren haben Zugriff. Bestehende Notizen bleiben unverändert erhalten und werden mangels historischer Metadaten ausdrücklich als Altbestand ohne Datum/Nutzer angezeigt. Die Wawi-Mahnsperre bleibt separat sichtbar.
 
 Notizen liegen unabhängig vom JTL-Snapshot in `var/inkasso-notizen/notizen.sqlite3` (nur App-Mount; optional `INKASSO_NOTIZEN_DIR`). Das Verzeichnis in Backups aufnehmen; eine laufende SQLite-Datenbank mit der SQLite-Backup-Funktion sichern oder die App zuvor stoppen. Die Tabelle entsteht beim ersten Speichern, ohne separate Migration. Weder Tagesabgleich noch Auswahlaktualisierung überschreiben Hinweise; auch abgeschlossene Fälle behalten ihre Notiz. Es erfolgt kein Schreiben nach JTL.
+
+
+### Erweiterter Inkasso-Lesezugang
+
+Die Parallelregistrierung `krautl-inkasso-lesen` fordert `all.read`, `invoices.read`, `salesorders.read`, `saleschannels.read` und `customers.read` an. Die Annahme durch die installierte Wawi ist live zu bestätigen; `all.read` wird nicht als Ersatz für alle versionsabhängigen Einzelrechte vorausgesetzt. Keine Schreibrechte. FAQ und Werkel bleiben getrennt.
+
+1. Neues App-Image bauen (`docker compose build app`). Mit `docker compose --profile inkasso run --rm --no-deps -T inkasso-sync python -m app.inkasso_zugang --erweitert --anmelden` einmalig anmelden.
+2. In Wawi die neue Anwendung und deren Leserechte freigeben, Assistent abschließen.
+3. Mit `docker compose --profile inkasso run --rm --no-deps -T inkasso-sync python -m app.inkasso_zugang --erweitert --abholen` den Schlüssel geschützt abholen. Dateien liegen separat unter `var/inkasso-zugang/lesezugang/`. Bei unklarem Ausgang nicht blind wiederholen.
+4. `docker compose --profile inkasso run --rm --no-deps -T inkasso-sync python -m app.inkasso_zugang --aktivieren` prüft Verkaufskanäle, Rechnungen, Aufträge, eine Kundenseite und einen einzelnen Kunden. Erst nach Erfolg wird der aktive Zugang atomar ersetzt; vorher entsteht `zugang-vor-lesezugang.json` als Sicherung. Keine Kundendaten oder Schlüssel werden ausgegeben. Der alte Wawi-Zugang wird nicht gelöscht.
+5. App/Frontend bauen und aktualisieren, Inkasso-Dienst mit neuem Image starten: `docker compose build app frontend` und `docker compose --profile inkasso up -d --no-deps app frontend inkasso-sync`. Danach kann Auswahl aktualisieren fehlende Telefonnummern gezielt ergänzen.
+
+Telefon-Fallback: nur wenn Rechnung und gespeicherte Auftragsdaten keine Nummer enthalten, wird `/v1/customers/{CustomerId}` gelesen und dessen `BillingAddress` ausgewertet. Pro Lauf wird derselbe Kunde nur einmal abgefragt. Die Antwort-ID muss passen. Fehler brechen den Abgleich ohne Teilübernahme ab. Der alte Zugang bleibt kompatibel und versucht keinen unberechtigten Kundenabruf.

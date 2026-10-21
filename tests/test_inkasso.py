@@ -423,3 +423,69 @@ class NotizenTest(unittest.IsolatedAsyncioTestCase):
                 result = (await web.get("/inkasso", headers=admin)).json()
                 self.assertEqual(result["rechnungen"][0]["hinweise"][:2], notes)
                 self.assertNotIn("hinweise", inkasso.lesen()["faelle"]["1"])
+
+
+class LesezugangTest(unittest.IsolatedAsyncioTestCase):
+    async def test_activation_checks_before_switch_and_keeps_backup(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {
+                "INKASSO_ZUGANG_DIR": folder, "JTL_LOCAL_URL": "https://wawi.test/api/eazybusiness"}):
+            old = {"app_id": inkasso_zugang.APP_ID, "api_key": "old", "api_url": os.environ["JTL_LOCAL_URL"], "scopes": inkasso_zugang.SCOPES}
+            new = {**old, "app_id": inkasso_zugang.LESE_APP_ID, "api_key": "new", "scopes": inkasso_zugang.LESE_SCOPES}
+            active = Path(folder)/"zugang.json"
+            inkasso_zugang.sichern(active, old)
+            inkasso_zugang.sichern(Path(folder)/"lesezugang"/"zugang.json", new)
+            denied = True
+            def handler(r):
+                self.assertEqual(r.headers["x-appid"], inkasso_zugang.LESE_APP_ID)
+                if r.url.path.endswith("/customers/7"):
+                    return httpx.Response(403) if denied else httpx.Response(200, json={"Id": 7})
+                return httpx.Response(200, json=[] if r.url.path.endswith("sales-channels") else {"Items": [{"Id": 7}]})
+            def factory(url, key, **kwargs):
+                return OnPremClient(url, key, transport=httpx.MockTransport(handler))
+            with patch("app.inkasso_zugang.OnPremClient", side_effect=factory):
+                with self.assertRaises(JtlFehler):
+                    await inkasso_zugang.aktivieren()
+                self.assertEqual(json.loads(active.read_text()), old)
+                denied = False
+                await inkasso_zugang.aktivieren()
+                self.assertEqual(json.loads(active.read_text()), new)
+                self.assertEqual(json.loads((Path(folder)/"zugang-vor-lesezugang.json").read_text()), old)
+                await inkasso_zugang.aktivieren()
+
+    async def test_parallel_registration_does_not_change_active(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {
+                "INKASSO_ZUGANG_DIR": folder, "JTL_LOCAL_URL": "https://wawi.test/api/eazybusiness"}):
+            active = Path(folder)/"zugang.json"
+            active.write_text('{"unchanged": true}')
+            def handler(r):
+                self.assertEqual(r.headers["x-appid"], inkasso_zugang.LESE_APP_ID)
+                self.assertNotIn("authorization", r.headers)
+                if r.method == "POST":
+                    self.assertEqual(json.loads(r.content)["mandatoryApiScopes"], inkasso_zugang.LESE_SCOPES)
+                    return httpx.Response(201, json={"registrationRequestId": "reg"})
+                return httpx.Response(200, json={"requestStatusInfo": {"status": 2}, "token": {"apiKey": "new"}, "grantedScopes": inkasso_zugang.LESE_SCOPES})
+            with patch("app.inkasso_zugang.OnPremClient", side_effect=lambda url, key, **kw: OnPremClient(url, key, transport=httpx.MockTransport(handler))):
+                await inkasso_zugang.registrieren(erweitert=True)
+                await inkasso_zugang.registrieren(True, True)
+                self.assertEqual(json.loads(active.read_text()), {"unchanged": True})
+                self.assertTrue((Path(folder)/"lesezugang"/"zugang.json").exists())
+
+    async def test_selected_phone_fallback_is_cached_and_scoped(self):
+        before = await Server([invoice(1), invoice(2), invoice(3)]).run()
+        for fall in before["faelle"].values():
+            fall["telefone"] = []
+        requests = []
+        def handler(r):
+            requests.append(r.url.path)
+            if "/customers/" in r.url.path:
+                return httpx.Response(200, json={"Id": 7, "BillingAddress": {"PhoneNumber": "0162 123"}})
+            n = int(r.url.path.rsplit("/", 1)[1])
+            return httpx.Response(200, json={**invoice(n), "CustomerId": 7})
+        async with OnPremClient("https://wawi.test/api/eazybusiness", "test", transport=httpx.MockTransport(handler)) as client:
+            client.kunden_lesen = True
+            result = await inkasso.auswahl_abrufen(client, before, ["1", "2"], NOW)
+        self.assertEqual(result["faelle"]["1"]["telefone"], ["0162 123"])
+        self.assertEqual(result["faelle"]["2"]["telefone"], ["0162 123"])
+        self.assertEqual(result["faelle"]["3"]["telefone"], [])
+        self.assertEqual(sum("/customers/" in path for path in requests), 1)
+        self.assertEqual(len(requests), 3)

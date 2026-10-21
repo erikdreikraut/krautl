@@ -32,4 +32,6 @@
 
 - Inkasso-Zahlungsartfilter ohne eigene Spalte: Standard Rechnungskauf Apotheken (12); weitere Optionen Alliance Healthcare (14), Bar (1), Überweisung (2), PayPal (6) und alle diese relevanten Zahlungsarten. Andere Zahlungsarten nicht im Dropdown anbieten.
 
-- Inkasso „Auswahl aktualisieren“ liest ausschließlich Rechnungsdetails der aktuell gefilterten IDs (alle Seiten). Kein dadurch ausgelöster Gesamtabruf und keine Wawi-Schreibzugriffe/Gutschriftanlage. Teilaktualisierungen dürfen den globalen Datenstand nicht als frisch markieren.
+- Inkasso „Auswahl aktualisieren“ liest Rechnungsdetails der aktuell gefilterten IDs (alle Seiten) und bei fehlenden Telefonnummern mit erweitertem Lesezugang gezielt deren Kundenstamm. Kein dadurch ausgelöster Gesamtabruf und keine Wawi-Schreibzugriffe/Gutschriftanlage. Teilaktualisierungen dürfen den globalen Datenstand nicht als frisch markieren.
+
+- Erweiterter Lesezugang: Parallelregistrierung `krautl-inkasso-lesen` mit `all.read` plus expliziten Rechnungs-, Auftrags-, Verkaufskanal- und Kundenleserechten. Alten Zugang erst nach erfolgreichen API-Pruefungen atomar ersetzen und sichern; FAQ/Werkel unveraendert. Fehlende Telefonnummern gezielt per CustomerId aus BillingAddress ergaenzen, Kundenantwort-ID validieren und pro Lauf cachen. Ablauf in README.

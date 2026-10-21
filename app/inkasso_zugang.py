@@ -13,6 +13,8 @@ from .jtl_onprem import OnPremClient
 
 APP_ID = "krautl-inkasso"
 SCOPES = ["invoices.read", "salesorders.read", "saleschannels.read"]
+LESE_APP_ID = "krautl-inkasso-lesen"
+LESE_SCOPES = ["all.read", *SCOPES, "customers.read"]
 
 
 def ordner():
@@ -36,35 +38,38 @@ def sichern(path, data, exklusiv=False):
 
 
 def validieren(data):
-    if (data.get("app_id") != APP_ID or not isinstance(data.get("api_key"), str)
-            or not data["api_key"] or not set(SCOPES).issubset(data.get("scopes", []))
+    if (data.get("app_id") not in (APP_ID, LESE_APP_ID) or not isinstance(data.get("api_key"), str)
+            or not data["api_key"] or not set(LESE_SCOPES if data.get("app_id") == LESE_APP_ID else SCOPES).issubset(data.get("scopes", []))
             or data.get("api_url") != os.getenv("JTL_LOCAL_URL", "").rstrip("/")):
         raise JtlFehler("Inkasso-Zugang, API-Ziel oder bestätigte Leserechte ungültig.")
     return data
 
 
-def client_aus_umgebung():
+def client_aus_umgebung(folder=None):
     try:
-        data = validieren(json.loads((ordner() / "zugang.json").read_text(encoding="utf-8")))
+        data = validieren(json.loads(((folder or ordner()) / "zugang.json").read_text(encoding="utf-8")))
     except (OSError, ValueError, TypeError, AttributeError):
         raise JtlFehler("Separater Inkasso-Zugang fehlt oder ist nicht lesbar. Registrierung abschließen.") from None
     client = OnPremClient(data["api_url"], data["api_key"],
                           ca_file=os.getenv("JTL_LOCAL_CA_FILE") or None)
-    client.http.headers["x-appid"] = APP_ID
+    client.http.headers["x-appid"] = data["app_id"]
+    client.kunden_lesen = "customers.read" in data["scopes"]
     return client
 
 
-async def registrieren(abholen=False):
-    folder = ordner()
+async def registrieren(abholen=False, erweitert=False):
+    folder = ordner() / "lesezugang" if erweitert else ordner()
+    app_id = LESE_APP_ID if erweitert else APP_ID
+    scopes = LESE_SCOPES if erweitert else SCOPES
     request_path, response_path = folder / "anfrage.json", folder / "schluesselantwort.json"
     if not abholen:
         state = {"challenge": secrets.token_hex(12), "api_url": os.getenv("JTL_LOCAL_URL", "").rstrip("/"),
                  "phase": "vorbereitet", "request": {
-            "appId": APP_ID, "displayName": "Krautl Inkasso",
-            "description": "Offene JTL-Shop-Rechnungen lesen und zuordnen",
+            "appId": app_id, "displayName": "Krautl Inkasso Lesezugang" if erweitert else "Krautl Inkasso",
+            "description": "Krautl: Rechnungen, Auftraege und Kunden lesen; keine Schreibrechte",
             "version": "0.1.0", "providerName": "dreikraut",
             "providerWebsite": "https://www.dreikraut.de", "registrationType": 0,
-            "mandatoryApiScopes": SCOPES, "optionalApiScopes": [],
+            "mandatoryApiScopes": scopes, "optionalApiScopes": [],
             "appIcon": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII="}}
         try:
             sichern(request_path, state, exklusiv=True)
@@ -80,11 +85,13 @@ async def registrieren(abholen=False):
             return
     if state["api_url"] != os.getenv("JTL_LOCAL_URL", "").rstrip("/"):
         raise JtlFehler("API-Ziel seit Registrierung geändert.")
+    if state.get("request", {}).get("appId", app_id) != app_id:
+        raise JtlFehler("Registrierungsdatei passt nicht zur gewaehlten App.")
     # Constructor requires a key, but registration is explicitly unauthenticated.
     async with OnPremClient(state["api_url"], "registration",
                             ca_file=os.getenv("JTL_LOCAL_CA_FILE") or None) as client:
         client.http.headers.pop("Authorization", None)
-        client.http.headers["x-appid"] = APP_ID
+        client.http.headers["x-appid"] = app_id
         headers = {"x-challengecode": state["challenge"]}
         if not abholen:
             response = await client.http.post(client.url + "/v2/authentication",
@@ -94,7 +101,7 @@ async def registrieren(abholen=False):
             print("Registrierung HTTP:", response.status_code)
             if response.status_code != 201:
                 raise JtlFehler("Anfrage nicht angenommen. Antwort geschützt gespeichert; keine automatische Wiederholung.")
-            print("Jetzt die drei Leserechte im Wawi-Assistenten bestätigen, dann --abholen ausführen.")
+            print("Jetzt die angeforderten Leserechte im Wawi-Assistenten bestätigen, dann --abholen ausführen.")
             return
         result = None
         if response_path.exists():
@@ -119,7 +126,7 @@ async def registrieren(abholen=False):
         if status == 0:
             print("Noch ausstehend. Assistent abschließen, danach --abholen erneut ausführen.")
             return
-        credentials = {"app_id": APP_ID, "api_url": state["api_url"],
+        credentials = {"app_id": app_id, "api_url": state["api_url"],
                        "api_key": (data.get("token") or {}).get("apiKey"),
                        "scopes": data.get("grantedScopes", [])}
         if status != 2:
@@ -138,12 +145,48 @@ async def pruefen():
             print(path, "HTTP 200")
 
 
+async def aktivieren():
+    folder = ordner()
+    kandidat = folder / "lesezugang"
+    data = validieren(json.loads((kandidat / "zugang.json").read_text(encoding="utf-8")))
+    if data["app_id"] != LESE_APP_ID:
+        raise JtlFehler("Kein erweiterter Lesezugang.")
+    async with client_aus_umgebung(kandidat) as client:
+        for path, expected in (("/v2/sales-channels", list), ("/v1/invoices", dict), ("/v1/salesOrders", dict)):
+            await client._request("GET", path, expected_type=expected, params={"pageNumber": 1, "pageSize": 1})
+            print(path, "HTTP 200")
+        customers = await client._request("GET", "/v1/customers", params={"pageNumber": 1, "pageSize": 1})
+        rows = customers.get("Items", [])
+        ident = rows[0].get("Id") if rows else None
+        if type(ident) is not int or ident <= 0:
+            raise JtlFehler("Kein Kunde für die Einzelabrufprüfung verfügbar. Nicht umgeschaltet.")
+        customer = await client._request("GET", f"/v1/customers/{ident}")
+        if customer.get("Id") != ident:
+            raise JtlFehler("Kunden-ID nicht bestätigt. Nicht umgeschaltet.")
+        print("Kundenliste und Kundeneinzelabruf HTTP 200")
+    active = folder / "zugang.json"
+    old = validieren(json.loads(active.read_text(encoding="utf-8")))
+    if old == data:
+        print("Erweiterter Lesezugang bereits aktiv und erneut geprüft.")
+        return
+    backup = folder / "zugang-vor-lesezugang.json"
+    if backup.exists():
+        if json.loads(backup.read_text(encoding="utf-8")) != old:
+            raise JtlFehler("Abweichende Sicherung vorhanden. Nicht umgeschaltet.")
+    else:
+        sichern(backup, old, exklusiv=True)
+    sichern(active, data)
+    print("Erweiterter Lesezugang aktiviert. Bisheriger Zugang geschützt gesichert.")
+
+
 async def main():
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--anmelden", action="store_true")
     group.add_argument("--abholen", action="store_true")
     group.add_argument("--pruefen", action="store_true")
+    group.add_argument("--aktivieren", action="store_true")
+    parser.add_argument("--erweitert", action="store_true", help="Parallelregistrierung mit breitem Lesezugriff")
     args = parser.parse_args()
     import fcntl
     folder = ordner()
@@ -153,10 +196,12 @@ async def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise JtlFehler("Ein Registrierungsprozess läuft bereits.") from None
-        if args.pruefen:
+        if args.aktivieren:
+            await aktivieren()
+        elif args.pruefen:
             await pruefen()
         else:
-            await registrieren(args.abholen)
+            await registrieren(args.abholen, args.erweitert)
 
 
 if __name__ == "__main__":
