@@ -81,6 +81,7 @@ services:
     env_file: .env
     volumes:
       - ./var/inkasso:/app/var/inkasso
+      - ./var/inkasso-zugang:/app/var/inkasso-zugang
       - ./var/jtl-tls:/app/var/jtl-tls:ro
 
   frontend:

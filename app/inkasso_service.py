@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from .inkasso import INTERVALL, abrufen, jetzt, lesen, ordner, speichern
 from .jtl_client import JtlFehler
-from .jtl_onprem import OnPremClient
+from .inkasso_zugang import client_aus_umgebung
 
 logger = logging.getLogger("krautl.inkasso")
 
@@ -15,13 +15,13 @@ def faellig(data, zeit):
     return not letzter or not timedelta(0) <= zeit - datetime.fromisoformat(letzter) < INTERVALL
 
 
-async def lauf(folder=None, client_factory=OnPremClient.aus_umgebung):
+async def lauf(folder=None, client_factory=client_aus_umgebung):
     data = lesen(folder)
     data.update(letzter_versuch=jetzt().isoformat(), status="laeuft", fehler=None)
     speichern(data, folder)
     try:
         async with client_factory() as client:
-            result = await asyncio.wait_for(abrufen(client), timeout=3600)
+            result = await asyncio.wait_for(abrufen(client, data), timeout=3600)
         data.update(result)
         data.update(letzter_erfolg=jetzt().isoformat(), status="ok", fehler=None)
         logger.info("Inkasso: %s offene Shoprechnungen; %s Rechnungen geprüft.",

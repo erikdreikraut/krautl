@@ -23,3 +23,9 @@
 - Google-Zusatzfeed bleibt unabhängig. Eigene Krautl-JTL-App und eigene Zugangsdaten verwenden; Werkel bleibt unverändert. Stand der lokalen Schreibabnahme und noch ausstehende HTTPS-Inbetriebnahme in `ops/jtl/README.md` beachten.
 - Dauerabgleich: HTTPS-Direktzugriff auf die Wawi-API, Firewall nur für die öffentliche Krautl-Server-IP. Alle fünf Minuten nur geänderten FAQ-HTML-Export übertragen; erfolgreich bestätigte Stände dauerhaft merken. Artikel mit gleicher SKU und echte JTL-Varianten über `parentItemId` bedienen, keine Zuordnung anhand von SKU-Präfixen. Eigene ausgewählte Varianten-FAQ haben Vorrang. Bei unklarem Schreibausgang zuerst rücklesen, niemals blind erneut schreiben.
 - JTL-Überwachung: Nutzer wünscht Warnungen sichtbar auf der Krautl-Startseite, keinen externen Überwachungsdienst und keine E-Mail-Benachrichtigung. Letzten erfolgreichen Prüflauf, Fehler, Sperren und ausbleibende Läufe anzeigen; unbekannten/veralteten Status nicht als gesund darstellen.
+
+## Inkasso
+
+- Admin-only, eigener Hauptmenüpunkt rechts neben Rechnungen. Nur bestätigter JTL-Shop `2-2-1`.
+- Neuaufnahme offener Rechnungen maximal aus den letzten zwölf Kalendermonaten. Einmal erfasste Fälle unabhängig vom Alter weiter prüfen; bezahlte/stornierte Fälle als abgeschlossen erhalten. Abruffehler sind niemals ein Zahlungsnachweis.
+- Dauerhafte eigene Lese-App `krautl-inkasso` mit `invoices.read`, `salesorders.read`, `saleschannels.read`; FAQ-Zugang unverändert lassen. API-v1-Rechnungen über Positionen und Aufträge dem Shop zuordnen. Registrierungs- und Betriebsablauf siehe README, Abschnitt Inkasso.

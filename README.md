@@ -719,96 +719,123 @@ aktiviert. Einrichtung, bestätigte Zielattribute und offene Abnahme: siehe
 
 Der Hauptmenüpunkt **Inkasso** steht rechts neben **Rechnungen** ausschließlich
 Administratoren zur Verfügung. Auch `GET /inkasso` prüft die Adminrolle und
-antwortet mit `Cache-Control: no-store`. Die bestehenden Eingangsrechnungen
-bleiben davon unabhängig.
+antwortet mit `Cache-Control: no-store`. Die Übersicht zeigt Rechnungsdatum,
+Rechnungsnummer, Kundenname aus der Rechnungsadresse, Bruttobetrag, offenen
+Restbetrag und Mahnsperre. Alle vier gewünschten Spalten sind sortierbar,
+standardmäßig Datum aufsteigend; 50 Zeilen pro Seite. Noch nicht fällige
+Rechnungen sind enthalten. Es werden keine Mahnungen versendet und keine
+Zahlungen oder Rechnungen in Wawi verändert.
 
-Die Übersicht zeigt Rechnungsdatum, Rechnungsnummer, Namen aus der
-Rechnungsadresse, Bruttobetrag, offenen Restbetrag und eine etwaige Wawi-Mahnsperre.
-Sortierung per Spaltenkopf, standardmäßig Rechnungsdatum aufsteigend; 50 Zeilen
-pro Seite. Enthalten sind auch noch nicht fällige Rechnungen und Teilzahlungen.
-Es werden keine Mahnungen oder Kundennachrichten versendet und keine Zahlungen,
-Rechnungen oder Wawi-Einstellungen verändert.
+**Aufnahme und dauerhafter Bestand:** Neu aufgenommen werden ausschließlich offene
+Rechnungen des bestätigten dreikraut-Shops `2-2-1` mit Rechnungsdatum zwischen
+heute minus zwölf Kalendermonaten und heute (jeweils einschließlich, Europe/Berlin;
+29. Februar wird im Vorjahr auf den 28. Februar begrenzt). Einmal erfasste Fälle
+werden unabhängig vom Alter weiter geprüft. Zahlung bzw. Storno entfernt sie
+nur aus der offenen Übersicht; der Vorgang bleibt mit Abschlussstatus erhalten.
+Auch abgeschlossene Fälle werden weiter gelesen, damit wieder geöffnete Beträge
+nicht verloren gehen. Mahnsperren werden angezeigt und nicht als Zahlung gewertet.
 
-Der separate Dienst `inkasso-sync` (Compose-Profil `inkasso`) liest beim ersten
-Start und danach einmal je 24 Stunden die Wawi über die vorhandenen
-`JTL_LOCAL_URL`, `JTL_LOCAL_API_KEY` und optional `JTL_LOCAL_CA_FILE`.
-Der letzte Versuch wird dauerhaft gespeichert; Neustarts lösen innerhalb der
-24 Stunden keinen erneuten Komplettabruf aus. Fehlgeschlagene Abrufe werden beim
-nächsten täglichen Lauf erneut versucht, nicht in einer schnellen Wiederholschleife.
-Die Oberfläche liest nur den lokalen Snapshot (beim Öffnen, danach jede Minute).
+**Vertrag der installierten API:** Am 21.10.2026 auf Wawi `2.1.1+Sha.6aebf42`
+lesend bestätigt: `/v1/invoices`, Rechnungsdetails und `/lineitems` liefern HTTP
+200 mit PascalCase-Feldern. Zahlungsfilter: `0=UnPayed`, `1=PartialPayed`,
+`2=Payed`. 554 unbezahlte und 12.466 teilweise bezahlte Rechnungen wurden zu
+jenem Zeitpunkt über alle Kanäle gemeldet. Diese Zahlen sind keine Shopzählung.
+`/v2/sales-invoices` scheitert mit den erweiterten Leserechten dagegen an einem
+serverseitigen Mappingfehler (`Error while compiling`, Request -> Query).
+Die v1-Schemata stammen aus `/api/eazybusiness/swagger/v1/swagger.json`.
 
-API-Vertrag: [offizielles JTL-ERP-2.1-Schema](https://developer.jtl-software.com/openapi/erp/2.1.json),
-am 21.10.2026 geprüft; für Verkaufskanäle anhand des vom Server gelieferten
-Schemas (`/api/eazybusiness/swagger/v2/swagger.json`, `info.version=2.0`)
-korrigiert: `GET /v2/sales-channels` liefert ein Array. Daraus muss genau ein
-Kanal mit `id=2-2-1` und `type=1` den bereits für FAQ bestätigten dreikraut-Shop
-bestätigen. Der zuvor verwendete Einzelendpunkt existiert dort nicht (HTTP 404).
-Der Listenabruf dokumentiert den Scope `saleschannels.read`. Anschließend vollständig
-paginierter Abruf von `GET /v2/sales-invoices` (100 pro Seite, stabile Sortierung
-nach `salesInvoiceId`). Nur `salesChannelId=2-2-1`, keine Entwürfe und keine
-stornierten Rechnungen, `stillToPay > 0`. Gesamtbetrag aus `totalGrossAmount`,
-Währung aus `currencyIso`; keine selbst berechnete Differenz aus Zahlungen.
-Fehlende Pflichtwerte, widersprüchliche Zahlungszustände, doppelte IDs und
-veränderte Seitenanzahlen führen zum Abbruch ohne Übernahme der Teilliste.
-Der Abruf ist kein transaktionaler Wawi-Snapshot; Änderungen während des Laufes
-sind grundsätzlich möglich. Maßgeblich für einzelne Folgeaktionen bleibt Wawi.
+Der Tageslauf liest beide offenen Zahlungsgruppen vollständig, 100 pro Seite,
+und prüft zusätzlich `StillToPay > 0` sowie `IsCancelled`. Der v1-Endpunkt
+bietet keinen Rechnungsdatumfilter; ältere Kandidaten müssen daher technisch
+mitgelesen werden, werden aber nicht neu gespeichert oder einem Shop zugeordnet.
+Die Auftrags-IDs aus allen Rechnungspositionen führen über
+`/v1/salesOrders/{salesOrderId}` zum `SalesChannelId`. Alle verknüpften Aufträge
+müssen zum bestätigten Shop gehören. Gemischte Shop-/Fremdkanalrechnungen oder
+fehlende Zuordnungen erzeugen einen Fehler statt eines geschätzten Filters.
+`GET /v2/sales-channels` muss den Kanal eindeutig als `type=1` bestätigen.
+Kein Filter anhand von Rechnungsnummern oder `IsExternalInvoice`.
 
-Der vollständige letzte erfolgreiche Snapshot sowie Zeitpunkt und Fehler des
-letzten Versuchs liegen atomar gespeichert in `var/inkasso/stand.json`.
-Dieses Verzeichnis enthält Kundennamen und Rechnungsbeträge, gehört in die
-geschützte Serversicherung und ist von Git/Build ausgeschlossen. Die Web-App
-bindet es nur lesend ein. Ein Dateilock verhindert parallele Importe. Ein Lauf
-ist auf eine Stunde begrenzt. Bei Fehlern bleibt der alte Stand sichtbar, mit
-Fehlerhinweis; nach 25 Stunden wird er als veraltet markiert. Ohne erfolgreichen
-Erstabruf erscheint ausdrücklich „noch nicht verfügbar“, keine scheinbar leere
-Liste. Keine Datenbankmigration erforderlich.
+Bereits erfasste, nicht mehr in den offenen Zahlungsgruppen enthaltene Fälle
+werden einzeln abgerufen. Abwesenheit oder HTTP 404 ist kein Zahlungsnachweis.
+Fehlende Pflichtwerte, doppelte IDs, widersprüchliche Zahlungszustände und
+unvollständige/veränderte Paginierung brechen den Lauf ab. Auftragslesungen werden
+innerhalb eines Laufes wiederverwendet. Die API bietet dabei keinen transaktionalen
+Snapshot: gleichzeitige Änderungen sind grundsätzlich möglich.
 
-**Inbetriebnahme / Update auf der Serverkonsole:**
+**Betrieb:** `inkasso-sync` (Profil `inkasso`) startet initial und danach einmal
+je 24 Stunden. Ein Neustart löst innerhalb dieser Zeit keinen erneuten Abruf aus.
+Ein Dateilock verhindert parallele Läufe; ein Lauf ist auf eine Stunde begrenzt.
+`var/inkasso/stand.json` enthält den atomar gespeicherten Vorgangsbestand `faelle`,
+die offene Liste `rechnungen` sowie Status und Zeitpunkte. Bei Fehlern bleibt der
+letzte vollständige Bestand erhalten. Nach 25 Stunden warnt die Oberfläche vor
+veralteten Daten. Das Archiv wird nicht an die Listen-API übertragen. Ohne ersten
+Erfolg erscheint keine scheinbar leere Erfolgsliste. Keine Datenbankmigration.
+Ein alter nichtleerer Snapshot ohne Vorgangsbestand wird nicht stillschweigend
+verworfen; dafür wäre eine gesonderte Migration nötig. Bisher gab es keinen
+bestätigten erfolgreichen produktiven Inkasso-Import.
+
+**Separate dauerhafte App:** `krautl-inkasso`, Version `0.1.0`, nur
+`invoices.read`, `salesorders.read`, `saleschannels.read`. Kein Zugriff auf den
+FAQ-Key als Fallback. HTTPS-Ziel und CA werden weiterhin über `JTL_LOCAL_URL`
+und `JTL_LOCAL_CA_FILE` konfiguriert. Schlüssel und Registrierungszustand liegen
+unter `var/inkasso-zugang/` (Verzeichnis 0700, Dateien 0600), nur in den
+Inkasso-Container eingebunden. Optionaler Containerpfad: `INKASSO_ZUGANG_DIR`.
+Der gültige Zugang ist an App-ID, API-Ziel und bestätigte Scopes gebunden.
+Beide Inkasso-Verzeichnisse gehören in die geschützte Serversicherung, niemals
+in Git oder den Docker-Build. FAQ-App `krautl-lokal` und Werkel bleiben unverändert.
+Die zwischenzeitliche Test-App `krautl-inkasso-test` bleibt bis zur erfolgreichen
+Abnahme erhalten; ihre Zugangsdaten werden nicht automatisch übernommen/gelöscht.
+
+**Bereitstellung und Registrierung (Serverkonsole):**
 
 ```bash
 cd /opt/app/krautl &&
 git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
-git switch main &&
-git pull --ff-only origin main &&
-mkdir -p var/inkasso && chmod 700 var/inkasso &&
-docker compose build app frontend &&
+git switch main && git pull --ff-only origin main &&
+mkdir -p var/inkasso var/inkasso-zugang &&
+chmod 700 var/inkasso var/inkasso-zugang &&
+docker compose build app frontend
+```
+
+FAQ-Dienst weiterlaufen lassen. Inkasso-Tagesdienst vor der Registrierung nicht
+starten. In Wawi unter Admin -> App-Registrierung -> Hinzufügen bis
+„Registrierung beginnen“ gehen und offen lassen, dann auf dem Linux-Server:
+
+```bash
+docker compose --profile inkasso run --rm --no-deps -T inkasso-sync python -m app.inkasso_zugang --anmelden
+```
+
+Nach HTTP 201 im Wawi-Assistenten die drei Leserechte bestätigen, als Benutzername
+`krautl-inkasso` verwenden, Assistent abschließen. Danach:
+
+```bash
+docker compose --profile inkasso run --rm --no-deps -T inkasso-sync python -m app.inkasso_zugang --abholen &&
+docker compose --profile inkasso run --rm --no-deps -T inkasso-sync python -m app.inkasso_zugang --pruefen
+```
+
+Die einmalige Schlüsselantwort wird vor jeder Auswertung dauerhaft gespeichert;
+der Schlüssel erscheint nicht in der Konsole. Ein bestätigter Pending-Status
+kann erneut abgefragt werden. Bei unklarem Ausgang wird kein POST/Schlüsselabruf
+blind wiederholt. Fehlerantworten bleiben geschützt in den Registrierungsdateien.
+Diese Dateien niemals zur Diagnose vollständig in Chat/Logs ausgeben. HTTP 409
+bedeutet vorhandene App-ID. Die installierten `foreign`-PATCH/DELETE-Routen sind
+als No-Op dokumentiert und dürfen nicht als erfolgreiche Rechteänderung gelten.
+
+Nach erfolgreichen Leseprüfungen den einmaligen Import durchführen und prüfen:
+
+```bash
+docker compose stop inkasso-sync &&
+docker compose --profile inkasso run --rm --no-deps -T inkasso-sync python -m app.inkasso_service --einmal
+```
+
+Nach erfolgreichem Import App und Frontend aktualisieren und Tagesdienst starten:
+
+```bash
 docker compose --profile inkasso up -d --no-deps app frontend inkasso-sync &&
 docker compose logs --tail=40 inkasso-sync
 ```
 
-Die Echtverbindung für Rechnungen ist vor der Serverabnahme **noch nicht
-bestätigt**. Der vorhandene FAQ-Abgleich belegt nur Artikelzugriffe. Die lokale
-Wawi-Version muss den dokumentierten Rechnungsübersichts-Endpunkt bereitstellen;
-der eigene Krautl-App-Key benötigt entsprechende Leserechte für Rechnungen und
-Verkaufskanäle. HTTP 401/403 deutet auf fehlende Autorisierung/Rechte, HTTP 404
-auf einen fehlenden Endpunkt bzw. Kanal hin. Keine automatische Ausweichabfrage
-über Cloud, fremde Zugangsdaten oder geschätzte Shopfilter.
-
-Abnahme: Als Admin Inkasso öffnen, erfolgreichen Datenstand und einige
-Rechnungen (Datum, Name, Betrag und Restbetrag) gegen Wawi vergleichen. Als
-Sachbearbeiter dürfen weder Menüpunkt noch API-Daten verfügbar sein. Logs nennen
-nur Anzahl und technische Fehler, keine Kundendaten oder Schlüssel.
-
-Für einen ausdrücklich benötigten erneuten Erstabruf nach einer Korrektur:
-
-```bash
-cd /opt/app/krautl &&
-docker compose stop inkasso-sync &&
-docker compose --profile inkasso run --rm --no-deps inkasso-sync python -m app.inkasso_service --einmal
-# Nach Prüfung des Ergebnisses den Tagesdienst wieder starten:
-docker compose --profile inkasso up -d --no-deps inkasso-sync
-```
-
-
-Inkasso-Diagnosestand nach Serverprüfung: Artikelabruf erfolgreich (391 Artikel),
-Rechnungsübersicht `/v2/sales-invoices` liefert HTTP 403 mit leerem Antworttext.
-Das installierte Schema dokumentiert bei Rechnungsdetails `invoices.read`, bei
-Ausgaben `salesinvoices.read`, bei der Übersicht dagegen `security: []`.
-Letzteres ist kein Nachweis für anonymen oder unbeschränkten Zugriff. Welches
-Recht die Übersicht tatsächlich verweigert, ist noch nicht bestätigt. Die
-beiden `PATCH /v2/authentication/foreign/...` sind ausdrücklich als No-Op
-beschrieben (auch HTTP 200 führt keine Änderung aus); nicht zur Rechtepflege
-verwenden. Keine neue App registriert, keine Worker-/Benutzerrechte geändert.
-Die sichtbaren Rechte der Gruppe Worker belegen keine Zuordnung der App zu
-dieser Gruppe. `info.version=2.0` benennt die API-Beschreibung und ist kein
-hinreichender Nachweis der installierten Wawi-Programmversion.
+Serverabnahme noch ausstehend: dauerhafte App registrieren, Auftragsleserecht
+bestätigen, vollständigen Erstimport durchführen und Stichproben gegen Wawi
+prüfen (Shop, Datum, Name, Gesamt-/Restbetrag). Admin-Zugang und Ablehnung als
+Sachbearbeiter prüfen. Lokal getesteter Code und ein Push sind kein Deployment.

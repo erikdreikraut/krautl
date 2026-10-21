@@ -13,3 +13,6 @@ frontend/dist/
 frontend/vite.config.js.timestamp-*.mjs
 
 var/inkasso/
+
+# Separate Inkasso registration and API credentials
+var/inkasso-zugang/

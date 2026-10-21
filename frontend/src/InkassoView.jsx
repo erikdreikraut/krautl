@@ -57,7 +57,7 @@ export function InkassoListe({ daten }) {
             <td style={zelle}>{row.mahnsperre ? "Mahnsperre in Wawi" : "—"}</td>
           </tr>)}</tbody>
         </table>
-        {rows.length === 0 && <p style={{ padding: "24px", textAlign: "center" }}>Keine offenen Rechnungen im JTL-Shop zum angezeigten Datenstand.</p>}
+        {rows.length === 0 && <p style={{ padding: "24px", textAlign: "center" }}>Keine offenen Rechnungen im betrachteten Inkasso-Bestand zum angezeigten Datenstand.</p>}
       </div>
       {rows.length > 50 && <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "12px" }}>
         <button style={knopf} disabled={aktuelle === 0} onClick={() => setSeite(aktuelle - 1)}>Zurück</button>
@@ -91,7 +91,7 @@ export function InkassoView() {
   }, []);
   return <section style={{ padding: "24px 16px", fontFamily: "'IBM Plex Sans', sans-serif", fontSize: "13px", color: "#242A1F" }}>
     <h2 style={{ fontFamily: "'Source Serif 4', serif", fontWeight: 700, fontSize: "20px", color: "#2C5A18" }}>Inkasso</h2>
-    <p style={{ color: "#6C6F5F", marginTop: "4px" }}>Unbezahlte und teilweise bezahlte Rechnungen aus dem JTL-Shop, einschließlich noch nicht fälliger Rechnungen.</p>
+    <p style={{ color: "#6C6F5F", marginTop: "4px" }}>Offene JTL-Shop-Rechnungen der letzten zwölf Monate, einschließlich noch nicht fälliger Rechnungen. Bereits erfasste offene Fälle bleiben auch danach in der Liste.</p>
     {fehler && <p role="alert" style={{ color: "#A5462F", marginTop: "16px" }}>{fehler}</p>}
     {!daten && !fehler && <p role="status" style={{ marginTop: "16px" }}>Rechnungsstand wird geladen …</p>}
     {daten && <InkassoListe daten={daten} />}
