@@ -738,8 +738,12 @@ nächsten täglichen Lauf erneut versucht, nicht in einer schnellen Wiederholsch
 Die Oberfläche liest nur den lokalen Snapshot (beim Öffnen, danach jede Minute).
 
 API-Vertrag: [offizielles JTL-ERP-2.1-Schema](https://developer.jtl-software.com/openapi/erp/2.1.json),
-am 21.10.2026 geprüft. `GET /v2/sales-channels/2-2-1` muss den bereits für FAQ
-bestätigten dreikraut-Shop als `type=1` bestätigen. Anschließend vollständig
+am 21.10.2026 geprüft; für Verkaufskanäle anhand des vom Server gelieferten
+Schemas (`/api/eazybusiness/swagger/v2/swagger.json`, `info.version=2.0`)
+korrigiert: `GET /v2/sales-channels` liefert ein Array. Daraus muss genau ein
+Kanal mit `id=2-2-1` und `type=1` den bereits für FAQ bestätigten dreikraut-Shop
+bestätigen. Der zuvor verwendete Einzelendpunkt existiert dort nicht (HTTP 404).
+Der Listenabruf dokumentiert den Scope `saleschannels.read`. Anschließend vollständig
 paginierter Abruf von `GET /v2/sales-invoices` (100 pro Seite, stabile Sortierung
 nach `salesInvoiceId`). Nur `salesChannelId=2-2-1`, keine Entwürfe und keine
 stornierten Rechnungen, `stillToPay > 0`. Gesamtbetrag aus `totalGrossAmount`,
@@ -794,3 +798,17 @@ docker compose --profile inkasso run --rm --no-deps inkasso-sync python -m app.i
 # Nach Prüfung des Ergebnisses den Tagesdienst wieder starten:
 docker compose --profile inkasso up -d --no-deps inkasso-sync
 ```
+
+
+Inkasso-Diagnosestand nach Serverprüfung: Artikelabruf erfolgreich (391 Artikel),
+Rechnungsübersicht `/v2/sales-invoices` liefert HTTP 403 mit leerem Antworttext.
+Das installierte Schema dokumentiert bei Rechnungsdetails `invoices.read`, bei
+Ausgaben `salesinvoices.read`, bei der Übersicht dagegen `security: []`.
+Letzteres ist kein Nachweis für anonymen oder unbeschränkten Zugriff. Welches
+Recht die Übersicht tatsächlich verweigert, ist noch nicht bestätigt. Die
+beiden `PATCH /v2/authentication/foreign/...` sind ausdrücklich als No-Op
+beschrieben (auch HTTP 200 führt keine Änderung aus); nicht zur Rechtepflege
+verwenden. Keine neue App registriert, keine Worker-/Benutzerrechte geändert.
+Die sichtbaren Rechte der Gruppe Worker belegen keine Zuordnung der App zu
+dieser Gruppe. `info.version=2.0` benennt die API-Beschreibung und ist kein
+hinreichender Nachweis der installierten Wawi-Programmversion.

@@ -11,6 +11,7 @@ import httpx
 from app import inkasso, inkasso_service, main
 from app.auth import COOKIE_NAME, sitzung_erstellen
 from app.jtl_client import JtlFehler
+from app.jtl_onprem import OnPremClient
 
 
 def invoice(n=1, **kw):
@@ -28,7 +29,7 @@ def page(rows, number=1, total=None, more=False):
 
 def client(*pages):
     c = AsyncMock()
-    c._request.side_effect = [dict(id=inkasso.KANAL, type=1, name="dreikraut"), *pages]
+    c._request.side_effect = [[dict(id=inkasso.KANAL, type=1, name="dreikraut")], *pages]
     c.__aenter__.return_value = c
     return c
 
@@ -97,7 +98,7 @@ class AbrufTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(JtlFehler):
                 await inkasso.abrufen(client(*pages))
         c = client()
-        c._request.side_effect = [dict(id="anderer-shop", type=1)]
+        c._request.side_effect = [[dict(id="anderer-shop", type=1)]]
         with self.assertRaises(JtlFehler):
             await inkasso.abrufen(c)
         row = invoice()
@@ -141,3 +142,47 @@ class AbrufTest(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(len(response.json()["rechnungen"]), 1)
                     else:
                         self.assertNotIn("Erika", response.text)
+
+
+class KanalVertragTest(unittest.IsolatedAsyncioTestCase):
+    async def test_echtes_listenformat_und_exakter_kanal(self):
+        requests = []
+        def handler(request):
+            requests.append(request)
+            if request.url.path.endswith("/sales-channels"):
+                return httpx.Response(200, json=[
+                    {"id": "anderer-shop", "type": 1, "name": "anderer"},
+                    {"id": inkasso.KANAL, "type": 1, "name": "dreikraut"}])
+            if request.url.path.endswith("/sales-invoices"):
+                return httpx.Response(200, json=page([invoice()]))
+            return httpx.Response(404)
+        async with OnPremClient("https://wawi.test/api/eazybusiness", "test",
+                                transport=httpx.MockTransport(handler)) as c:
+            result = await inkasso.abrufen(c)
+        self.assertEqual(result["shop"], "dreikraut")
+        self.assertEqual(len(result["rechnungen"]), 1)
+        self.assertEqual([r.url.path for r in requests], [
+            "/api/eazybusiness/v2/sales-channels", "/api/eazybusiness/v2/sales-invoices"])
+        self.assertTrue(all(r.method == "GET" for r in requests))
+
+    async def test_fehlender_doppelter_falscher_kanal_sperrt(self):
+        correct = {"id": inkasso.KANAL, "type": 1}
+        for channels in ([], [correct, correct], [correct | {"type": 9}],
+                         [correct | {"type": True}], [None], {"items": [correct]}):
+            c = client()
+            c._request.side_effect = [channels]
+            with self.subTest(channels=channels), self.assertRaises(JtlFehler):
+                await inkasso.abrufen(c)
+            self.assertEqual(c._request.await_count, 1)
+
+    async def test_artikel_erwarten_weiter_objekt(self):
+        async with OnPremClient("https://wawi.test/api/eazybusiness", "test",
+                transport=httpx.MockTransport(lambda r: httpx.Response(200, json=[]))) as c:
+            with self.assertRaises(JtlFehler):
+                await c._request("GET", "/v2/items")
+
+    async def test_403_auf_kanalliste_bleibt_fehler(self):
+        async with OnPremClient("https://wawi.test/api/eazybusiness", "test",
+                transport=httpx.MockTransport(lambda r: httpx.Response(403))) as c:
+            with self.assertRaisesRegex(JtlFehler, "/v2/sales-channels:.*403"):
+                await inkasso.abrufen(c)

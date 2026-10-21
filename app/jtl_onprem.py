@@ -36,7 +36,7 @@ class OnPremClient:
     async def __aexit__(self, *args):
         await self.http.aclose()
 
-    async def _request(self, method, path, **kwargs):
+    async def _request(self, method, path, *, expected_type=dict, **kwargs):
         try:
             response = await self.http.request(method, self.url + path, **kwargs)
         except httpx.HTTPError:
@@ -47,7 +47,7 @@ class OnPremClient:
             result = response.json()
         except ValueError:
             raise JtlFehler("JTL antwortet nicht mit JSON.") from None
-        if not isinstance(result, dict):
+        if not isinstance(result, expected_type):
             raise JtlFehler("Unerwartete JTL-Antwort.")
         return result
 

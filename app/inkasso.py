@@ -97,9 +97,13 @@ async def api_lesen(client, path, **kwargs):
 
 
 async def abrufen(client):
-    kanal = await api_lesen(client, f"/v2/sales-channels/{KANAL}")
-    if kanal.get("id") != KANAL or kanal.get("type") != 1:
-        raise JtlFehler("Der bestätigte JTL-Shopkanal wurde nicht als Onlineshop erkannt.")
+    kanaele = await api_lesen(client, "/v2/sales-channels", expected_type=list)
+    if not isinstance(kanaele, list) or any(not isinstance(k, dict) for k in kanaele):
+        raise JtlFehler("Ungültige JTL-Verkaufskanalliste.")
+    treffer = [k for k in kanaele if k.get("id") == KANAL]
+    if len(treffer) != 1 or type(treffer[0].get("type")) is not int or treffer[0]["type"] != 1:
+        raise JtlFehler("Der bestätigte JTL-Shopkanal wurde nicht eindeutig als Onlineshop erkannt.")
+    kanal = treffer[0]
     result, gesehen, total = [], set(), None
     for page in range(1, 10001):
         data = await api_lesen(client, "/v2/sales-invoices", params={
