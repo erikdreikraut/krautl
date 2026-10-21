@@ -135,24 +135,29 @@ test("Auswahl aktualisieren sendet nur gefilterte IDs aller Seiten und sperrt wÃ
 });
 
 
-test("Hinweis: Entwurf bleibt beim Nachladen erhalten, Fehler behalten Text, Speichern liefert Revision", async t => {
+test("Hinweis: Entwurf bleibt beim Nachladen erhalten, Fehler behalten Text, Speichern haengt an und Wiederholung nutzt dieselbe Anfrage", async t => {
   const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" });
   t.after(() => server.close());
   const { InkassoListe } = await server.ssrLoadModule("/src/InkassoView.jsx");
   const { api } = await server.ssrLoadModule("/src/api.js");
   const original = api.inkassoHinweis;
   t.after(() => { api.inkassoHinweis = original; });
-  let view, saved, fail = true;
+  let view, saved, fail = true, requestId;
   t.after(() => view?.unmount());
-  api.inkassoHinweis = async (id, text, revision) => {
-    assert.deepEqual([id, text, revision], ["1", "Telefoniert", 3]);
+  api.inkassoHinweis = async (id, text, anfrageId) => {
+    assert.deepEqual([id, text], ["1", "Telefoniert"]);
+    assert.match(anfrageId, /^[a-f0-9-]{36}$/);
+    if (requestId) assert.equal(anfrageId, requestId);
+    requestId = anfrageId;
     if (fail) throw new Error("Konflikt");
-    return { hinweis: text, hinweis_revision: 4 };
+    return { hinweis: true, hinweise: [{ text, nutzer: "erik", zeit: "2026-10-21T12:00:00Z" }] };
   };
-  const props = { daten: { rechnungen: [{ ...rows[0], hinweis: "Alt", hinweis_revision: 3 }], letzter_erfolg: "2026-10-21T12:00:00Z" }, onHinweis: (...args) => { saved = args; } };
+  const props = { daten: { rechnungen: [{ ...rows[0], hinweis: true, hinweise: [{ text: "Alt", nutzer: "erik", zeit: "2026-10-21T12:00:00Z" }] }], letzter_erfolg: "2026-10-21T12:00:00Z" }, onHinweis: (...args) => { saved = args; } };
   await act(async () => { view = create(React.createElement(InkassoListe, props), { createNodeMock: () => ({ showModal() {} }) }); });
   assert.equal(view.root.findAllByType("svg").length, 1);
-  await act(async () => view.root.findByProps({ "aria-label": "Hinweis bearbeiten: R1" }).props.onClick());
+  await act(async () => view.root.findByProps({ "aria-label": "Hinweise ansehen: R1" }).props.onClick());
+  assert.equal(view.root.findByType("textarea").props.value, "");
+  assert.match(JSON.stringify(view.toJSON()), /Alt/);
   await act(async () => view.root.findByType("textarea").props.onChange({ target: { value: "Telefoniert" } }));
   await act(async () => view.update(React.createElement(InkassoListe, { ...props, daten: { ...props.daten, rechnungen: [] } })));
   assert.equal(view.root.findByType("textarea").props.value, "Telefoniert");
@@ -161,6 +166,6 @@ test("Hinweis: Entwurf bleibt beim Nachladen erhalten, Fehler behalten Text, Spe
   assert.equal(view.root.findByType("textarea").props.value, "Telefoniert");
   fail = false;
   await act(async () => view.root.findByType("form").props.onSubmit({ preventDefault() {} }));
-  assert.deepEqual(saved, ["1", { hinweis: "Telefoniert", hinweis_revision: 4 }]);
+  assert.deepEqual(saved, ["1", { hinweis: true, hinweise: [{ text: "Telefoniert", nutzer: "erik", zeit: "2026-10-21T12:00:00Z" }] }]);
   assert.equal(view.root.findAllByType("dialog").length, 0);
 });

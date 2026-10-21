@@ -383,35 +383,43 @@ class AuswahlAktualisierenTest(unittest.IsolatedAsyncioTestCase):
 
 
 class NotizenTest(unittest.IsolatedAsyncioTestCase):
-    async def test_notes_permissions_conflict_clear_and_refresh(self):
+    async def test_append_legacy_permissions_retry_and_refresh(self):
+        import sqlite3
+        from uuid import uuid4
         from app import inkasso_notizen
         with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {
                 "KRAUTL_SESSION_SECRET": "inkasso-test-secret", "INKASSO_DIR": folder,
-                "INKASSO_NOTIZEN_DIR": str(Path(folder)/"notes"), "INKASSO_AUFTRAG_DIR": str(Path(folder)/"jobs")}):
-            with self.assertRaises(ValueError):
-                inkasso_notizen.speichern("1", "veraltet", 9)
-            self.assertEqual(inkasso_notizen.lesen(), {})
+                "INKASSO_NOTIZEN_DIR": folder, "INKASSO_AUFTRAG_DIR": str(Path(folder)/"jobs")}):
+            db = sqlite3.connect(inkasso_notizen.pfad())
+            db.execute("CREATE TABLE notizen (id TEXT PRIMARY KEY, text TEXT, revision INTEGER)")
+            db.execute("INSERT INTO notizen VALUES ('1', 'Altbestand', 3)")
+            db.commit()
+            db.close()
             before = await Server([invoice()]).run()
             inkasso.speichern(before)
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="https://test") as web:
                 url = "/inkasso/1/hinweis"
-                body = {"text": " Telefoniert ", "revision": 0}
+                body = {"text": " Telefoniert ", "anfrage_id": str(uuid4()), "nutzer": "forged", "zeit": "forged"}
                 admin = {"Cookie": f"{COOKIE_NAME}={sitzung_erstellen('erik')}"}
                 user = {"Cookie": f"{COOKIE_NAME}={sitzung_erstellen('ludwig')}"}
-                self.assertEqual((await web.put(url, json=body)).status_code, 401)
-                self.assertEqual((await web.put(url, json=body, headers=user)).status_code, 403)
-                self.assertEqual((await web.put("/inkasso/999/hinweis", json=body, headers=admin)).status_code, 404)
-                self.assertEqual((await web.put(url, json={**body, "text": "x"*10001}, headers=admin)).status_code, 422)
-                result = await web.put(url, json=body, headers=admin)
+                self.assertEqual((await web.post(url, json=body)).status_code, 401)
+                self.assertEqual((await web.post(url, json=body, headers=user)).status_code, 403)
+                self.assertEqual((await web.post("/inkasso/999/hinweis", json=body, headers=admin)).status_code, 404)
+                self.assertEqual((await web.post(url, json={**body, "text": "x"*10001}, headers=admin)).status_code, 422)
+                self.assertEqual((await web.post(url, json={**body, "text": "  "}, headers=admin)).status_code, 422)
+                self.assertEqual((await web.put(url, json={"text": "", "revision": 3}, headers=admin)).status_code, 405)
+                result = await web.post(url, json=body, headers=admin)
                 self.assertEqual(result.status_code, 200)
-                self.assertEqual(result.json(), {"hinweis": "Telefoniert", "hinweis_revision": 1})
-                self.assertEqual((await web.put(url, json=body, headers=admin)).status_code, 409)
-                # The worker can replace the entire snapshot without touching notes.
+                notes = result.json()["hinweise"]
+                self.assertEqual(notes[0], {"text": "Altbestand", "nutzer": None, "zeit": None})
+                self.assertEqual(notes[1]["text"], "Telefoniert")
+                self.assertEqual(notes[1]["nutzer"], "erik")
+                self.assertIsNotNone(datetime.fromisoformat(notes[1]["zeit"]).tzinfo)
+                self.assertEqual((await web.post(url, json=body, headers=admin)).json()["hinweise"], notes)
+                self.assertEqual((await web.post(url, json={**body, "text": "anders"}, headers=admin)).status_code, 409)
+                result = await web.post(url, json={"text": "Zweiter Eintrag", "anfrage_id": str(uuid4())}, headers=admin)
+                self.assertEqual(len(result.json()["hinweise"]), 3)
                 inkasso.speichern(before)
                 result = (await web.get("/inkasso", headers=admin)).json()
-                self.assertEqual(result["rechnungen"][0]["hinweis"], "Telefoniert")
-                self.assertNotIn("hinweis", inkasso.lesen()["faelle"]["1"])
-                result = await web.put(url, json={"text": "", "revision": 1}, headers=admin)
-                self.assertEqual(result.json(), {"hinweis": "", "hinweis_revision": 2})
-                self.assertEqual((await web.put(url, json=body, headers=admin)).status_code, 409)
-                self.assertEqual(inkasso_notizen.lesen()["1"]["hinweis_revision"], 2)
+                self.assertEqual(result["rechnungen"][0]["hinweise"][:2], notes)
+                self.assertNotIn("hinweise", inkasso.lesen()["faelle"]["1"])

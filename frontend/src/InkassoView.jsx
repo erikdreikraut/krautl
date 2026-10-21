@@ -58,18 +58,20 @@ export function Bestellung({ row }) {
 export function HinweisEditor({ row, onClose, onSaved }) {
   const dialog = useRef(null);
   const sperre = useRef(false);
-  const [text, setText] = useState(row.hinweis || "");
+  const [text, setText] = useState("");
+  const anfrage = useRef(null);
   const [sendet, setSendet] = useState(false);
   const [fehler, setFehler] = useState(null);
   useEffect(() => { dialog.current.showModal(); }, []);
   async function speichern(event) {
     event.preventDefault();
-    if (sperre.current) return;
+    if (sperre.current || !text.trim()) return;
     sperre.current = true;
     setSendet(true);
     setFehler(null);
     try {
-      const result = await api.inkassoHinweis(row.id, text, row.hinweis_revision || 0);
+      if (!anfrage.current || anfrage.current.text !== text) anfrage.current = { text, id: crypto.randomUUID() };
+      const result = await api.inkassoHinweis(row.id, text, anfrage.current.id);
       onSaved(row.id, result);
       onClose();
     } catch (error) {
@@ -85,16 +87,23 @@ export function HinweisEditor({ row, onClose, onSaved }) {
       padding: "24px", border: "1px solid #DDD9C4", borderRadius: "10px", background: "#FDFCEE", color: "#242A1F" }}>
     <form onSubmit={speichern}>
       <h3 style={{ fontWeight: 600, marginBottom: "16px" }}>Hinweis zu Rechnung {row.nummer}</h3>
-      <label>Hinweis
+      <div style={{ marginBottom: "16px" }}>
+        {(row.hinweise || (typeof row.hinweis === "string" && row.hinweis ? [{ text: row.hinweis }] : [])).map((eintrag, index) =>
+          <article key={index} style={{ padding: "10px 0", borderBottom: "1px solid #DDD9C4" }}>
+            <small>{eintrag.zeit ? `${zeit(eintrag.zeit)} · ${eintrag.nutzer}` : "Bestehender Hinweis · Datum und Nutzer nicht erfasst"}</small>
+            <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{eintrag.text}</p>
+          </article>)}
+      </div>
+      <label>Neuer Hinweis
         <textarea autoFocus value={text} maxLength={10000} disabled={sendet}
           onChange={event => setText(event.target.value)} rows={7}
           style={{ display: "block", width: "100%", padding: "10px", marginTop: "6px", border: "1px solid #DDD9C4", borderRadius: "5px", resize: "vertical" }} />
       </label>
-      <p style={{ margin: "8px 0", color: "#6C6F5F" }}>Leer speichern entfernt den Hinweis.</p>
+      <p style={{ margin: "8px 0", color: "#6C6F5F" }}>Datum, Uhrzeit und Nutzer werden automatisch gespeichert.</p>
       {fehler && <p role="alert">{fehler}</p>}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "16px" }}>
         <button type="button" style={knopf} disabled={sendet} onClick={onClose}>Abbrechen</button>
-        <button type="submit" style={knopf} disabled={sendet}>{sendet ? "Speichert ..." : "Speichern"}</button>
+        <button type="submit" style={knopf} disabled={sendet || !text.trim()}>{sendet ? "Speichert ..." : "Hinzufügen"}</button>
       </div>
     </form>
     <style>{".inkasso-hinweis::backdrop { background: rgba(0, 0, 0, 0.4); }"}</style>
@@ -201,8 +210,8 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
               : row.telefone ? "Nicht hinterlegt" : "Noch nicht abgerufen"}</td>
             <td style={zelle}><Bestellung row={row} /></td>
             <td style={zelle}>
-              <button type="button" style={knopf} title={row.hinweis ? "Hinweis bearbeiten" : "Hinweis hinzufügen"}
-                aria-label={`${row.hinweis ? "Hinweis bearbeiten" : "Hinweis hinzufügen"}: ${row.nummer}`}
+              <button type="button" style={knopf} title={row.hinweis ? "Hinweise ansehen" : "Hinweis hinzufügen"}
+                aria-label={`${row.hinweis ? "Hinweise ansehen" : "Hinweis hinzufügen"}: ${row.nummer}`}
                 onClick={() => setNotizRow({ ...row })}>
                 {row.hinweis ? <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
                   <path d="M4 3h16v12l-6 6H4z M14 21v-6h6 M8 8h8 M8 12h6" />
