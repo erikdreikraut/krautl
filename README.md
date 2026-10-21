@@ -752,7 +752,10 @@ Die Auftrags-IDs aus allen Rechnungspositionen führen über
 `/v1/salesOrders/{salesOrderId}` zum `SalesChannelId`. Alle verknüpften Aufträge
 müssen zum bestätigten Shop gehören. Gemischte Shop-/Fremdkanalrechnungen oder
 fehlende Zuordnungen erzeugen einen Fehler statt eines geschätzten Filters.
-`GET /v2/sales-channels` muss den Kanal eindeutig als `type=1` bestätigen.
+`GET /v2/sales-channels` muss die exakte ID `2-2-1` einmal mit dem live
+bestätigten `type=0` liefern (Name: `JTL-Shop: dreikraut JTL-Shop`). Auch
+`JTL-Wawi` hat dort `type=0`; der Typ allein ist daher kein Shopfilter. Die
+vorherige Annahme `type=1` wurde durch die Live-Ausgabe am 21.10.2026 widerlegt.
 Kein Filter anhand von Rechnungsnummern oder `IsExternalInvoice`.
 
 Bereits erfasste, nicht mehr in den offenen Zahlungsgruppen enthaltene Fälle

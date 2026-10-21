@@ -184,9 +184,11 @@ async def abrufen(client, bestand=None, zeit=None):
     kanaele = await api_lesen(client, "/v2/sales-channels", expected_type=list)
     if any(not isinstance(k, dict) for k in kanaele):
         raise JtlFehler("Ungültige JTL-Verkaufskanalliste.")
+    # Live Wawi 2.1.1 reports type=0 for both Wawi and JTL-Shop.
+    # Only the independently confirmed exact channel ID identifies our shop.
     treffer = [k for k in kanaele if k.get("id") == KANAL]
-    if len(treffer) != 1 or type(treffer[0].get("type")) is not int or treffer[0]["type"] != 1:
-        raise JtlFehler("Der bestätigte JTL-Shopkanal wurde nicht eindeutig als Onlineshop erkannt.")
+    if len(treffer) != 1 or type(treffer[0].get("type")) is not int or treffer[0]["type"] != 0:
+        raise JtlFehler("Der bestätigte JTL-Shopkanal wurde nicht mit der bestätigten ID und dem bestätigten Typ gefunden.")
     rows = await offene_rechnungen(client)
     geprueft = len(rows)
     # Previously captured cases are checked individually even outside the window,

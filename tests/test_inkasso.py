@@ -29,7 +29,7 @@ def invoice(n=1, date="2026-01-02T23:00:00", payment=1, due=25.5, cancelled=Fals
 class Server:
     def __init__(self, rows=(), details=None, channels=None, orders=None, lines=None):
         self.rows, self.details = list(rows), details or {}
-        self.channels = channels if channels is not None else [{"id": inkasso.KANAL, "type": 1, "name": "dreikraut"}]
+        self.channels = channels if channels is not None else [{"id": inkasso.KANAL, "type": 0, "name": "dreikraut"}]
         self.orders, self.lines, self.requests = orders or {}, lines or {}, []
         self.failure = None
         self.broken_page = None
@@ -159,6 +159,23 @@ class AbrufTest(unittest.IsolatedAsyncioTestCase):
         server = Server([invoice(1), invoice(2)], lines=lines)
         self.assertEqual(len((await server.run())["rechnungen"]), 2)
         self.assertEqual(sum("salesOrders" in r.url.path for r in server.requests), 1)
+
+    async def test_live_channel_types_do_not_include_wawi_or_marketplaces(self):
+        channels = [
+            {"id": "1-1-0", "type": 0, "name": "JTL-Wawi"},
+            {"id": "2-2-1", "type": 0, "name": "JTL-Shop: dreikraut JTL-Shop"},
+            {"id": "5-30-1", "type": 3, "name": "Ebay"},
+            {"id": "6-51-1", "type": 9, "name": "Amazon dreikraut"},
+        ]
+        server = Server([invoice(1), invoice(2), invoice(3)], channels=channels,
+                        orders={2: "1-1-0", 3: "6-51-1"})
+        result = await server.run()
+        self.assertEqual([r["id"] for r in result["rechnungen"]], ["1"])
+        self.assertEqual(result["shop"], "JTL-Shop: dreikraut JTL-Shop")
+        for invalid in (channels[:1], [channels[1], channels[1]],
+                        [channels[1] | {"type": 1}], [channels[1] | {"type": 9}]):
+            with self.subTest(channels=invalid), self.assertRaises(JtlFehler):
+                await Server(channels=invalid).run()
 
     async def test_bad_pagination_duplicate_and_channels(self):
         for bad in ({"TotalItems": 2}, {"HasNextPage": True}, {"PageNumber": 4}, {"HasNextPage": None}):
