@@ -55,12 +55,59 @@ export function Bestellung({ row }) {
   </>;
 }
 
+export function HinweisEditor({ row, onClose, onSaved }) {
+  const dialog = useRef(null);
+  const sperre = useRef(false);
+  const [text, setText] = useState(row.hinweis || "");
+  const [sendet, setSendet] = useState(false);
+  const [fehler, setFehler] = useState(null);
+  useEffect(() => { dialog.current.showModal(); }, []);
+  async function speichern(event) {
+    event.preventDefault();
+    if (sperre.current) return;
+    sperre.current = true;
+    setSendet(true);
+    setFehler(null);
+    try {
+      const result = await api.inkassoHinweis(row.id, text, row.hinweis_revision || 0);
+      onSaved(row.id, result);
+      onClose();
+    } catch (error) {
+      setFehler(error.message);
+    } finally {
+      sperre.current = false;
+      setSendet(false);
+    }
+  }
+  return <dialog ref={dialog} className="inkasso-hinweis" aria-label={`Hinweis zu Rechnung ${row.nummer}`}
+    onCancel={event => { event.preventDefault(); if (!sperre.current) onClose(); }}
+    style={{ margin: "auto", width: "min(560px, calc(100vw - 32px))", maxHeight: "85vh", overflow: "auto",
+      padding: "24px", border: "1px solid #DDD9C4", borderRadius: "10px", background: "#FDFCEE", color: "#242A1F" }}>
+    <form onSubmit={speichern}>
+      <h3 style={{ fontWeight: 600, marginBottom: "16px" }}>Hinweis zu Rechnung {row.nummer}</h3>
+      <label>Hinweis
+        <textarea autoFocus value={text} maxLength={10000} disabled={sendet}
+          onChange={event => setText(event.target.value)} rows={7}
+          style={{ display: "block", width: "100%", padding: "10px", marginTop: "6px", border: "1px solid #DDD9C4", borderRadius: "5px", resize: "vertical" }} />
+      </label>
+      <p style={{ margin: "8px 0", color: "#6C6F5F" }}>Leer speichern entfernt den Hinweis.</p>
+      {fehler && <p role="alert">{fehler}</p>}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "16px" }}>
+        <button type="button" style={knopf} disabled={sendet} onClick={onClose}>Abbrechen</button>
+        <button type="submit" style={knopf} disabled={sendet}>{sendet ? "Speichert ..." : "Speichern"}</button>
+      </div>
+    </form>
+    <style>{".inkasso-hinweis::backdrop { background: rgba(0, 0, 0, 0.4); }"}</style>
+  </dialog>;
+}
+
 const zahlungsarten = [
   [12, "Rechnungskauf Apotheken"], [14, "Alliance Healthcare"],
   [1, "Bar"], [2, "Überweisung"], [6, "PayPal"],
 ];
 
-export function InkassoListe({ daten, onAuftrag = () => {} }) {
+export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {} }) {
+  const [notizRow, setNotizRow] = useState(null);
   const [feld, setFeld] = useState("datum");
   const [richtung, setRichtung] = useState(1);
   const [seite, setSeite] = useState(0);
@@ -153,7 +200,16 @@ export function InkassoListe({ daten, onAuftrag = () => {} }) {
               <a key={nummer} href={`tel:${nummer.replace(/[^+0-9]/g, "")}`} style={{ display: "block", whiteSpace: "nowrap", color: "#2C5A18" }}>{nummer}</a>)
               : row.telefone ? "Nicht hinterlegt" : "Noch nicht abgerufen"}</td>
             <td style={zelle}><Bestellung row={row} /></td>
-            <td style={zelle}>{row.mahnsperre ? "Mahnsperre in Wawi" : "—"}</td>
+            <td style={zelle}>
+              <button type="button" style={knopf} title={row.hinweis ? "Hinweis bearbeiten" : "Hinweis hinzufügen"}
+                aria-label={`${row.hinweis ? "Hinweis bearbeiten" : "Hinweis hinzufügen"}: ${row.nummer}`}
+                onClick={() => setNotizRow({ ...row })}>
+                {row.hinweis ? <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                  <path d="M4 3h16v12l-6 6H4z M14 21v-6h6 M8 8h8 M8 12h6" />
+                </svg> : "Hinweis hinzufügen"}
+              </button>
+              {row.mahnsperre && <small style={{ display: "block", marginTop: "6px" }}>Mahnsperre in Wawi</small>}
+            </td>
           </tr>)}</tbody>
         </table>
         {rows.length === 0 && <p style={{ padding: "24px", textAlign: "center" }}>Keine offenen Rechnungen für die ausgewählte Zahlungsart.</p>}
@@ -164,6 +220,7 @@ export function InkassoListe({ daten, onAuftrag = () => {} }) {
         <button style={knopf} disabled={aktuelle === letzte} onClick={() => setSeite(aktuelle + 1)}>Weiter</button>
       </div>}
     </>}
+    {notizRow && <HinweisEditor row={notizRow} onClose={() => setNotizRow(null)} onSaved={onHinweis} />}
   </>;
 }
 
@@ -194,7 +251,10 @@ export function InkassoView() {
     <h2 style={{ fontFamily: "'Source Serif 4', serif", fontWeight: 700, fontSize: "20px", color: "#2C5A18" }}>Inkasso</h2>
     {fehler && <p role="alert" style={{ color: "#A5462F", marginTop: "16px" }}>{fehler}</p>}
     {!daten && !fehler && <p role="status" style={{ marginTop: "16px" }}>Rechnungsstand wird geladen …</p>}
-    {daten && <InkassoListe daten={daten} onAuftrag={job => {
+    {daten && <InkassoListe daten={daten} onHinweis={(id, notiz) => {
+      setDaten(alt => ({ ...alt, rechnungen: alt.rechnungen.map(row => row.id === id ? { ...row, ...notiz } : row) }));
+      setLadeVersion(value => value + 1);
+    }} onAuftrag={job => {
       if (job) setDaten(alt => ({ ...alt, aktualisierung: job }));
       setLadeVersion(value => value + 1);
     }} />}

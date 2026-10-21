@@ -18,3 +18,5 @@ var/inkasso/
 var/inkasso-zugang/
 
 var/inkasso-auftraege/
+
+var/inkasso-notizen/

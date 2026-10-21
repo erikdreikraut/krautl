@@ -133,3 +133,34 @@ test("Auswahl aktualisieren sendet nur gefilterte IDs aller Seiten und sperrt wÃ
   assert.equal(button().props.disabled, true);
   assert.match(JSON.stringify(view.toJSON()), /51 Rechnungen warten/);
 });
+
+
+test("Hinweis: Entwurf bleibt beim Nachladen erhalten, Fehler behalten Text, Speichern liefert Revision", async t => {
+  const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" });
+  t.after(() => server.close());
+  const { InkassoListe } = await server.ssrLoadModule("/src/InkassoView.jsx");
+  const { api } = await server.ssrLoadModule("/src/api.js");
+  const original = api.inkassoHinweis;
+  t.after(() => { api.inkassoHinweis = original; });
+  let view, saved, fail = true;
+  t.after(() => view?.unmount());
+  api.inkassoHinweis = async (id, text, revision) => {
+    assert.deepEqual([id, text, revision], ["1", "Telefoniert", 3]);
+    if (fail) throw new Error("Konflikt");
+    return { hinweis: text, hinweis_revision: 4 };
+  };
+  const props = { daten: { rechnungen: [{ ...rows[0], hinweis: "Alt", hinweis_revision: 3 }], letzter_erfolg: "2026-10-21T12:00:00Z" }, onHinweis: (...args) => { saved = args; } };
+  await act(async () => { view = create(React.createElement(InkassoListe, props), { createNodeMock: () => ({ showModal() {} }) }); });
+  assert.equal(view.root.findAllByType("svg").length, 1);
+  await act(async () => view.root.findByProps({ "aria-label": "Hinweis bearbeiten: R1" }).props.onClick());
+  await act(async () => view.root.findByType("textarea").props.onChange({ target: { value: "Telefoniert" } }));
+  await act(async () => view.update(React.createElement(InkassoListe, { ...props, daten: { ...props.daten, rechnungen: [] } })));
+  assert.equal(view.root.findByType("textarea").props.value, "Telefoniert");
+  await act(async () => view.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  assert.match(JSON.stringify(view.toJSON()), /Konflikt/);
+  assert.equal(view.root.findByType("textarea").props.value, "Telefoniert");
+  fail = false;
+  await act(async () => view.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  assert.deepEqual(saved, ["1", { hinweis: "Telefoniert", hinweis_revision: 4 }]);
+  assert.equal(view.root.findAllByType("dialog").length, 0);
+});

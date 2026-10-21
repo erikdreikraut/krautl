@@ -1,6 +1,7 @@
 """Read-only JTL invoice snapshot; no payment or message writes."""
 import json
 import os
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -305,9 +306,12 @@ async def liste(request: Request, response: Response):
         data = status(lesen())
         from .inkasso_auftrag import oeffentlich
         data["aktualisierung"] = oeffentlich()
+        from .inkasso_notizen import lesen as notizen_lesen
+        notizen = notizen_lesen()
+        data["rechnungen"] = [{**row, **notizen.get(row["id"], {"hinweis": "", "hinweis_revision": 0})} for row in data["rechnungen"]]
         data.pop("faelle", None)
         return data
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError, sqlite3.Error):
         raise HTTPException(status_code=503, detail="Inkasso-Datenstand nicht lesbar; Prüfung erforderlich.") from None
 
 
@@ -358,3 +362,25 @@ async def auswahl_abrufen(client, data, ids, zeit=None):
     result["letzte_auswahlaktualisierung"] = zeit
     # Global freshness and the daily schedule must not be advanced by a partial refresh.
     return result
+
+
+class Hinweis(BaseModel):
+    text: StrictStr = Field(max_length=10000)
+    revision: int = Field(ge=0, strict=True)
+
+
+@router.put("/{invoice_id}/hinweis")
+def hinweis_speichern(invoice_id: str, body: Hinweis, request: Request, response: Response):
+    if not ist_admin(request.state.benutzer):
+        raise HTTPException(status_code=403, detail="Nur für Administratoren")
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        if invoice_id not in lesen().get("faelle", {}):
+            raise HTTPException(status_code=404, detail="Rechnung nicht im Inkasso-Bestand.")
+        from .inkasso_notizen import speichern as notiz_speichern
+        try:
+            return notiz_speichern(invoice_id, body.text, body.revision)
+        except ValueError:
+            raise HTTPException(status_code=409, detail="Der Hinweis wurde inzwischen geändert. Deinen Text kopieren und die Liste neu laden, bevor du die Hinweise zusammenführst.") from None
+    except (OSError, sqlite3.Error, ValueError, TypeError):
+        raise HTTPException(status_code=503, detail="Hinweis konnte nicht gespeichert werden.") from None

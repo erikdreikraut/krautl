@@ -25,6 +25,7 @@ services:
       - ./var/jtl-sync:/app/var/jtl-sync:ro
       - ./var/inkasso:/app/var/inkasso:ro
       - ./var/inkasso-auftraege:/app/var/inkasso-auftraege
+      - ./var/inkasso-notizen:/app/var/inkasso-notizen
     depends_on:
       db:
         condition: service_healthy

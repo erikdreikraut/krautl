@@ -897,3 +897,10 @@ Shoprechnungen; Nutzer hat diese Zahl bestätigt). Noch ausstehend: erweiterter
 Import mit JTL-Wawi und Stichproben zu Kanal, Datum, Name, Gesamt-/Restbetrag,
 Telefonnummern und Bestellübersicht. Admin-Zugang und Ablehnung als
 Sachbearbeiter prüfen. Lokal getesteter Code und ein Push sind kein Deployment.
+
+
+### Lokale Inkasso-Hinweise
+
+Die Hinweis-Spalte bietet einen Popup-Editor pro Rechnung. Gespeicherte Hinweise erscheinen als anklickbarer Notizzettel; leeres Speichern entfernt den Text. Die Wawi-Mahnsperre bleibt separat sichtbar. Nur Administratoren lesen und bearbeiten Inkasso-Hinweise. Gleichzeitige Bearbeitung wird anhand einer Revision erkannt (HTTP 409); der Editor behält den Entwurf.
+
+Notizen liegen unabhängig vom JTL-Snapshot in `var/inkasso-notizen/notizen.sqlite3` (nur App-Mount; optional `INKASSO_NOTIZEN_DIR`). Das Verzeichnis in Backups aufnehmen; eine laufende SQLite-Datenbank mit der SQLite-Backup-Funktion sichern oder die App zuvor stoppen. Die Tabelle entsteht beim ersten Speichern, ohne separate Migration. Weder Tagesabgleich noch Auswahlaktualisierung überschreiben Hinweise; auch abgeschlossene Fälle behalten ihre Notiz. Es erfolgt kein Schreiben nach JTL.
