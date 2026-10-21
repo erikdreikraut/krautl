@@ -155,7 +155,7 @@ test("Hinweis: Entwurf bleibt beim Nachladen erhalten, Fehler behalten Text, Spe
   const props = { daten: { rechnungen: [{ ...rows[0], hinweis: true, hinweise: [{ text: "Alt", nutzer: "erik", zeit: "2026-10-21T12:00:00Z" }] }], letzter_erfolg: "2026-10-21T12:00:00Z" }, onHinweis: (...args) => { saved = args; } };
   await act(async () => { view = create(React.createElement(InkassoListe, props), { createNodeMock: () => ({ showModal() {} }) }); });
   assert.equal(view.root.findAllByType("svg").length, 1);
-  await act(async () => view.root.findByProps({ "aria-label": "Hinweise ansehen: R1" }).props.onClick());
+  await act(async () => view.root.findByProps({ "aria-label": "Notizen ansehen: R1" }).props.onClick());
   assert.equal(view.root.findByType("textarea").props.value, "");
   assert.match(JSON.stringify(view.toJSON()), /Alt/);
   await act(async () => view.root.findByType("textarea").props.onChange({ target: { value: "Telefoniert" } }));

@@ -81,20 +81,20 @@ export function HinweisEditor({ row, onClose, onSaved }) {
       setSendet(false);
     }
   }
-  return <dialog ref={dialog} className="inkasso-hinweis" aria-label={`Hinweis zu Rechnung ${row.nummer}`}
+  return <dialog ref={dialog} className="inkasso-hinweis" aria-label={`Notizen zu Rechnung ${row.nummer}`}
     onCancel={event => { event.preventDefault(); if (!sperre.current) onClose(); }}
     style={{ margin: "auto", width: "min(560px, calc(100vw - 32px))", maxHeight: "85vh", overflow: "auto",
       padding: "24px", border: "1px solid #DDD9C4", borderRadius: "10px", background: "#FDFCEE", color: "#242A1F" }}>
     <form onSubmit={speichern}>
-      <h3 style={{ fontWeight: 600, marginBottom: "16px" }}>Hinweis zu Rechnung {row.nummer}</h3>
+      <h3 style={{ fontWeight: 600, marginBottom: "16px" }}>Notizen zu Rechnung {row.nummer}</h3>
       <div style={{ marginBottom: "16px" }}>
         {(row.hinweise || (typeof row.hinweis === "string" && row.hinweis ? [{ text: row.hinweis }] : [])).map((eintrag, index) =>
           <article key={index} style={{ padding: "10px 0", borderBottom: "1px solid #DDD9C4" }}>
-            <small>{eintrag.zeit ? `${zeit(eintrag.zeit)} · ${eintrag.nutzer}` : "Bestehender Hinweis · Datum und Nutzer nicht erfasst"}</small>
+            <small>{eintrag.zeit ? `${zeit(eintrag.zeit)} · ${eintrag.nutzer}` : "Bestehende Notiz · Datum und Nutzer nicht erfasst"}</small>
             <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{eintrag.text}</p>
           </article>)}
       </div>
-      <label>Neuer Hinweis
+      <label>Neue Notiz
         <textarea autoFocus value={text} maxLength={10000} disabled={sendet}
           onChange={event => setText(event.target.value)} rows={7}
           style={{ display: "block", width: "100%", padding: "10px", marginTop: "6px", border: "1px solid #DDD9C4", borderRadius: "5px", resize: "vertical" }} />
@@ -187,7 +187,9 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
       </p>}
       {!filterBereit && <p role="status" style={{ marginBottom: "16px" }}>Zahlungsarten fehlen im bisherigen Datenstand. Bis zum nächsten erfolgreichen Abgleich bleibt die Liste ungefiltert.</p>}
       <div style={{ overflowX: "auto", background: "#FDFCEE", border: "1px solid #DDD9C4", borderRadius: "6px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+        <table style={{ width: "100%", minWidth: "1400px", tableLayout: "fixed", borderCollapse: "collapse", textAlign: "left" }}>
+          <colgroup>{[9, 8, 14, 7, 7, 8, 14, 10, 23].map((width, index) =>
+            <col key={index} style={{ width: `${width}%` }} />)}</colgroup>
           <thead><tr>
             {[["datum", "Rechnungsdatum"], ["nummer", "Rechnungs-Nr."], ["kunde", "Kundenname"], ["kanal", "Kanal"], ["betrag", "Betrag"], ["offen", "Offener Betrag"]].map(([key, label]) =>
               <th key={key} scope="col" aria-sort={feld === key ? richtung === 1 ? "ascending" : "descending" : "none"}
@@ -196,12 +198,12 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
               </th>)}
             <th scope="col" style={zelle}>Telefonnummer(n)</th>
             <th scope="col" style={zelle}>Bestellung</th>
-            <th scope="col" style={zelle}>Hinweis</th>
+            <th scope="col" style={zelle}>Notiz / Letzte Aktion</th>
           </tr></thead>
           <tbody>{rows.slice(aktuelle * 50, (aktuelle + 1) * 50).map(row => <tr key={row.id}>
             <td style={{ ...zelle, whiteSpace: "nowrap" }}>{row.datum.split("-").reverse().join(".")}</td>
             <td style={zelle}>{row.nummer}</td>
-            <td style={{ ...zelle, fontWeight: 500 }}>{row.kunde}</td>
+            <td style={{ ...zelle, fontWeight: 500, overflowWrap: "anywhere" }}>{row.kunde}</td>
             <td style={zelle}>{row.kanal || "Noch nicht abgerufen"}</td>
             <td style={{ ...zelle, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{geld(row.betrag, row.waehrung)}</td>
             <td style={{ ...zelle, textAlign: "right", whiteSpace: "nowrap", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{geld(row.offen, row.waehrung)}</td>
@@ -210,13 +212,19 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
               : row.telefone ? "Keine Telefonnummer abgerufen" : "Noch nicht abgerufen"}</td>
             <td style={zelle}><Bestellung row={row} /></td>
             <td style={zelle}>
-              <button type="button" style={knopf} title={row.hinweis ? "Hinweise ansehen" : "Hinweis hinzufügen"}
-                aria-label={`${row.hinweis ? "Hinweise ansehen" : "Hinweis hinzufügen"}: ${row.nummer}`}
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              {row.hinweis && <p style={{ flex: 1, minWidth: 0, display: "-webkit-box", WebkitBoxOrient: "vertical",
+                WebkitLineClamp: 3, overflow: "hidden", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                {row.hinweise?.at(-1)?.text || (typeof row.hinweis === "string" ? row.hinweis : "Notiz vorhanden")}
+              </p>}
+              <button type="button" style={{ ...knopf, flexShrink: 0 }} title={row.hinweis ? "Notizen ansehen" : "Notiz hinzufügen"}
+                aria-label={`${row.hinweis ? "Notizen ansehen" : "Notiz hinzufügen"}: ${row.nummer}`}
                 onClick={() => setNotizRow({ ...row })}>
                 {row.hinweis ? <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
                   <path d="M4 3h16v12l-6 6H4z M14 21v-6h6 M8 8h8 M8 12h6" />
-                </svg> : "Hinweis hinzufügen"}
+                </svg> : "Notiz hinzufügen"}
               </button>
+              </div>
               {row.mahnsperre && <small style={{ display: "block", marginTop: "6px" }}>Mahnsperre in Wawi</small>}
             </td>
           </tr>)}</tbody>
