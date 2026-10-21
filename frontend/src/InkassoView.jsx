@@ -55,11 +55,21 @@ export function Bestellung({ row }) {
   </>;
 }
 
+const zahlungsarten = [
+  [12, "Rechnungskauf Apotheken"], [14, "Alliance Healthcare"],
+  [1, "Bar"], [2, "Überweisung"], [6, "PayPal"],
+];
+
 export function InkassoListe({ daten }) {
   const [feld, setFeld] = useState("datum");
   const [richtung, setRichtung] = useState(1);
   const [seite, setSeite] = useState(0);
-  const rows = useMemo(() => sortieren(daten.rechnungen, feld, richtung), [daten.rechnungen, feld, richtung]);
+  const [zahlungsart, setZahlungsart] = useState("12");
+  const filterBereit = daten.rechnungen.every(row => Number.isInteger(row.zahlungsart_id));
+  const rows = useMemo(() => sortieren(daten.rechnungen.filter(row => !filterBereit ||
+    (zahlungsart === "alle" ? zahlungsarten.some(([id]) => id === row.zahlungsart_id)
+      : row.zahlungsart_id === Number(zahlungsart))), feld, richtung),
+    [daten.rechnungen, feld, richtung, zahlungsart, filterBereit]);
   const letzte = Math.max(0, Math.ceil(rows.length / 50) - 1);
   const aktuelle = Math.min(seite, letzte);
   const waehlen = key => {
@@ -71,12 +81,21 @@ export function InkassoListe({ daten }) {
   return <>
     <div role={warnung ? "alert" : "status"} style={{ margin: "16px 0", padding: "12px 16px", borderRadius: "6px", background: warnung ? "#F3E7D2" : "#E8F0C8" }}>
       {!daten.letzter_erfolg ? <p>Noch kein erfolgreicher Rechnungsabruf. Die Liste ist noch nicht verfügbar.</p>
-        : <p>{rows.length} offene Rechnungen · Datenstand: {zeit(daten.letzter_erfolg)}</p>}
+        : <p>{rows.length} von {daten.rechnungen.length} offenen Rechnungen · Datenstand: {zeit(daten.letzter_erfolg)}</p>}
       {daten.status === "laeuft" && <p>Rechnungsabruf läuft. Ein vorhandener Datenstand bleibt bis zum Abschluss sichtbar.</p>}
       {daten.fehler && <p>Abruf fehlgeschlagen: {daten.fehler}</p>}
       {daten.veraltet && daten.letzter_erfolg && <p>Der Datenstand ist veraltet. Zahlungsstände vor weiterer Bearbeitung prüfen.</p>}
     </div>
     {daten.letzter_erfolg && <>
+      <label style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "16px" }}>
+        Zahlungsart
+        <select value={zahlungsart} disabled={!filterBereit} style={{ ...knopf, background: "#FDFCEE" }}
+          onChange={event => { setZahlungsart(event.target.value); setSeite(0); }}>
+          {zahlungsarten.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
+          <option value="alle">Alle relevanten Zahlungsarten</option>
+        </select>
+      </label>
+      {!filterBereit && <p role="status" style={{ marginBottom: "16px" }}>Zahlungsarten fehlen im bisherigen Datenstand. Bis zum nächsten erfolgreichen Abgleich bleibt die Liste ungefiltert.</p>}
       <div style={{ overflowX: "auto", background: "#FDFCEE", border: "1px solid #DDD9C4", borderRadius: "6px" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
           <thead><tr>
@@ -103,7 +122,7 @@ export function InkassoListe({ daten }) {
             <td style={zelle}>{row.mahnsperre ? "Mahnsperre in Wawi" : "—"}</td>
           </tr>)}</tbody>
         </table>
-        {rows.length === 0 && <p style={{ padding: "24px", textAlign: "center" }}>Keine offenen Rechnungen im betrachteten Inkasso-Bestand zum angezeigten Datenstand.</p>}
+        {rows.length === 0 && <p style={{ padding: "24px", textAlign: "center" }}>Keine offenen Rechnungen für die ausgewählte Zahlungsart.</p>}
       </div>
       {rows.length > 50 && <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "12px" }}>
         <button style={knopf} disabled={aktuelle === 0} onClick={() => setSeite(aktuelle - 1)}>Zurück</button>

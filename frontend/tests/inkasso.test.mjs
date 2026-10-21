@@ -75,3 +75,36 @@ test("Kanal, Telefonnummern und lokale Bestellübersicht; alter Snapshot bleibt 
     assert.match(text, expected);
   }
 });
+
+test("Zahlungsart: Apotheken als Standard, nur relevante Optionen, Auswahl bleibt bei Aktualisierung", async t => {
+  const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" });
+  t.after(() => server.close());
+  const { InkassoListe } = await server.ssrLoadModule("/src/InkassoView.jsx");
+  const data = { rechnungen: [
+    { ...rows[0], zahlungsart_id: 12 },
+    { ...rows[1], zahlungsart_id: 14 },
+    { ...rows[0], id: "3", nummer: "IRRELEVANT", zahlungsart_id: 4 },
+  ], letzter_erfolg: "2026-10-21T12:00:00Z", status: "ok" };
+  let view;
+  t.after(() => view?.unmount());
+  await act(async () => { view = create(React.createElement(InkassoListe, { daten: data })); });
+  const selection = () => view.root.findByType("select");
+  assert.equal(selection().props.value, "12");
+  assert.deepEqual(view.root.findAllByType("option").map(o => o.props.value), ["12", "14", "1", "2", "6", "alle"]);
+  const numbers = () => view.root.findAllByType("tbody")[0].findAllByType("tr").map(tr => tr.findAllByType("td")[1].children.join(""));
+  assert.deepEqual(numbers(), ["R1"]);
+  await act(async () => selection().props.onChange({ target: { value: "14" } }));
+  assert.deepEqual(numbers(), ["R2"]);
+  await act(async () => view.update(React.createElement(InkassoListe, { daten: { ...data } })));
+  assert.equal(selection().props.value, "14");
+  await act(async () => selection().props.onChange({ target: { value: "alle" } }));
+  assert.deepEqual(numbers(), ["R2", "R1"]);
+  assert.ok(!view.root.findAllByType("th").some(th => th.children.join("") === "Zahlungsart"));
+  await act(async () => selection().props.onChange({ target: { value: "6" } }));
+  assert.deepEqual(numbers(), []);
+  assert.match(JSON.stringify(view.toJSON()), /ausgewählte Zahlungsart/);
+  await act(async () => view.update(React.createElement(InkassoListe, { daten: { ...data, rechnungen: rows } })));
+  assert.equal(selection().props.disabled, true);
+  assert.deepEqual(numbers(), ["R2", "R1"]);
+  assert.match(JSON.stringify(view.toJSON()), /ungefiltert/);
+});

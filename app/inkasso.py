@@ -82,6 +82,9 @@ def rechnung(row):
     for key in ("IsCancelled", "DunningBlock"):
         if type(row.get(key)) is not bool:
             raise JtlFehler("JTL-Rechnungsstatus fehlt oder ist ungültig.")
+    zahlungsart = details.get("PaymentMethodId")
+    if type(zahlungsart) is not int or zahlungsart < 0:
+        raise JtlFehler("JTL-Zahlungsart-ID fehlt oder ist ungültig.")
     payment = details.get("PaymentStatus")
     if type(payment) is not int or payment not in (0, 1, 2):
         raise JtlFehler("Unbekannter JTL-Zahlungsstatus.")
@@ -97,6 +100,7 @@ def rechnung(row):
     if not name:
         raise JtlFehler("JTL liefert keinen Namen in der Rechnungsadresse.")
     return {"id": ident, "nummer": nummer, "datum": datum, "kunde": name,
+            "zahlungsart_id": zahlungsart,
             "betrag": str(betrag(details.get("TotalGrossAmount"))), "offen": str(offen),
             "waehrung": waehrung.upper(), "mahnsperre": row["DunningBlock"],
             "status": "storniert" if row["IsCancelled"] else "bezahlt" if offen <= 0 else "offen"}

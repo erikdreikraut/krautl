@@ -735,6 +735,17 @@ standardmäßig Datum aufsteigend; 50 Zeilen pro Seite. Noch nicht fällige
 Rechnungen sind enthalten. Es werden keine Mahnungen versendet und keine
 Zahlungen oder Rechnungen in Wawi verändert.
 
+Der Zahlungsartfilter bietet ausschließlich die vom Nutzer bestätigten IDs:
+12 Rechnungskauf Apotheken (Standard), 14 Alliance Healthcare, 1 Bar,
+2 Überweisung und 6 PayPal; dazu „Alle relevanten Zahlungsarten“.
+Die IDs/Namen wurden per `GET /v1/paymentMethods` live mit HTTP 200 bestätigt.
+Der Import speichert `InvoicePaymentDetails.PaymentMethodId` als
+`zahlungsart_id`, ohne weitere Zahlungsarten-Abfragen. Der Dropdownfilter
+wirkt lokal vor Sortierung/Paginierung und löscht keine Vorgänge aus dem
+Bestand. Keine eigene Zahlungsartspalte. Bei alten Snapshots ohne diese IDs
+bleibt die Liste mit Hinweis ungefiltert und der Filter bis zum nächsten
+vollständigen Import deaktiviert. Bestehende Auswahl bleibt beim Polling erhalten.
+
 **Aufnahme und dauerhafter Bestand:** Neu aufgenommen werden ausschließlich offene
 Rechnungen der bestätigten Kanäle dreikraut-Shop `2-2-1` und JTL-Wawi `1-1-0` mit Rechnungsdatum zwischen
 heute minus zwölf Kalendermonaten und heute (jeweils einschließlich, Europe/Berlin;

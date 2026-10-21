@@ -22,7 +22,7 @@ def invoice(n=1, date="2026-01-02T23:00:00", payment=1, due=25.5, cancelled=Fals
     return {"Id": n, "Number": f"RE-{n}", "InvoiceDate": date,
             "IsCancelled": cancelled, "DunningBlock": False,
             "BillingAddress": {"FirstName": "Erika", "LastName": "Muster"},
-            "InvoicePaymentDetails": {"PaymentStatus": payment, "StillToPay": due,
+            "InvoicePaymentDetails": {"PaymentMethodId": 12, "PaymentStatus": payment, "StillToPay": due,
                                       "TotalGrossAmount": 100, "CurrencyIso": "EUR"}}
 
 
@@ -79,6 +79,7 @@ class AuswahlTest(unittest.TestCase):
         self.assertEqual(result["offen"], "25.5")
         self.assertTrue(result["mahnsperre"])
         self.assertEqual(result["status"], "offen")
+        self.assertEqual(result["zahlungsart_id"], 12)
         self.assertEqual(inkasso.rechnung(invoice(due=0, payment=2))["status"], "bezahlt")
         self.assertEqual(inkasso.rechnung(invoice(cancelled=True))["status"], "storniert")
 
