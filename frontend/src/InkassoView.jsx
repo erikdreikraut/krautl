@@ -147,8 +147,8 @@ export function InkassoZuweisung({ row, nutzer, onSaved }) {
   }
   return <>
     <select aria-label={`Zuweisen: ${row.nummer}`} value={row.zuweisung || ""} disabled={sendet}
-      onChange={waehlen} style={{ ...knopf, width: "100%", background: "#FDFCEE" }}>
-      <option value="">Nicht zugewiesen</option>
+      onChange={waehlen} style={{ ...knopf, width: "100%", padding: "6px 8px", background: "#FDFCEE" }}>
+      <option value="" aria-label="Nicht zugewiesen"></option>
       {nutzer.map(user => <option key={user.benutzername} value={user.benutzername}>{user.name}</option>)}
     </select>
     {fehler && <small role="alert" style={{ display: "block", color: "#A5462F" }}>{fehler}</small>}
@@ -234,8 +234,11 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
         {index === 1 && <h3 style={{ margin: "28px 0 12px", fontSize: "18px", fontWeight: 600, color: "#2C5A18" }}>Noch nicht fällig</h3>}
       <div style={{ overflowX: "auto", background: "#FDFCEE", border: "1px solid #DDD9C4", borderRadius: "6px" }}>
         <table style={{ width: "100%", minWidth: "1400px", tableLayout: "fixed", borderCollapse: "collapse", textAlign: "left" }}>
-          <colgroup>{[8, 8, 13, 6, 7, 12, 10, 23, 13].map((width, index) =>
-            <col key={index} style={{ width: `${width}%` }} />)}</colgroup>
+          <colgroup>
+            {[8, 8, 13, 6, 7, 12, 10].map((width, index) => <col key={index} style={{ width: `${width}%` }} />)}
+            <col style={{ width: "calc(36% - 132px)" }} />
+            <col style={{ width: "132px" }} />
+          </colgroup>
           <thead><tr>
             {[["datum", "Rechnungsdatum"], ["nummer", "Rechnungs-Nr."], ["kunde", "Kundenname"], ["betrag", "Betrag"], ["offen", "Offener Betrag"]].map(([key, label]) =>
               <th key={key} scope="col" aria-sort={feld === key ? richtung === 1 ? "ascending" : "descending" : "none"}
