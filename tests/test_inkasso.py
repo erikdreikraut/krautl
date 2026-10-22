@@ -525,7 +525,7 @@ class InkassoZuweisungTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(result.status_code, 200)
                 self.assertFalse(result.json()["mir_zugewiesen"])
                 note = result.json()["hinweise"][-1]
-                self.assertEqual(note["text"], "Erik Schweitzer zugewiesen")
+                self.assertEqual(note["text"], "Erik zugewiesen")
                 self.assertEqual(note["nutzer"], "ludwig")
                 self.assertIsNotNone(datetime.fromisoformat(note["zeit"]).tzinfo)
                 self.assertEqual((await web.put(url, json=body, headers=cookie("erik"))).status_code, 409)
@@ -542,6 +542,7 @@ class InkassoZuweisungTest(unittest.IsolatedAsyncioTestCase):
                 data = (await web.get("/inkasso", headers=cookie("ludwig"))).json()
                 self.assertFalse(next(r for r in data["rechnungen"] if r["id"] == "1")["mir_zugewiesen"])
                 self.assertEqual({u["benutzername"] for u in data["zuweisbare_nutzer"]}, {"erik", "aneta", "ludwig", "gursewak", "micha"})
+                self.assertEqual({u["name"] for u in data["zuweisbare_nutzer"]}, {"Erik", "Aneta", "Ludwig", "Gursewak", "Micha"})
                 result = await web.put(url, json={"nutzer": "", "revision": 2}, headers=cookie("erik"))
                 self.assertFalse(result.json()["mir_zugewiesen"])
                 self.assertEqual(len(result.json()["hinweise"]), 3)

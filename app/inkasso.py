@@ -328,7 +328,7 @@ async def liste(request: Request, response: Response):
         data["rechnungen"] = [{**row, **notizen.get(row["id"], {"hinweis": False, "hinweise": []})} for row in data["rechnungen"]]
         from .inkasso_notizen import zuweisungen_lesen
         zuweisungen = zuweisungen_lesen()
-        data["zuweisbare_nutzer"] = [{"benutzername": u["benutzername"], "name": u["name"]} for u in BENUTZER.values() if u.get("rolle") in (ROLLE_ADMIN, ROLLE_SACHBEARBEITER)]
+        data["zuweisbare_nutzer"] = [{"benutzername": u["benutzername"], "name": u["name"].split()[0]} for u in BENUTZER.values() if u.get("rolle") in (ROLLE_ADMIN, ROLLE_SACHBEARBEITER)]
         for row in data["rechnungen"]:
             row.update(zuweisungen.get(row["id"], {"zuweisung": "", "zuweisung_revision": 0}))
             row["mir_zugewiesen"] = row["zuweisung"] == request.state.benutzer.get("benutzername")
@@ -433,7 +433,7 @@ def rechnung_zuweisen(invoice_id: str, body: Zuweisung, request: Request, respon
             raise HTTPException(status_code=422, detail="Unbekannter Zuweisungsempfänger.")
         from .inkasso_notizen import zuweisen
         try:
-            result = zuweisen(invoice_id, body.nutzer, body.revision, request.state.benutzer["benutzername"], ziel["name"] if ziel else None)
+            result = zuweisen(invoice_id, body.nutzer, body.revision, request.state.benutzer["benutzername"], ziel["name"].split()[0] if ziel else None)
         except ValueError:
             raise HTTPException(status_code=409, detail="Zuweisung wurde inzwischen geändert. Bitte die aktualisierte Auswahl erneut prüfen.") from None
         return {**result, "mir_zugewiesen": body.nutzer == request.state.benutzer["benutzername"]}
