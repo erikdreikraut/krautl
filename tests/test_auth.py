@@ -25,14 +25,14 @@ class AuthTest(unittest.TestCase):
             self.assertEqual(("Erik Schweitzer", "admin"), (erik["name"], erik["rolle"]))
             self.assertEqual(("Gursewak Singh", "sachbearbeiter"), (gursewak["name"], gursewak["rolle"]))
             self.assertEqual(("Ludwig Schnorrenberg", "sachbearbeiter"), (ludwig["name"], ludwig["rolle"]))
-            self.assertEqual(("Aneta", "sachbearbeiter"), (aneta["name"], aneta["rolle"]))
+            self.assertEqual(("Aneta Mikolajec", "sachbearbeiter"), (aneta["name"], aneta["rolle"]))
             self.assertIsNone(aneta["titel"])
             self.assertIsNone(anmelden("erik", "falsch"))
 
     def test_micha_anmeldung_sitzung_und_fehlendes_passwort(self):
         with patch.dict(os.environ, self.umgebung, clear=False):
             micha = anmelden(" Micha ", "micha-test-passwort")
-            self.assertEqual(("Micha", "sachbearbeiter"), (micha["name"], micha["rolle"]))
+            self.assertEqual(("Micha Durst", "sachbearbeiter"), (micha["name"], micha["rolle"]))
             self.assertIsNone(micha["titel"])
             self.assertEqual("micha", sitzung_lesen(sitzung_erstellen("micha"))["benutzername"])
             self.assertIsNone(anmelden("micha", "falsch"))

@@ -39,3 +39,7 @@
 - Inkasso-Anzeige nach Rechnungsalter trennen: ab 56 Kalendertagen oben, jüngere offene Rechnungen darunter unter „Noch nicht fällig“. Stichtag Europe/Berlin; reine Anzeigegruppierung unabhängig vom Wawi-Zahlungsziel. Filter/Auswahlaktualisierung gelten für beide Abschnitte.
 
 - Inkasso-Zuweisung rechts per Dropdown an einzelne Nutzer, nicht Rollen/Abteilungen. Dropdown und neue automatische Zuweisungsnotizen verwenden einheitlich nur den Vornamen; bestehende Protokolleinträge bleiben unverändert. Alle Rechnungen bleiben für alle Admins/Sachbearbeiter sichtbar. Nur der konkret zugewiesene aktive Nutzer sieht die Zeile blassrot. Zuweisung getrennt vom Wawi-Snapshot speichern und atomar mit unveränderbarem Notizeintrag „Name zugewiesen“ samt ausführendem Nutzer/Zeitstempel protokollieren; Aufheben ebenfalls protokollieren.
+
+## Nutzernamen
+
+- Vollständige zentrale Anzeigenamen: Erik Schweitzer, Gursewak Singh, Ludwig Schnorrenberg, Aneta Mikolajec und Micha Durst. Mail-Signaturen verwenden diese vollständigen Namen. Bewusst kurze Anzeigen (insbesondere Inkasso-Zuweisungen) bleiben bei Vornamen; historische Protokolle und bereits versendete Mails nicht umschreiben.

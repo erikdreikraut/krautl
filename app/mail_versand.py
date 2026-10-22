@@ -9,6 +9,7 @@ from email.message import EmailMessage
 from email.utils import formatdate, make_msgid, parseaddr
 
 from .models import Mail
+from .auth import BENUTZER
 
 
 GEMEINSAME_SIGNATUR = "-- \n" + """\
@@ -41,6 +42,7 @@ def _smtp_einstellungen() -> dict:
 
 
 def antwort_mit_signatur(antworttext: str, benutzer: dict) -> str:
+    bekannte_namen = {u["name"] for u in BENUTZER.values()} | {"Aneta", "Micha"}
     kopf = [benutzer["name"]]
     if benutzer.get("titel"):
         kopf.append(benutzer["titel"])
@@ -52,14 +54,9 @@ def antwort_mit_signatur(antworttext: str, benutzer: dict) -> str:
     if marker in text:
         text = text.split(marker, 1)[0].rstrip()
         zeilen = text.splitlines()
-        if zeilen and zeilen[-1].strip() in {
-            "Erik Schweitzer", "Gursewak Singh", "Ludwig Schnorrenberg", "Aneta",
-            "Auszubildender",
-        }:
+        if zeilen and zeilen[-1].strip() in bekannte_namen | {"Auszubildender"}:
             zeilen.pop()
-            if zeilen and zeilen[-1].strip() in {
-                "Erik Schweitzer", "Gursewak Singh", "Ludwig Schnorrenberg", "Aneta",
-            }:
+            if zeilen and zeilen[-1].strip() in bekannte_namen:
                 zeilen.pop()
             text = "\n".join(zeilen).rstrip()
     return f"{text}\n\n{signatur}\n"

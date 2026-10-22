@@ -34,14 +34,14 @@ BENUTZER = {
     },
     "micha": {
         "benutzername": "micha",
-        "name": "Micha",
+        "name": "Micha Durst",
         "titel": None,
         "rolle": "sachbearbeiter",
         "passwort_env": "KRAUTL_PASSWORD_MICHA",
     },
     "aneta": {
         "benutzername": "aneta",
-        "name": "Aneta",
+        "name": "Aneta Mikolajec",
         "titel": None,
         "rolle": "sachbearbeiter",
         "passwort_env": "KRAUTL_PASSWORD_ANETA",

@@ -158,3 +158,16 @@ Fax +49 202 2531 2301
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VollstaendigeSignaturnamenTest(unittest.TestCase):
+    def test_profile_names_and_old_signatures_are_replaced_without_duplicates(self):
+        from app.auth import BENUTZER
+        from app.mail_versand import antwort_mit_signatur, GEMEINSAME_SIGNATUR
+        for key, full_name, short_name in (("aneta", "Aneta Mikolajec", "Aneta"), ("micha", "Micha Durst", "Micha")):
+            with self.subTest(user=key):
+                expected = f"Antwort\n\n{full_name}\n{GEMEINSAME_SIGNATUR}\n"
+                self.assertEqual(antwort_mit_signatur("Antwort", BENUTZER[key]), expected)
+                self.assertEqual(antwort_mit_signatur(expected, BENUTZER[key]), expected)
+                old = f"Antwort\n\n{short_name}\n{GEMEINSAME_SIGNATUR}\n"
+                self.assertEqual(antwort_mit_signatur(old, BENUTZER[key]), expected)
