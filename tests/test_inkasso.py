@@ -499,7 +499,49 @@ class UnbekannteInkassoRolleTest(unittest.IsolatedAsyncioTestCase):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="https://test") as web:
                 headers = {"Cookie": f"{COOKIE_NAME}={sitzung_erstellen('gast')}"}
                 for method, url, body in (("GET", "/inkasso", None),
+                        ("PUT", "/inkasso/1/zuweisung", {"nutzer": "erik", "revision": 0}),
                         ("POST", "/inkasso/aktualisieren", {"ids": ["1"]}),
                         ("POST", "/inkasso/1/hinweis", {"text": "Test", "anfrage_id": str(uuid4())})):
                     result = await web.request(method, url, headers=headers, json=body)
                     self.assertEqual(result.status_code, 403)
+
+
+class InkassoZuweisungTest(unittest.IsolatedAsyncioTestCase):
+    async def test_assignment_visibility_revision_history_and_sync(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {
+                "KRAUTL_SESSION_SECRET": "inkasso-test-secret", "INKASSO_DIR": folder,
+                "INKASSO_NOTIZEN_DIR": folder, "INKASSO_AUFTRAG_DIR": str(Path(folder)/"jobs")}):
+            before = await Server([invoice(1), invoice(2)]).run()
+            inkasso.speichern(before)
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="https://test") as web:
+                def cookie(user):
+                    return {"Cookie": f"{COOKIE_NAME}={sitzung_erstellen(user)}"}
+                url = "/inkasso/1/zuweisung"
+                body = {"nutzer": "erik", "revision": 0}
+                self.assertEqual((await web.put(url, json=body)).status_code, 401)
+                self.assertEqual((await web.put(url, json={**body, "nutzer": "unknown"}, headers=cookie("erik"))).status_code, 422)
+                self.assertEqual((await web.put("/inkasso/999/zuweisung", json=body, headers=cookie("erik"))).status_code, 404)
+                result = await web.put(url, json=body, headers=cookie("ludwig"))
+                self.assertEqual(result.status_code, 200)
+                self.assertFalse(result.json()["mir_zugewiesen"])
+                note = result.json()["hinweise"][-1]
+                self.assertEqual(note["text"], "Erik Schweitzer zugewiesen")
+                self.assertEqual(note["nutzer"], "ludwig")
+                self.assertIsNotNone(datetime.fromisoformat(note["zeit"]).tzinfo)
+                self.assertEqual((await web.put(url, json=body, headers=cookie("erik"))).status_code, 409)
+                inkasso.speichern(before)
+                for user, mine in (("erik", True), ("ludwig", False), ("aneta", False)):
+                    data = (await web.get("/inkasso", headers=cookie(user))).json()
+                    self.assertEqual(len(data["rechnungen"]), 2)
+                    row = next(r for r in data["rechnungen"] if r["id"] == "1")
+                    self.assertEqual(row["mir_zugewiesen"], mine)
+                    self.assertEqual(row["hinweise"], [note])
+                result = await web.put(url, json={"nutzer": "aneta", "revision": 1}, headers=cookie("aneta"))
+                self.assertTrue(result.json()["mir_zugewiesen"])
+                self.assertEqual(result.json()["hinweise"][-1]["text"], "Aneta zugewiesen")
+                data = (await web.get("/inkasso", headers=cookie("ludwig"))).json()
+                self.assertFalse(next(r for r in data["rechnungen"] if r["id"] == "1")["mir_zugewiesen"])
+                self.assertEqual({u["benutzername"] for u in data["zuweisbare_nutzer"]}, {"erik", "aneta", "ludwig", "gursewak", "micha"})
+                result = await web.put(url, json={"nutzer": "", "revision": 2}, headers=cookie("erik"))
+                self.assertFalse(result.json()["mir_zugewiesen"])
+                self.assertEqual(len(result.json()["hinweise"]), 3)

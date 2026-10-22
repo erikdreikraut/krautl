@@ -124,7 +124,38 @@ const zahlungsarten = [
   [1, "Bar"], [2, "Überweisung"], [6, "PayPal"],
 ];
 
-export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {} }) {
+export function InkassoZuweisung({ row, nutzer, onSaved }) {
+  const [sendet, setSendet] = useState(false);
+  const [fehler, setFehler] = useState("");
+  const sperre = useRef(false);
+  async function waehlen(event) {
+    if (sperre.current) return;
+    const ziel = event.target.value;
+    sperre.current = true;
+    setSendet(true);
+    setFehler("");
+    try {
+      const result = await api.inkassoZuweisen(row.id, ziel, row.zuweisung_revision || 0);
+      onSaved(row.id, result);
+    } catch (error) {
+      setFehler(error.message);
+      onSaved();
+    } finally {
+      sperre.current = false;
+      setSendet(false);
+    }
+  }
+  return <>
+    <select aria-label={`Zuweisen: ${row.nummer}`} value={row.zuweisung || ""} disabled={sendet}
+      onChange={waehlen} style={{ ...knopf, width: "100%", background: "#FDFCEE" }}>
+      <option value="">Nicht zugewiesen</option>
+      {nutzer.map(user => <option key={user.benutzername} value={user.benutzername}>{user.name}</option>)}
+    </select>
+    {fehler && <small role="alert" style={{ display: "block", color: "#A5462F" }}>{fehler}</small>}
+  </>;
+}
+
+export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}, onZuweisung = () => {} }) {
   const [notizRow, setNotizRow] = useState(null);
   const [feld, setFeld] = useState("datum");
   const [richtung, setRichtung] = useState(1);
@@ -203,10 +234,10 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
         {index === 1 && <h3 style={{ margin: "28px 0 12px", fontSize: "18px", fontWeight: 600, color: "#2C5A18" }}>Noch nicht fällig</h3>}
       <div style={{ overflowX: "auto", background: "#FDFCEE", border: "1px solid #DDD9C4", borderRadius: "6px" }}>
         <table style={{ width: "100%", minWidth: "1400px", tableLayout: "fixed", borderCollapse: "collapse", textAlign: "left" }}>
-          <colgroup>{[9, 8, 14, 7, 7, 8, 14, 10, 23].map((width, index) =>
+          <colgroup>{[8, 8, 13, 6, 7, 12, 10, 23, 13].map((width, index) =>
             <col key={index} style={{ width: `${width}%` }} />)}</colgroup>
           <thead><tr>
-            {[["datum", "Rechnungsdatum"], ["nummer", "Rechnungs-Nr."], ["kunde", "Kundenname"], ["kanal", "Kanal"], ["betrag", "Betrag"], ["offen", "Offener Betrag"]].map(([key, label]) =>
+            {[["datum", "Rechnungsdatum"], ["nummer", "Rechnungs-Nr."], ["kunde", "Kundenname"], ["betrag", "Betrag"], ["offen", "Offener Betrag"]].map(([key, label]) =>
               <th key={key} scope="col" aria-sort={feld === key ? richtung === 1 ? "ascending" : "descending" : "none"}
                 style={{ ...zelle, fontSize: "12px", fontWeight: 500, whiteSpace: "nowrap", textAlign: ["betrag", "offen"].includes(key) ? "right" : "left" }}>
                 <button onClick={() => waehlen(key)} style={{ cursor: "pointer", color: "#2C5A18" }}>{label}{feld === key ? richtung === 1 ? " ↑" : " ↓" : " ↕"}</button>
@@ -214,12 +245,12 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
             <th scope="col" style={zelle}>Telefonnummer(n)</th>
             <th scope="col" style={zelle}>Bestellung</th>
             <th scope="col" style={zelle}>Notiz / Letzte Aktion</th>
+            <th scope="col" style={zelle}>Zuweisen</th>
           </tr></thead>
-          <tbody>{gruppe.slice(aktuelle * 50, (aktuelle + 1) * 50).map(row => <tr key={row.id}>
+          <tbody>{gruppe.slice(aktuelle * 50, (aktuelle + 1) * 50).map(row => <tr key={row.id} style={{ background: row.mir_zugewiesen ? "#FBE5E3" : undefined }}>
             <td style={{ ...zelle, whiteSpace: "nowrap" }}>{row.datum.split("-").reverse().join(".")}</td>
             <td style={zelle}>{row.nummer}</td>
             <td style={{ ...zelle, fontWeight: 500, overflowWrap: "anywhere" }}>{row.kunde}</td>
-            <td style={zelle}>{row.kanal || "Noch nicht abgerufen"}</td>
             <td style={{ ...zelle, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{geld(row.betrag, row.waehrung)}</td>
             <td style={{ ...zelle, textAlign: "right", whiteSpace: "nowrap", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{geld(row.offen, row.waehrung)}</td>
             <td style={zelle}>{row.telefone?.length ? row.telefone.map(nummer =>
@@ -242,6 +273,7 @@ export function InkassoListe({ daten, onAuftrag = () => {}, onHinweis = () => {}
               </div>
               {row.mahnsperre && <small style={{ display: "block", marginTop: "6px" }}>Mahnsperre in Wawi</small>}
             </td>
+            <td style={zelle}><InkassoZuweisung row={row} nutzer={daten.zuweisbare_nutzer || []} onSaved={onZuweisung} /></td>
           </tr>)}</tbody>
         </table>
         {rows.length === 0 && <p style={{ padding: "24px", textAlign: "center" }}>Keine offenen Rechnungen für die ausgewählte Zahlungsart.</p>}
@@ -285,7 +317,10 @@ export function InkassoView() {
     <h2 style={{ fontFamily: "'Source Serif 4', serif", fontWeight: 700, fontSize: "20px", color: "#2C5A18" }}>Inkasso</h2>
     {fehler && <p role="alert" style={{ color: "#A5462F", marginTop: "16px" }}>{fehler}</p>}
     {!daten && !fehler && <p role="status" style={{ marginTop: "16px" }}>Rechnungsstand wird geladen …</p>}
-    {daten && <InkassoListe daten={daten} onHinweis={(id, notiz) => {
+    {daten && <InkassoListe daten={daten} onZuweisung={(id, zuweisung) => {
+      if (id && zuweisung) setDaten(alt => ({ ...alt, rechnungen: alt.rechnungen.map(row => row.id === id ? { ...row, ...zuweisung } : row) }));
+      setLadeVersion(value => value + 1);
+    }} onHinweis={(id, notiz) => {
       setDaten(alt => ({ ...alt, rechnungen: alt.rechnungen.map(row => row.id === id ? { ...row, ...notiz } : row) }));
       setLadeVersion(value => value + 1);
     }} onAuftrag={job => {

@@ -88,9 +88,9 @@ test("Zahlungsart: Apotheken als Standard, nur relevante Optionen, Auswahl bleib
   let view;
   t.after(() => view?.unmount());
   await act(async () => { view = create(React.createElement(InkassoListe, { daten: data })); });
-  const selection = () => view.root.findByType("select");
+  const selection = () => view.root.findAllByType("select")[0];
   assert.equal(selection().props.value, "12");
-  assert.deepEqual(view.root.findAllByType("option").map(o => o.props.value), ["12", "14", "1", "2", "6", "alle"]);
+  assert.deepEqual(selection().findAllByType("option").map(o => o.props.value), ["12", "14", "1", "2", "6", "alle"]);
   const numbers = () => view.root.findAllByType("tbody").flatMap(body => body.findAllByType("tr")).map(tr => tr.findAllByType("td")[1].children.join(""));
   assert.deepEqual(numbers(), ["R1"]);
   await act(async () => selection().props.onChange({ target: { value: "14" } }));
@@ -181,4 +181,31 @@ test("Acht-Wochen-Grenze folgt Berliner Kalendertagen, auch beim Sommerzeitwechs
   assert.deepEqual(split("2026-10-20T22:30:00Z"), [["56", "57"], ["55"]]);
   const spring = altersgruppen([{ datum: "2026-02-02" }, { datum: "2026-02-03" }], new Date("2026-03-29T22:30:00Z"));
   assert.deepEqual(spring.map(group => group.length), [1, 1]);
+});
+
+
+test("Zuweisung hebt eigene Zeilen hervor, ersetzt Kanal und speichert per Dropdown", async t => {
+  const server = await createServer({ server: { middlewareMode: true, hmr: false }, appType: "custom" });
+  t.after(() => server.close());
+  const { InkassoListe } = await server.ssrLoadModule("/src/InkassoView.jsx");
+  const { api } = await server.ssrLoadModule("/src/api.js");
+  const original = api.inkassoZuweisen;
+  t.after(() => { api.inkassoZuweisen = original; });
+  let saved, view;
+  t.after(() => view?.unmount());
+  api.inkassoZuweisen = async (...args) => {
+    assert.deepEqual(args, ["1", "erik", 2]);
+    return { zuweisung: "erik", zuweisung_revision: 3, mir_zugewiesen: true };
+  };
+  await act(async () => { view = create(React.createElement(InkassoListe, {
+    daten: { zuweisbare_nutzer: [{ benutzername: "erik", name: "Erik Schweitzer" }], rechnungen: [{ ...rows[0], zuweisung_revision: 2, mir_zugewiesen: true }, rows[1]], letzter_erfolg: "2026-10-21T12:00:00Z" },
+    onZuweisung: (...args) => { saved = args; }
+  })); });
+  const invoiceRows = view.root.findAllByType("tbody").flatMap(body => body.findAllByType("tr"));
+  assert.equal(invoiceRows.length, 2);
+  assert.equal(invoiceRows.filter(row => row.props.style?.background === "#FBE5E3").length, 1);
+  assert.ok(!view.root.findAllByType("th").some(th => JSON.stringify(th.children.map(c => typeof c === "string" ? c : c.props.children)).includes('Kanal')));
+  await act(async () => view.root.findByProps({ "aria-label": "Zuweisen: R1" }).props.onChange({ target: { value: "erik" } }));
+  assert.equal(saved[0], "1");
+  assert.equal(saved[1].zuweisung_revision, 3);
 });

@@ -915,3 +915,10 @@ Die Parallelregistrierung `krautl-inkasso-lesen` fordert `all.read`, `invoices.r
 5. App/Frontend bauen und aktualisieren, Inkasso-Dienst mit neuem Image starten: `docker compose build app frontend` und `docker compose --profile inkasso up -d --no-deps app frontend inkasso-sync`. Danach kann Auswahl aktualisieren fehlende Telefonnummern gezielt ergänzen.
 
 Telefon-Fallback: nur wenn Rechnung und gespeicherte Auftragsdaten keine Nummer enthalten, wird `/v1/customers/{CustomerId}` gelesen und dessen `BillingAddress` ausgewertet. Pro Lauf wird derselbe Kunde nur einmal abgefragt. Die Antwort-ID muss passen. Fehler brechen den Abgleich ohne Teilübernahme ab. Der alte Zugang bleibt kompatibel und versucht keinen unberechtigten Kundenabruf.
+
+
+### Inkasso-Zuweisung an einzelne Nutzer
+
+Die rechte Spalte Zuweisen ersetzt die Kanalspalte. Admins und Sachbearbeiter können jede erfasste Rechnung per Dropdown einem einzelnen aktiven Nutzer zuweisen oder die Zuweisung aufheben. Die Liste aller Rechnungen bleibt für beide Rollen sichtbar; die Zuordnung ist keine Zugriffssperre. Nur beim zugewiesenen Nutzer wird die Zeile blassrot markiert.
+
+Die Tabelle `zuweisungen` in `var/inkasso-notizen/notizen.sqlite3` entsteht beim ersten Zuweisen automatisch. Wawi-Synchronisationen verändern sie nicht. Jede Zuweisung schreibt in derselben Transaktion einen Notizeintrag `Name zugewiesen` (beim Aufheben `Zuweisung aufgehoben`) mit serverseitiger Nutzerkennung und Zeitstempel. Gleichzeitige Änderungen werden durch eine Revision geschützt; bei HTTP 409 die neu geladene Zuordnung prüfen. Notizen und Zuweisungen gemeinsam sichern, wie oben für SQLite beschrieben. Keine separate Migration und keine neuen JTL-Rechte erforderlich.

@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, StrictStr
 from .berechtigungen import ROLLE_ADMIN, ROLLE_SACHBEARBEITER
 from .jtl_client import JtlFehler
+from .auth import BENUTZER
 
 KANAL = "2-2-1"  # Confirmed dreikraut shop, also used by FAQ integration.
 KANAELE = {KANAL: "JTL-Shop", "1-1-0": "JTL-Wawi"}
@@ -325,6 +326,12 @@ async def liste(request: Request, response: Response):
         from .inkasso_notizen import lesen as notizen_lesen
         notizen = notizen_lesen()
         data["rechnungen"] = [{**row, **notizen.get(row["id"], {"hinweis": False, "hinweise": []})} for row in data["rechnungen"]]
+        from .inkasso_notizen import zuweisungen_lesen
+        zuweisungen = zuweisungen_lesen()
+        data["zuweisbare_nutzer"] = [{"benutzername": u["benutzername"], "name": u["name"]} for u in BENUTZER.values() if u.get("rolle") in (ROLLE_ADMIN, ROLLE_SACHBEARBEITER)]
+        for row in data["rechnungen"]:
+            row.update(zuweisungen.get(row["id"], {"zuweisung": "", "zuweisung_revision": 0}))
+            row["mir_zugewiesen"] = row["zuweisung"] == request.state.benutzer.get("benutzername")
         data.pop("faelle", None)
         return data
     except (OSError, ValueError, TypeError, sqlite3.Error):
@@ -406,3 +413,29 @@ def hinweis_speichern(invoice_id: str, body: Hinweis, request: Request, response
             raise HTTPException(status_code=409, detail="Diese Speicheranfrage wurde bereits mit anderem Inhalt verwendet. Bitte den Hinweis erneut öffnen.") from None
     except (OSError, sqlite3.Error, ValueError, TypeError):
         raise HTTPException(status_code=503, detail="Hinweis konnte nicht gespeichert werden.") from None
+
+
+class Zuweisung(BaseModel):
+    nutzer: StrictStr = Field(max_length=100)
+    revision: int = Field(ge=0, strict=True)
+
+
+@router.put("/{invoice_id}/zuweisung")
+def rechnung_zuweisen(invoice_id: str, body: Zuweisung, request: Request, response: Response):
+    if request.state.benutzer.get("rolle") not in (ROLLE_ADMIN, ROLLE_SACHBEARBEITER):
+        raise HTTPException(status_code=403, detail="Kein Zugriff auf Inkasso")
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        if invoice_id not in lesen().get("faelle", {}):
+            raise HTTPException(status_code=404, detail="Rechnung nicht im Inkasso-Bestand.")
+        ziel = BENUTZER.get(body.nutzer) if body.nutzer else None
+        if body.nutzer and (not ziel or ziel.get("rolle") not in (ROLLE_ADMIN, ROLLE_SACHBEARBEITER)):
+            raise HTTPException(status_code=422, detail="Unbekannter Zuweisungsempfänger.")
+        from .inkasso_notizen import zuweisen
+        try:
+            result = zuweisen(invoice_id, body.nutzer, body.revision, request.state.benutzer["benutzername"], ziel["name"] if ziel else None)
+        except ValueError:
+            raise HTTPException(status_code=409, detail="Zuweisung wurde inzwischen geändert. Bitte die aktualisierte Auswahl erneut prüfen.") from None
+        return {**result, "mir_zugewiesen": body.nutzer == request.state.benutzer["benutzername"]}
+    except (OSError, sqlite3.Error, ValueError, TypeError):
+        raise HTTPException(status_code=503, detail="Zuweisung konnte nicht gespeichert werden.") from None

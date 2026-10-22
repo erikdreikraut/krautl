@@ -26,7 +26,7 @@
 
 ## Inkasso
 
-- Für Admins und alle Sachbearbeiter zugänglich, einschließlich Auswahlaktualisierung und Hinzufügen von Notizen; eigener Hauptmenüpunkt rechts neben Rechnungen. Nur bestätigte Kanäle JTL-Shop `2-2-1` und JTL-Wawi `1-1-0` (v1-Auftragsalias `1-1-1`, anhand RE315603 bestätigt); Herkunft in der Kanalspalte anzeigen. Telefonnummern aus Rechnungs-/Auftragsrechnungsadressen und eine lokale Auftragsübersicht als modales Pop-up anbieten.
+- Für Admins und alle Sachbearbeiter zugänglich, einschließlich Auswahlaktualisierung und Hinzufügen von Notizen; eigener Hauptmenüpunkt rechts neben Rechnungen. Nur bestätigte Kanäle JTL-Shop `2-2-1` und JTL-Wawi `1-1-0` (v1-Auftragsalias `1-1-1`, anhand RE315603 bestätigt); Herkunft in der Bestellübersicht erhalten; keine Kanalspalte in der Inkasso-Liste. Telefonnummern aus Rechnungs-/Auftragsrechnungsadressen und eine lokale Auftragsübersicht als modales Pop-up anbieten.
 - Neuaufnahme offener Rechnungen maximal aus den letzten zwölf Kalendermonaten. Einmal erfasste Fälle unabhängig vom Alter weiter prüfen; bezahlte/stornierte Fälle als abgeschlossen erhalten. Abruffehler sind niemals ein Zahlungsnachweis.
 - Dauerhafte eigene Lese-App `krautl-inkasso` mit `invoices.read`, `salesorders.read`, `saleschannels.read`; FAQ-Zugang unverändert lassen. API-v1-Rechnungen über Positionen und Aufträge dem Shop zuordnen. Registrierungs- und Betriebsablauf siehe README, Abschnitt Inkasso.
 
@@ -37,3 +37,5 @@
 - Erweiterter Lesezugang: Parallelregistrierung `krautl-inkasso-lesen` mit `all.read` plus expliziten Rechnungs-, Auftrags-, Verkaufskanal- und Kundenleserechten. Alten Zugang erst nach erfolgreichen API-Pruefungen atomar ersetzen und sichern; FAQ/Werkel unveraendert. Fehlende Telefonnummern gezielt per CustomerId aus BillingAddress ergaenzen, Kundenantwort-ID validieren und pro Lauf cachen. Ablauf in README.
 
 - Inkasso-Anzeige nach Rechnungsalter trennen: ab 56 Kalendertagen oben, jüngere offene Rechnungen darunter unter „Noch nicht fällig“. Stichtag Europe/Berlin; reine Anzeigegruppierung unabhängig vom Wawi-Zahlungsziel. Filter/Auswahlaktualisierung gelten für beide Abschnitte.
+
+- Inkasso-Zuweisung rechts per Dropdown an einzelne Nutzer, nicht Rollen/Abteilungen. Alle Rechnungen bleiben für alle Admins/Sachbearbeiter sichtbar. Nur der konkret zugewiesene aktive Nutzer sieht die Zeile blassrot. Zuweisung getrennt vom Wawi-Snapshot speichern und atomar mit unveränderbarem Notizeintrag „Name zugewiesen“ samt ausführendem Nutzer/Zeitstempel protokollieren; Aufheben ebenfalls protokollieren.
