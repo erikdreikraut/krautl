@@ -148,7 +148,7 @@ export function InkassoZuweisung({ row, nutzer, onSaved }) {
   return <>
     <select aria-label={`Zuweisen: ${row.nummer}`} value={row.zuweisung || ""} disabled={sendet}
       onChange={waehlen} style={{ ...knopf, width: "100%", padding: "6px 8px", background: "#FDFCEE" }}>
-      <option value="" aria-label="Nicht zugewiesen"></option>
+      <option value="">Alle</option>
       {nutzer.map(user => <option key={user.benutzername} value={user.benutzername}>{user.name}</option>)}
     </select>
     {fehler && <small role="alert" style={{ display: "block", color: "#A5462F" }}>{fehler}</small>}
