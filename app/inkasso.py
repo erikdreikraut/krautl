@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field, StrictStr
-from .berechtigungen import ist_admin
+from .berechtigungen import ROLLE_ADMIN, ROLLE_SACHBEARBEITER
 from .jtl_client import JtlFehler
 
 KANAL = "2-2-1"  # Confirmed dreikraut shop, also used by FAQ integration.
@@ -315,8 +315,8 @@ def status(data, zeit=None):
 
 @router.get("")
 async def liste(request: Request, response: Response):
-    if not ist_admin(request.state.benutzer):
-        raise HTTPException(status_code=403, detail="Nur für Administratoren")
+    if request.state.benutzer.get("rolle") not in (ROLLE_ADMIN, ROLLE_SACHBEARBEITER):
+        raise HTTPException(status_code=403, detail="Kein Zugriff auf Inkasso")
     response.headers["Cache-Control"] = "no-store"
     try:
         data = status(lesen())
@@ -337,8 +337,8 @@ class AuswahlAktualisierung(BaseModel):
 
 @router.post("/aktualisieren", status_code=202)
 def aktualisieren(body: AuswahlAktualisierung, request: Request, response: Response):
-    if not ist_admin(request.state.benutzer):
-        raise HTTPException(status_code=403, detail="Nur für Administratoren")
+    if request.state.benutzer.get("rolle") not in (ROLLE_ADMIN, ROLLE_SACHBEARBEITER):
+        raise HTTPException(status_code=403, detail="Kein Zugriff auf Inkasso")
     response.headers["Cache-Control"] = "no-store"
     ids = list(dict.fromkeys(body.ids))
     try:
@@ -391,8 +391,8 @@ class Hinweis(BaseModel):
 
 @router.post("/{invoice_id}/hinweis")
 def hinweis_speichern(invoice_id: str, body: Hinweis, request: Request, response: Response):
-    if not ist_admin(request.state.benutzer):
-        raise HTTPException(status_code=403, detail="Nur für Administratoren")
+    if request.state.benutzer.get("rolle") not in (ROLLE_ADMIN, ROLLE_SACHBEARBEITER):
+        raise HTTPException(status_code=403, detail="Kein Zugriff auf Inkasso")
     response.headers["Cache-Control"] = "no-store"
     if not body.text.strip():
         raise HTTPException(status_code=422, detail="Bitte einen neuen Hinweis eingeben.")

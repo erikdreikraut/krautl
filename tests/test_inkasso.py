@@ -244,7 +244,7 @@ class AbrufTest(unittest.IsolatedAsyncioTestCase):
             inkasso.speichern(await Server([invoice()]).run(), folder)
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="https://test") as web:
                 self.assertEqual((await web.get("/inkasso")).status_code, 401)
-                for user, code in (("ludwig", 403), ("erik", 200)):
+                for user, code in (("ludwig", 200), ("erik", 200), ("aneta", 200), ("micha", 200), ("gursewak", 200)):
                     response = await web.get("/inkasso", headers={"Cookie": f"{COOKIE_NAME}={sitzung_erstellen(user)}"})
                     self.assertEqual(response.status_code, code)
                     if code == 200:
@@ -362,7 +362,7 @@ class AuswahlAktualisierenTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([r["id"] for r in inkasso.lesen(folder)["rechnungen"]], ["2"])
             self.assertFalse(await inkasso_service.auswahl_lauf(folder, Server().client))
 
-    async def test_admin_only_known_ids_and_duplicate_requests(self):
+    async def test_staff_known_ids_and_duplicate_requests(self):
         with tempfile.TemporaryDirectory() as folder, tempfile.TemporaryDirectory() as queue, patch.dict(os.environ, {
                 "KRAUTL_SESSION_SECRET": "inkasso-test-secret", "INKASSO_DIR": folder, "INKASSO_AUFTRAG_DIR": queue}):
             inkasso.speichern(await Server([invoice()]).run(), folder)
@@ -370,10 +370,9 @@ class AuswahlAktualisierenTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual((await web.post("/inkasso/aktualisieren", json={"ids": ["1"]})).status_code, 401)
                 def cookie(user):
                     return {"Cookie": f"{COOKIE_NAME}={sitzung_erstellen(user)}"}
-                self.assertEqual((await web.post("/inkasso/aktualisieren", headers=cookie("ludwig"), json={"ids": ["1"]})).status_code, 403)
                 self.assertEqual((await web.post("/inkasso/aktualisieren", headers=cookie("erik"), json={"ids": ["999"]})).status_code, 409)
                 self.assertEqual((await web.post("/inkasso/aktualisieren", headers=cookie("erik"), json={"ids": []})).status_code, 422)
-                response = await web.post("/inkasso/aktualisieren", headers=cookie("erik"), json={"ids": ["1", "1"]})
+                response = await web.post("/inkasso/aktualisieren", headers=cookie("ludwig"), json={"ids": ["1", "1"]})
                 self.assertEqual(response.status_code, 202)
                 self.assertEqual(response.json()["anzahl"], 1)
                 self.assertNotIn("ids", response.json())
@@ -403,7 +402,6 @@ class NotizenTest(unittest.IsolatedAsyncioTestCase):
                 admin = {"Cookie": f"{COOKIE_NAME}={sitzung_erstellen('erik')}"}
                 user = {"Cookie": f"{COOKIE_NAME}={sitzung_erstellen('ludwig')}"}
                 self.assertEqual((await web.post(url, json=body)).status_code, 401)
-                self.assertEqual((await web.post(url, json=body, headers=user)).status_code, 403)
                 self.assertEqual((await web.post("/inkasso/999/hinweis", json=body, headers=admin)).status_code, 404)
                 self.assertEqual((await web.post(url, json={**body, "text": "x"*10001}, headers=admin)).status_code, 422)
                 self.assertEqual((await web.post(url, json={**body, "text": "  "}, headers=admin)).status_code, 422)
@@ -417,8 +415,9 @@ class NotizenTest(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNotNone(datetime.fromisoformat(notes[1]["zeit"]).tzinfo)
                 self.assertEqual((await web.post(url, json=body, headers=admin)).json()["hinweise"], notes)
                 self.assertEqual((await web.post(url, json={**body, "text": "anders"}, headers=admin)).status_code, 409)
-                result = await web.post(url, json={"text": "Zweiter Eintrag", "anfrage_id": str(uuid4())}, headers=admin)
+                result = await web.post(url, json={"text": "Zweiter Eintrag", "anfrage_id": str(uuid4())}, headers=user)
                 self.assertEqual(len(result.json()["hinweise"]), 3)
+                self.assertEqual(result.json()["hinweise"][-1]["nutzer"], "ludwig")
                 inkasso.speichern(before)
                 result = (await web.get("/inkasso", headers=admin)).json()
                 self.assertEqual(result["rechnungen"][0]["hinweise"][:2], notes)
@@ -489,3 +488,18 @@ class LesezugangTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["faelle"]["3"]["telefone"], [])
         self.assertEqual(sum("/customers/" in path for path in requests), 1)
         self.assertEqual(len(requests), 3)
+
+
+class UnbekannteInkassoRolleTest(unittest.IsolatedAsyncioTestCase):
+    async def test_unknown_role_stays_forbidden(self):
+        from app.auth import BENUTZER
+        from uuid import uuid4
+        with patch.dict(os.environ, {"KRAUTL_SESSION_SECRET": "inkasso-test-secret"}), patch.dict(BENUTZER, {
+                "gast": {"benutzername": "gast", "rolle": "gast"}}):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="https://test") as web:
+                headers = {"Cookie": f"{COOKIE_NAME}={sitzung_erstellen('gast')}"}
+                for method, url, body in (("GET", "/inkasso", None),
+                        ("POST", "/inkasso/aktualisieren", {"ids": ["1"]}),
+                        ("POST", "/inkasso/1/hinweis", {"text": "Test", "anfrage_id": str(uuid4())})):
+                    result = await web.request(method, url, headers=headers, json=body)
+                    self.assertEqual(result.status_code, 403)

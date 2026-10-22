@@ -715,10 +715,9 @@ vorbereitet. Der automatische Schreibabgleich ist noch nicht implementiert oder
 aktiviert. Einrichtung, bestätigte Zielattribute und offene Abnahme: siehe
 [ops/jtl/README.md](ops/jtl/README.md).
 
-### Inkasso: offene Rechnungen aus JTL-Shop und JTL-Wawi (nur Admin)
+### Inkasso: offene Rechnungen aus JTL-Shop und JTL-Wawi (Admins und Sachbearbeiter)
 
-Der Hauptmenüpunkt **Inkasso** steht rechts neben **Rechnungen** ausschließlich
-Administratoren zur Verfügung. Auch `GET /inkasso` prüft die Adminrolle und
+Der Hauptmenüpunkt **Inkasso** steht rechts neben **Rechnungen** Admins und Sachbearbeitern zur Verfügung. Alle Inkasso-Endpunkte prüfen diese Rollen und
 antwortet mit `Cache-Control: no-store`. Die Übersicht zeigt Rechnungsdatum,
 Rechnungsnummer, Kundenname aus der Rechnungsadresse, Bruttobetrag, offenen
 Restbetrag, Kanal, Telefonnummern und Mahnsperre. Ein modales Pop-up in der
@@ -747,7 +746,7 @@ bleibt die Liste mit Hinweis ungefiltert und der Filter bis zum nächsten
 vollständigen Import deaktiviert. Bestehende Auswahl bleibt beim Polling erhalten.
 
 **Auswahl aktualisieren:** Der Button übergibt genau die IDs des aktuellen
-Zahlungsartfilters (alle Tabellenseiten, Anzahl am Button). Nur Admins dürfen
+Zahlungsartfilters (alle Tabellenseiten, Anzahl am Button). Admins und Sachbearbeiter dürfen
 `POST /inkasso/aktualisieren` verwenden. Zulässig sind ausschließlich aktuell
 bekannte offene Rechnungen, maximal 5.000 IDs, doppelte IDs werden entfernt.
 Die Web-App schreibt einen dauerhaften Auftrag nach `var/inkasso-auftraege/`;
@@ -895,13 +894,12 @@ Bisherige Serverabnahme: dauerhafte App registriert, alle drei Lesezugriffe
 HTTP 200, erster Shop-Import erfolgreich (13.020 Kandidaten, zwei offene
 Shoprechnungen; Nutzer hat diese Zahl bestätigt). Noch ausstehend: erweiterter
 Import mit JTL-Wawi und Stichproben zu Kanal, Datum, Name, Gesamt-/Restbetrag,
-Telefonnummern und Bestellübersicht. Admin-Zugang und Ablehnung als
-Sachbearbeiter prüfen. Lokal getesteter Code und ein Push sind kein Deployment.
+Telefonnummern und Bestellübersicht. Zugriff als Admin und Sachbearbeiter sowie Ablehnung unbekannter Rollen prüfen. Lokal getesteter Code und ein Push sind kein Deployment.
 
 
 ### Lokale Inkasso-Hinweise
 
-Die Hinweis-Spalte bietet ein fortlaufendes Protokoll im Popup. Vorhandene Einträge sind unveränderbar; neue Texte werden mit dem Button Hinzufügen gespeichert. Der Server ergänzt die angemeldete Nutzerkennung und einen UTC-Zeitstempel (Anzeige Europe/Berlin). Leere Einträge werden abgewiesen. Eine eindeutige Anfrage-ID verhindert doppelte Einträge beim Wiederholen derselben Speicheranfrage. Nur Administratoren haben Zugriff. Bestehende Notizen bleiben unverändert erhalten und werden mangels historischer Metadaten ausdrücklich als Altbestand ohne Datum/Nutzer angezeigt. Die Wawi-Mahnsperre bleibt separat sichtbar.
+Die Hinweis-Spalte bietet ein fortlaufendes Protokoll im Popup. Vorhandene Einträge sind unveränderbar; neue Texte werden mit dem Button Hinzufügen gespeichert. Der Server ergänzt die angemeldete Nutzerkennung und einen UTC-Zeitstempel (Anzeige Europe/Berlin). Leere Einträge werden abgewiesen. Eine eindeutige Anfrage-ID verhindert doppelte Einträge beim Wiederholen derselben Speicheranfrage. Administratoren und Sachbearbeiter haben Zugriff. Bestehende Notizen bleiben unverändert erhalten und werden mangels historischer Metadaten ausdrücklich als Altbestand ohne Datum/Nutzer angezeigt. Die Wawi-Mahnsperre bleibt separat sichtbar.
 
 Notizen liegen unabhängig vom JTL-Snapshot in `var/inkasso-notizen/notizen.sqlite3` (nur App-Mount; optional `INKASSO_NOTIZEN_DIR`). Das Verzeichnis in Backups aufnehmen; eine laufende SQLite-Datenbank mit der SQLite-Backup-Funktion sichern oder die App zuvor stoppen. Die Tabelle entsteht beim ersten Speichern, ohne separate Migration. Weder Tagesabgleich noch Auswahlaktualisierung überschreiben Hinweise; auch abgeschlossene Fälle behalten ihre Notiz. Es erfolgt kein Schreiben nach JTL.
 
