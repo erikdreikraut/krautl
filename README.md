@@ -1099,3 +1099,23 @@ Testexport 23.10.2026: SKU 20810, acht Positionen, JTL-Shop-Filter vom Nutzer
 bestätigt. Alle acht Dateien lokal gelesen und gegen die Größen der CSV geprüft.
 Vorbereitete Datei lokal unter `var/bilder/20810-shop-vorschauen.json` (nicht in Git).
 Noch kein Import in den Produktivbestand ausgeführt.
+
+### Proforma-Belege im Rechnungseingang
+
+Mitgesendete Proforma-Rechnungen (auch Pro-forma / Pro forma invoice) und
+Vorausrechnungen gehören in Krautls Rechnungseingang. Die Dokumentauswertung
+muss den konkreten Beleg bestätigen; die Bezeichnung allein bestimmt keinen
+Zahlungsstatus. Reine Anfragen, Muster, Angebote und angekündigte spätere
+Zusendungen bleiben davon getrennt.
+
+Die Einkaufsschutzregel berücksichtigt eindeutige Proforma-Anhangsnamen und
+darf bestätigte Rechnungsbelege nicht wegen gleichzeitiger Bestellbestätigung
+zur Lieferanten-Auftragsbestätigung herabstufen. Bestehende Absenderregeln und
+die Prüfung des tatsächlichen Anhangs bleiben aktiv.
+
+Historische Fehlklassifikationen werden nicht pauschal neu verarbeitet.
+Die konkrete Mail über „Ansehen“ öffnen und die Kategorie auf Rechnungseingang
+korrigieren; der vorhandene Korrekturablauf legt die Rechnungsaufgabe an und
+führt sie aus. Anschließend Rechnungsdatensatz und Dateiablage prüfen.
+Der Screenshot vom 05.10. allein belegt die Fehlkategorie, aber nicht, ob
+Modellentscheidung oder Einkaufsschutzregel im konkreten Fall ausschlaggebend war.

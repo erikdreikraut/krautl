@@ -124,6 +124,15 @@ Rechnung, einen Rechnungsanhang, eine Rechnungsnummer, einen Zahlungsbeleg oder
 eine konkrete Zahlungsforderung enthält. Ein Kaufpreis, eine Bestellnummer oder
 eine Zahlungsart innerhalb einer Bestellbestätigung genügt dafür nicht.
 
+PROFORMA-RECHNUNGEN:
+Eine tatsächlich mitgesendete Proforma-Rechnung (auch Pro-forma-Rechnung,
+Pro forma invoice, Proforma Invoice oder Vorausrechnung) gehört für die
+Belegablage zu RECHNUNG_EINGANG. Das gilt auch, wenn der Begleittext zugleich
+die Bestellung bestätigt oder die Lieferung ankündigt. Berücksichtige die
+Anhangsnamen. Bloße Anfragen nach einer Proforma-Rechnung, angekündigte spätere
+Zusendungen, Muster und unverbindliche Angebote sind dagegen kein übermittelter
+Rechnungsbeleg. Leite aus der Bezeichnung allein keinen Zahlungsstatus ab.
+
 STEUERN:
 Nachrichten zu Steuerberatung, Finanzbuchhaltung, Umsatzsteuer, Voranmeldungen,
 Steuererklärungen, Steuerbescheiden, Fristen oder Korrespondenz mit Finanzämtern
@@ -409,6 +418,22 @@ def ebay_verkaufszuordnung_absichern(
     return abgesichert
 
 
+PROFORMA_BEZEICHNUNG = re.compile(
+    r"(?<![a-z])(?:pro[\s_-]*forma(?:[\s_-]*(?:rechnung|invoice))?|vorausrechnung)(?![a-z])",
+    re.IGNORECASE,
+)
+
+
+def hat_proforma_anhang(mail: dict) -> bool:
+    for name in mail.get("anhang_dateinamen") or []:
+        name = str(name).casefold()
+        if (name.endswith((".pdf", ".png", ".jpg", ".jpeg"))
+                and PROFORMA_BEZEICHNUNG.search(name)
+                and not re.search(r"muster|template|sample|example|anfrage|request|entwurf|draft", name)):
+            return True
+    return False
+
+
 def einkaufszuordnung_absichern(
     ergebnis: dict, mail: dict, katalog: list[dict]
 ) -> dict:
@@ -435,6 +460,18 @@ def einkaufszuordnung_absichern(
         "invoice number",
     ))
     katalog_ids = {eintrag["klassifikation_id"] for eintrag in katalog}
+    proforma_anhang = hat_proforma_anhang(mail)
+    if (proforma_anhang and "RECHNUNG_EINGANG" in katalog_ids
+            and ergebnis.get("klassifikation_id") in {
+                "LIEFERANT_AUFTRAGSBESTAETIGUNG", "LIEFERANT_DIVERSES",
+                "RECHNUNG_EINGANG", "UNGEKLAERT"}):
+        return {**ergebnis, "klassifikation_id": "RECHNUNG_EINGANG",
+                "aktion_erforderlich": True}
+    proforma_uebersendet = bool(PROFORMA_BEZEICHNUNG.search(text)) and any(
+        marker in text for marker in ("anbei", "beigefügt", "im anhang", "attached", "enclosed")
+    ) and any(str(n).casefold().endswith((".pdf", ".png", ".jpg", ".jpeg"))
+              for n in mail.get("anhang_dateinamen") or [])
+    hat_rechnungsbeleg = hat_rechnungsbeleg or proforma_anhang or proforma_uebersendet
     if (
         ergebnis.get("klassifikation_id") == "RECHNUNG_EINGANG"
         and ist_bestellbestaetigung

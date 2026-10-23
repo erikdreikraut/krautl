@@ -266,6 +266,36 @@ class KlassifizierungsPromptTest(unittest.TestCase):
         )
         self.assertEqual("RECHNUNG_EINGANG", ergebnis["klassifikation_id"])
 
+    def test_attached_proforma_overrides_order_confirmation(self):
+        katalog = [{"klassifikation_id": k} for k in ("RECHNUNG_EINGANG", "LIEFERANT_AUFTRAGSBESTAETIGUNG")]
+        for filename in ("Proforma-4711.pdf", "Pro-forma-Rechnung.pdf", "Pro forma invoice 123.PDF",
+                         "Vorausrechnung-2026.pdf"):
+            with self.subTest(filename=filename):
+                result = einkaufszuordnung_absichern(
+                    {"klassifikation_id": "LIEFERANT_AUFTRAGSBESTAETIGUNG"},
+                    {"betreff":"Bestellung bestätigt", "anhang_dateinamen":[filename]}, katalog)
+                self.assertEqual(result["klassifikation_id"], "RECHNUNG_EINGANG")
+
+    def test_proforma_request_or_template_is_not_forced_into_invoice(self):
+        katalog = [{"klassifikation_id": k} for k in ("RECHNUNG_EINGANG", "LIEFERANT_AUFTRAGSBESTAETIGUNG")]
+        for attachments in ([], ["AGB.pdf"], ["Proforma-Muster.pdf"], ["request-proforma.pdf"], ["proforma.exe"]):
+            with self.subTest(attachments=attachments):
+                result = einkaufszuordnung_absichern(
+                    {"klassifikation_id":"LIEFERANT_AUFTRAGSBESTAETIGUNG"},
+                    {"betreff":"Bitte senden Sie eine Proforma-Rechnung", "anhang_dateinamen":attachments}, katalog)
+                self.assertEqual(result["klassifikation_id"], "LIEFERANT_AUFTRAGSBESTAETIGUNG")
+        result = einkaufszuordnung_absichern(
+            {"klassifikation_id":"SPAM_WERBUNG"}, {"anhang_dateinamen":["Proforma.pdf"]}, katalog)
+        self.assertEqual(result["klassifikation_id"], "SPAM_WERBUNG")
+
+    def test_proforma_invoice_result_not_demoted_by_order_wording(self):
+        result = einkaufszuordnung_absichern(
+            {"klassifikation_id":"RECHNUNG_EINGANG"},
+            {"betreff":"Bestellung bestätigt", "text_auszug":"Anbei die Proforma-Rechnung.",
+             "anhang_dateinamen":["Beleg.pdf"]},
+            [{"klassifikation_id":"LIEFERANT_AUFTRAGSBESTAETIGUNG"}])
+        self.assertEqual(result["klassifikation_id"], "RECHNUNG_EINGANG")
+
     def test_ebay_verkauf_wird_technisch_abgesichert(self):
         self.assertIn("EBAY-VERKAUFSBEST", KLASSIFIZIERUNGS_SYSTEMPROMPT)
         self.assertIn("BESTELLUNG_EBAY", KLASSIFIZIERUNGS_SYSTEMPROMPT)
