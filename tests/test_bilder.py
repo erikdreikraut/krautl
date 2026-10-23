@@ -372,6 +372,19 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(store.lesen()["artikel"][0]["name"], row["name"])
         self.assertTrue(store.lesen()["artikel"][0]["ausgeblendet"])
 
+    async def test_targeted_article_diagnostic_downloads_no_images(self):
+        from scripts import pruefe_bilder_api as diagnostic
+        with patch.object(diagnostic.OnPremClient, "aus_umgebung", return_value=self.client()), patch("builtins.print"):
+            await diagnostic.artikel_pruefen("A-2")
+        self.assertEqual([p for _, p in self.requests], ["/api/eazybusiness/v2/items", "/api/eazybusiness/v2/items/" + uid(2)])
+        self.assertEqual(store.lesen()["artikel"], [])
+        self.fail_path = "/v2/items/" + uid(2)
+        self.fail_status = 500
+        with patch.object(diagnostic.OnPremClient, "aus_umgebung", return_value=self.client()), patch("builtins.print") as output:
+            with self.assertRaisesRegex(JtlFehler, "Detailprüfung"):
+                await diagnostic.artikel_pruefen("A-2")
+        self.assertTrue(any("Serverantwort:" in str(c) for c in output.call_args_list))
+
     async def test_api_roles_hide_thumbnail_and_single_run(self):
         await self.run_sync()
         thumb = store.lesen()["artikel"][0]["bilder"][0]["thumb"]

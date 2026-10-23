@@ -1044,3 +1044,21 @@ docker compose up -d --no-deps app frontend
 Keine neue Wawi-App und keine Postgres-Migration notwendig. Neue SQLite-Tabellen
 entstehen beim ersten Zugriff. Produktivnachweis steht bis zur erfolgreichen
 API-Prüfung und dem ersten vollständigen manuellen Abruf aus.
+
+Die Bilderübersicht bündelt Laufstatus, unvollständigen Bestand und die Anzahl
+fehlender Bilder in einem Statusfeld. Technische Fehlermeldungen sind aufklappbar.
+„Nur Artikel mit Bildfehlern“ filtert lokal, ohne einen Wawi-Abruf auszulösen;
+der Filter für ausgeblendete Artikel bleibt unabhängig.
+
+Bei einem Fehler der Artikeldetails gezielt nur die betreffende Artikelnummer
+prüfen (Beispiel des am 23.10. beobachteten HTTP 500):
+
+```bash
+cd /opt/app/krautl
+docker compose exec -T app python -u -m scripts.pruefe_bilder_api --artikel 20562-50
+```
+
+Die Prüfung liest den Katalog bis zum Treffer und dessen Details, keine Bilder.
+Sie gibt bei Fehlern eine begrenzte, bereinigte Serverantwort aus und ändert
+keinen Bestand. HTTP 500 allein erklärt die Ursache noch nicht; Bildfehler und
+Artikel-Detailfehler nicht gleichsetzen.

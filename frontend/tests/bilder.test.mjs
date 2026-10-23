@@ -53,7 +53,7 @@ test("Bilder-Popup speichert Ausblenden mit Revision; Filter erlaubt erneutes Ei
   let view;
   await act(async () => { view = create(React.createElement(BilderView), {createNodeMock: e=>e.type==="dialog" ? {showModal(){}}:null}); });
   t.after(()=>act(()=>view.unmount()));
-  assert.match(JSON.stringify(view.toJSON()), /Unvollständiger Zwischenstand/);
+  assert.match(JSON.stringify(view.toJSON()), /Abgleich noch unvollständig/);
   const button = name => view.root.findAllByType("button").find(b=>b.children.includes(name));
   assert.equal(calls.filter(([,o])=>o.method==="POST").length, 0);
   await act(async()=>button("Kräuter").props.onClick());
@@ -85,4 +85,26 @@ test("Fehlendes Bild bleibt als Platzhalter mit Position sichtbar und wird nach 
   await act(async()=>view.update(React.createElement(BilderListe,{artikel})));
   assert.equal(view.root.findAllByType("img").length,2);
   assert.equal(view.root.findAllByProps({role:"img"}).length,0);
+});
+
+test("Ein Status trennt Artikelabbruch und Bildfehler; Filter erhält Ausblendungen", async t => {
+  const server = await createServer({server:{middlewareMode:true, hmr:false}, appType:"custom"});
+  t.after(()=>server.close());
+  const {BilderStatus, gruppieren} = await server.ssrLoadModule("/src/BilderView.jsx");
+  const artikel = structuredClone(rows);
+  artikel[0].bilder=[{id:"bad",thumb:null,fehler:"HTTP 400",position:5}];
+  artikel[2].bilder=[{id:"hidden-bad",thumb:null,fehler:"HTTP 404",position:1}];
+  let view;
+  await act(async()=>{view=create(React.createElement(BilderStatus,{daten:{
+    artikel,teilstand:true,status:"fehler",fehler:"Artikel 20562-50 (Details): Direkte JTL-API: HTTP 500."
+  }}));});
+  t.after(()=>act(()=>view.unmount()));
+  const text=JSON.stringify(view.toJSON());
+  assert.equal(view.root.findAllByProps({role:"alert"}).length,1);
+  assert.match(text,/Abgleich abgebrochen/);
+  assert.match(text,/20562-50/);
+  assert.match(text,/Ursache ist noch ungeklärt/);
+  assert.equal(view.root.findAllByType("details").length,1);
+  assert.deepEqual(gruppieren(artikel,false,"",true).flatMap(g=>g.artikel.map(a=>a.id)),["parent"]);
+  assert.equal(gruppieren(artikel,true,"",true).flatMap(g=>g.artikel).length,2);
 });

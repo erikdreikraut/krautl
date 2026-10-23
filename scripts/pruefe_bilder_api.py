@@ -75,13 +75,43 @@ async def main(alle=False):
         raise JtlFehler("Kein aktiver, sichtbarer Shop-Artikel mit Bildern in den geprüften Seiten gefunden.")
 
 
+async def artikel_pruefen(sku):
+    """Read only one matching article's details; no image downloads or snapshot writes."""
+    async with OnPremClient.aus_umgebung() as client:
+        for page in range(1, 10001):
+            data = await client._request("GET", "/v2/items", params={"pageNumber": page, "pageSize": 100})
+            for row in data.get("items", []):
+                if row.get("sKU", row.get("sku")) != sku:
+                    continue
+                key = ident(row.get("id"))
+                alt = next((a for a in speicher.lesen()["artikel"] if a["id"] == key), {})
+                if not speicher.freigegeben(key, alt.get("revision", 0)):
+                    raise JtlFehler("Artikel ist ausgeblendet; kein Detailabruf.")
+                async with client.http.stream("GET", client.url + "/v2/items/" + key) as response:
+                    print("Artikeldetails:", sku, "| HTTP", response.status_code, flush=True)
+                    if response.status_code != 200:
+                        inhalt = bytearray()
+                        async for chunk in response.aiter_bytes():
+                            inhalt.extend(chunk[:8192 - len(inhalt)])
+                            if len(inhalt) >= 8192:
+                                break
+                        print("Serverantwort:", bereinigen(inhalt.decode("utf-8", errors="replace"), response.request), flush=True)
+                        raise JtlFehler("Detailprüfung fehlgeschlagen; nichts geändert.")
+                    print("Detailabruf erfolgreich; keine Bilder geladen und nichts geändert.")
+                    return
+            if data.get("hasNextPage") is False:
+                break
+        raise JtlFehler("Artikelnummer nicht im Katalog gefunden.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--artikel", help="Nur Details dieser Artikelnummer prüfen, ohne Bildabrufe.")
     parser.add_argument("--alle", action="store_true", help="Alle sichtbaren Shop-Bilder bis zum ersten Fehler lesen; nichts veröffentlichen.")
     args = parser.parse_args()
     try:
         with patch.object(bilder_abgleich, "bildantwort", diagnose_antwort):
-            asyncio.run(main(args.alle))
+            asyncio.run(artikel_pruefen(args.artikel) if args.artikel else main(args.alle))
     except JtlFehler as exc:
         print("Bildprüfung:", exc)
         raise SystemExit(1)
