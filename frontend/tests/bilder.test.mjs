@@ -161,3 +161,21 @@ test("Sammelimport sendet artikelweise, berichtet Konflikte und stoppt bei Verbi
   await assert.rejects(()=>importiereVorschaudatei(JSON.stringify(data),async()=>{sent=true;}),/doppelte/);
   assert.equal(sent,false);
 });
+
+
+test("Shop-Kategorien folgen Shop-Reihenfolge, Familien bleiben trotz Suche zusammen", async t => {
+  const server = await createServer({server:{middlewareMode:true,hmr:false},appType:"custom"});
+  t.after(()=>server.close());
+  const {gruppieren,nachKategorien,BilderListe} = await server.ssrLoadModule("/src/BilderView.jsx");
+  const first = {id:"z",name:"Zubehör",sortierung:[1]};
+  const second = {id:"a",name:"Arzneien",sortierung:[2]};
+  const data = rows.map(a=>({...a,kategorien:a.id==="parent" ? [second,first] : a.id==="other" ? [second] : []}));
+  const sections = nachKategorien(gruppieren(data));
+  assert.deepEqual(sections.map(s=>s.kategorie.id),["z","a"]);
+  assert.deepEqual(sections[0].gruppen[0].artikel.map(a=>a.id),["parent","child"]);
+  assert.equal(nachKategorien(gruppieren(data,false,"20"))[0].kategorie.id,"z");
+  let view;
+  await act(async()=>{view=create(React.createElement(BilderListe,{artikel:data,onArtikel:()=>{}}));});
+  t.after(()=>act(()=>view.unmount()));
+  assert.deepEqual(view.root.findAllByType("h3").map(h=>h.children[0]),["Zubehör","Arzneien"]);
+});

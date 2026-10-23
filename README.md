@@ -1125,3 +1125,19 @@ korrigieren; der vorhandene Korrekturablauf legt die Rechnungsaufgabe an und
 führt sie aus. Anschließend Rechnungsdatensatz und Dateiablage prüfen.
 Der Screenshot vom 05.10. allein belegt die Fehlkategorie, aber nicht, ob
 Modellentscheidung oder Einkaufsschutzregel im konkreten Fall ausschlaggebend war.
+
+
+### Kategorien in der Bilderübersicht
+
+Beim manuellen Bilderabgleich werden Artikel-Kategoriezuordnungen und aktive
+Shop-Kategorien (`2-2-1`) lesend aus `/v2/categories` und den Kategoriedetails
+übernommen. Die Überschriften zeigen Kategoriepfade (Standardnamen aus der Wawi)
+in deren Sortierreihenfolge. Vater/Kinder bleiben zusammen; bei Mehrfachzuordnung
+bestimmt die erste Kategorie des Vaters die Gruppe, weitere Zuordnungen stehen
+beim Artikel. Ohne Vater-Kategorien dienen die Kategorien der sichtbaren Kinder.
+Artikelzeilen haben keine umgebenden Boxen; Varianten bleiben eingerückt.
+Bestehende Bestände erhalten Kategorien beim nächsten manuellen Abgleich.
+Fehlende API-Unterstützung oder Leserechte werden als fehlende Kategoriezuordnung
+angezeigt und verhindern den Bilderabruf nicht; keine automatische Rechteänderung.
+
+Schemaquelle: https://developer.jtl-software.com/openapi/erp/2.1.json (23.10.2026).

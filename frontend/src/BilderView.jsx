@@ -27,6 +27,29 @@ export function gruppieren(artikel, ausgeblendete = false, suche = "", nurBildfe
   })).sort((a, b) => vergleichen(a.sortierung, b.sortierung));
 }
 
+const kategorieVergleich = (a, b) => {
+  if (!a) return b ? 1 : 0;
+  if (!b) return -1;
+  for (let i = 0; i < Math.max(a.sortierung.length, b.sortierung.length); i++) {
+    if (a.sortierung[i] === undefined) return -1;
+    if (b.sortierung[i] === undefined) return 1;
+    if (a.sortierung[i] !== b.sortierung[i]) return a.sortierung[i] - b.sortierung[i];
+  }
+  return a.name.localeCompare(b.name, "de") || a.id.localeCompare(b.id);
+};
+
+export function nachKategorien(gruppen) {
+  const abschnitte = new Map();
+  for (const gruppe of gruppen) {
+    const kandidaten = gruppe.sortierung.kategorien?.length ? gruppe.sortierung.kategorien : gruppe.artikel.flatMap(a => a.kategorien || []);
+    const kategorie = [...kandidaten].sort(kategorieVergleich)[0];
+    const key = kategorie?.id || "unbekannt";
+    if (!abschnitte.has(key)) abschnitte.set(key, {kategorie, gruppen: []});
+    abschnitte.get(key).gruppen.push(gruppe);
+  }
+  return [...abschnitte.values()].sort((a,b) => kategorieVergleich(a.kategorie,b.kategorie));
+}
+
 function ArtikelDialog({ artikel, speichern, schliessen, laeuft, fehler }) {
   const ref = useRef(null);
   useEffect(() => { ref.current?.showModal(); }, []);
@@ -58,12 +81,17 @@ function Thumbnail({ artikel, bild, position }) {
 
 export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildfehler, ungeprueft = [] }) {
   const gruppen = gruppieren(artikel, ausgeblendete, suche, nurBildfehler);
-  return <div className="flex flex-col gap-3" aria-label="Shop-Artikel und Bilder">
-    {gruppen.map(gruppe => <div key={gruppe.id} style={{ ...box, overflow: "hidden" }}>
-      {gruppe.artikel.map((a, i) => <div key={a.id} className="flex gap-4 px-4 py-3" style={{ borderTop: i ? "1px solid #DDD9C4" : undefined, opacity: a.ausgeblendet ? 0.6 : 1, background: a.parent_id ? "#FAF9E6" : undefined }}>
+  return <div aria-label="Shop-Artikel und Bilder">
+    {nachKategorien(gruppen).map(abschnitt => <section key={abschnitt.kategorie?.id || "unbekannt"} className="mb-5">
+      <h3 className="mt-4 mb-2" style={{fontSize:"13px", fontWeight:600, color:"#2C5A18"}}>{abschnitt.kategorie?.name || "Shop-Kategorie noch nicht zugeordnet"}</h3>
+      {abschnitt.gruppen.map(gruppe => <div key={gruppe.id}>
+
+      {gruppe.artikel.map((a, i) => <div key={a.id} className="flex gap-4 py-2" style={{ opacity: a.ausgeblendet ? 0.6 : 1 }}>
         <div className="shrink-0" style={{ width: "clamp(140px, 22vw, 230px)", paddingLeft: a.parent_id ? "12px" : 0, borderLeft: a.parent_id ? "3px solid #BEDC0F" : undefined }}>
           <button type="button" onClick={() => onArtikel(a.id)} className="text-left" style={{ color: "#2C5A18", fontWeight: 600, lineHeight: 1.4, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }} title={a.name}>{a.name}</button>
           <div className="mt-1" style={{ fontSize: "11px", color: "#6C6F5F" }}>Art.-Nr. {a.sku}{a.parent_id ? " · Variante" : ""}</div>
+          {!!a.kategorien?.length && <p className="mt-1" style={{fontSize:"10px", color:"#6C6F5F"}}>{a.kategorien.map(k=>k.name).join(" · ")}</p>}
+          {a.kategorie_fehler && <p title={a.kategorie_fehler} style={{fontSize:"10px", color:"#6C6F5F"}}>Kategoriezuordnung nicht verfügbar</p>}
           {ungeprueft.some(u => u.id === a.id) && <p className="mt-1" style={{ color: "#9A4332", fontSize: "11px" }}>Details ungeprüft · bisheriger Bilderstand</p>}
           {a.ausgeblendet && <span className="flex items-center gap-1 mt-1" style={{ fontSize: "11px" }}><EyeOff size={12} /> Ausgeblendet</span>}
         </div>
@@ -73,6 +101,7 @@ export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildf
         </div>
       </div>)}
     </div>)}
+    </section>)}
     {!gruppen.length && <p className="py-12 text-center" style={{ color: "#6C6F5F" }}>Keine Artikel für diese Auswahl.</p>}
   </div>;
 }

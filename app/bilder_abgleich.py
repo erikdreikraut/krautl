@@ -10,6 +10,7 @@ import httpx
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .jtl_client import JtlFehler
+from .bilder_kategorien import ShopKategorien
 from .jtl_onprem import OnPremClient
 from .inkasso_zugang import client_aus_umgebung as kanal_client
 from . import bilder_speicher as speicher
@@ -245,6 +246,7 @@ async def abgleichen(client):
         raise JtlFehler("Das Wawi-API-Ziel wurde geändert. Den Bilderbestand vor einem Wechsel prüfen.")
     vorher = {r["id"]: r for r in stand["artikel"]}
     rows = await katalog(client)
+    kategorien = ShopKategorien(client)
     neuer_stand = {}
     ungeprueft = {}
     einzelshop = False
@@ -280,6 +282,7 @@ async def abgleichen(client):
         bilder = shop_bilder(detail, row, einzelshop)
         if bilder is None:
             continue
+        artikel_kategorien, kategorie_fehler = await kategorien.artikel(detail)
         result = []
         for bild in bilder:
             if not speicher.freigegeben(key, rev):
@@ -313,6 +316,7 @@ async def abgleichen(client):
             if parent == key:
                 raise JtlFehler("Ein Artikel verweist auf sich selbst als Vaterartikel.")
             neuer_stand[key] = {"id": key, "sku": sku, "name": name, "parent_id": parent,
+                                "kategorien": artikel_kategorien, "kategorie_fehler": kategorie_fehler,
                                 "bilder": result, "aktualisiert_am": speicher.jetzt()}
             speicher.zwischenstand(neuer_stand[key], rev, client.url)
     speicher.uebernehmen(neuer_stand, vorher, client.url, list(ungeprueft.values()))

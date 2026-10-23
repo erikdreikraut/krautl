@@ -61,3 +61,5 @@
 - Wiederholte HTTP 500/502/503/504 ausschließlich beim Einzelartikel-Detailabruf nach drei Versuchen überspringen und separat als ungeprüft führen. Bestehende Bilder erhalten, bei neuen Artikeln Bildbestand unbekannt lassen; übrige Artikel weiterverarbeiten. Bei offenen Artikeln keine Bestandsbereinigung und keinen neuen vollständigen Erfolgszeitpunkt. Katalog-/Berechtigungs-/Netzwerkfehler bleiben Abbruchgründe.
 
 - Ersatzvorschauen dürfen aus vom Nutzer bestätigten JTL-Shop-Ameise-Exporten ausschließlich in Krautl importiert werden. Keine Wawi-Schreibzugriffe. Exakte Positionsmenge prüfen, an aktuelle Bild-ID/Version binden, nur fehlende Vorschauen ergänzen und als Exportvorschau kennzeichnen. Ausgeblendete/ungeprüfte Artikel und laufende Abgleiche sperren.
+
+- Bilderübersicht nach aktiven Shop-Kategorien mit kleinen Kategoriepfad-Überschriften und Shop-Sortierreihenfolge gruppieren; Artikelfamilien zusammenhalten, Mehrfachzuordnungen ohne doppelte Artikelzeilen anzeigen. Keine umgebenden Artikelboxen; Vater-/Kind-Einrückung erhalten. Kategoriefehler dürfen den Bildabruf nicht verhindern und müssen sichtbar bleiben.
