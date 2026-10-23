@@ -5,7 +5,7 @@ import json
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 from uuid import UUID
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
@@ -13,7 +13,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 import httpx
 from PIL import Image
 from app import main, bilder, bilder_speicher as store
-from app.bilder_abgleich import abgleichen, bild_laden, shop_bilder
+from app.bilder_abgleich import abgleichen, bild_laden, shop_bilder, einzelshop_bestaetigen, einzelshop_pruefen
 from app.jtl_onprem import OnPremClient
 from app.jtl_client import JtlFehler
 from app.auth import COOKIE_NAME, sitzung_erstellen
@@ -140,10 +140,71 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(store.lesen()["letzter_erfolg"], old["letzter_erfolg"])
         self.fail_path = None
         self.details[uid(1)].pop("salesChannels")
-        with self.assertRaisesRegex(JtlFehler, "Shop-Aktivierung"):
-            await self.run_sync()
+        with patch("app.bilder_abgleich.einzelshop_pruefen", side_effect=JtlFehler("Shop-Aktivierung unklar")):
+            with self.assertRaisesRegex(JtlFehler, "Shop-Aktivierung"):
+                await self.run_sync()
         self.assertEqual(store.lesen()["artikel"], old["artikel"])
         self.assertEqual(store.lesen()["letzter_erfolg"], old["letzter_erfolg"])
+
+    async def test_legacy_single_shop_checked_each_run_and_hidden_skipped(self):
+        for d in self.details.values():
+            d.pop("salesChannels")
+        self.rows[2]["isShopActive"] = False
+        with patch("app.bilder_abgleich.einzelshop_pruefen", new_callable=AsyncMock, return_value=True) as check:
+            await self.run_sync()
+            check.assert_awaited_once_with("https://wawi.test/api/eazybusiness")
+            self.assertEqual(len(store.lesen()["artikel"]), 2)
+            store.ausblenden(uid(1), True, 0, "micha")
+            self.requests.clear()
+            await self.run_sync()
+            self.assertEqual(check.await_count, 2)
+            self.assertFalse(any(p.endswith("/" + uid(1)) or p.endswith("/" + uid(3)) or "image-data" in p for _, p in self.requests))
+
+    def test_legacy_does_not_infer_activity_from_images(self):
+        d = detail()
+        d.pop("salesChannels")
+        with self.assertRaises(JtlFehler):
+            shop_bilder(d, row())
+        inactive = row()
+        inactive["isShopActive"] = False
+        self.assertIsNone(shop_bilder(d, inactive, True))
+        inactive["isShopActive"] = 1
+        with self.assertRaises(JtlFehler):
+            shop_bilder(d, inactive, True)
+        d["salesChannels"] = {}
+        with self.assertRaises(JtlFehler):
+            shop_bilder(d, row(), True)
+        d = detail(shop=False)
+        self.assertIsNone(shop_bilder(d, row(), True))
+
+    def test_channel_proof_rejects_ambiguity(self):
+        def channel(key, typ, active):
+            return {"id": key, "type": typ, "itemCapabilities": {"onlineShopActivation": active}}
+        channels = [channel("1-1-0", 0, False), channel("2-2-1", 0, True),
+                    channel("9-7-8-0", 2, True), channel("amazon", 9, False)]
+        self.assertTrue(einzelshop_bestaetigen(channels))
+        for extra in (channel("second", 0, True), channel("second", 1, False),
+                      channel("unknown", 99, False), channels[1], {}):
+            with self.assertRaises(JtlFehler):
+                einzelshop_bestaetigen(channels + [extra])
+        for invalid in ([], {}, channels[:1]):
+            with self.assertRaises(JtlFehler):
+                einzelshop_bestaetigen(invalid)
+
+    async def test_channel_reader_uses_same_api_and_only_get(self):
+        calls = []
+        def reply(req):
+            calls.append((req.method, req.url.path))
+            return httpx.Response(200, json=[{"id": "2-2-1", "type": 0,
+                "itemCapabilities": {"onlineShopActivation": True}}])
+        def reader():
+            return OnPremClient("https://wawi.test/api/eazybusiness", "read-key",
+                                transport=httpx.MockTransport(reply))
+        with patch("app.bilder_abgleich.kanal_client", side_effect=reader):
+            self.assertTrue(await einzelshop_pruefen("https://wawi.test/api/eazybusiness"))
+            with self.assertRaisesRegex(JtlFehler, "anderen API-Ziel"):
+                await einzelshop_pruefen("https://different.test/api/eazybusiness")
+        self.assertEqual(calls, [("GET", "/api/eazybusiness/v2/sales-channels")])
 
     async def test_duplicate_catalogue_rejected(self):
         self.rows.append(row())

@@ -10,6 +10,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .jtl_client import JtlFehler
 from .jtl_onprem import OnPremClient
+from .inkasso_zugang import client_aus_umgebung as kanal_client
 from . import bilder_speicher as speicher
 
 SHOP = "2-2-1"
@@ -69,15 +70,58 @@ async def bild_laden(client, bild_id):
         raise JtlFehler("Wawi-Bildabruf fehlgeschlagen (TLS/Netz/Zeitlimit).") from None
 
 
-def shop_bilder(detail):
+def einzelshop_bestaetigen(kanaele):
+    """Older Wawi exposes shop activity only globally in the item catalogue."""
+    if not isinstance(kanaele, list) or not kanaele:
+        raise JtlFehler("Shop-Aktivierung: Verkaufskanalliste fehlt.")
+    gesehen, shops = set(), set()
+    for kanal in kanaele:
+        if not isinstance(kanal, dict):
+            raise JtlFehler("Shop-Aktivierung: ungültiger Verkaufskanal.")
+        key, typ = kanal.get("id"), kanal.get("type")
+        caps = kanal.get("itemCapabilities")
+        if (not isinstance(key, str) or not key or key in gesehen
+                or type(typ) is not int or typ not in range(11)
+                or not isinstance(caps, dict)
+                or type(caps.get("onlineShopActivation")) is not bool):
+            raise JtlFehler("Shop-Aktivierung: uneindeutige Verkaufskanalliste.")
+        gesehen.add(key)
+        # Installed Wawi reports the JTL shop as type 0; POS (2) is separate.
+        if typ == 1 or (caps["onlineShopActivation"] and typ != 2):
+            shops.add(key)
+    if shops != {SHOP}:
+        raise JtlFehler("Shop-Aktivierung: dreikraut ist nicht eindeutig der einzige Shop. Bisheriger Stand bleibt erhalten.")
+    return True
+
+
+async def einzelshop_pruefen(api_url):
+    async with kanal_client() as client:
+        if client.url != api_url:
+            raise JtlFehler("Shop-Aktivierung: Verkaufskanäle gehören zu einem anderen API-Ziel.")
+        kanaele = await client._request("GET", "/v2/sales-channels", expected_type=list)
+    return einzelshop_bestaetigen(kanaele)
+
+
+def shop_bilder(detail, katalogzeile=None, einzelshop=False):
     kanalblock = detail.get("salesChannels")
-    if not isinstance(kanalblock, dict) or not isinstance(kanalblock.get("salesChannels"), list):
-        raise JtlFehler("Diese Wawi-API liefert keine eindeutige Shop-Aktivierung (salesChannels). API-Version prüfen; der bisherige Stand bleibt erhalten.")
-    kanaele = [k for k in kanalblock["salesChannels"] if k.get("salesChannelId") == SHOP]
-    if len(kanaele) > 1 or (kanaele and not isinstance(kanaele[0].get("isActive"), bool)):
-        raise JtlFehler("Uneindeutige Shop-Zuordnung im Wawi-Artikel.")
-    if not kanaele or not kanaele[0]["isActive"]:
-        return None
+    if kanalblock is None:
+        if einzelshop is not True:
+            raise JtlFehler("Shop-Aktivierung: Einzelshop wurde nicht bestätigt.")
+        row = katalogzeile or {}
+        if type(row.get("isActive")) is not bool or type(row.get("isShopActive")) is not bool:
+            raise JtlFehler("Shop-Aktivierung: eindeutiger Katalogstatus fehlt.")
+        if not row["isActive"] or not row["isShopActive"]:
+            return None
+    else:
+        if not isinstance(kanalblock, dict) or not isinstance(kanalblock.get("salesChannels"), list):
+            raise JtlFehler("Shop-Aktivierung: ungültige Artikel-Shop-Zuordnung.")
+        if any(not isinstance(k, dict) for k in kanalblock["salesChannels"]):
+            raise JtlFehler("Shop-Aktivierung: ungültiger Artikelkanal.")
+        kanaele = [k for k in kanalblock["salesChannels"] if k.get("salesChannelId") == SHOP]
+        if len(kanaele) > 1 or (kanaele and not isinstance(kanaele[0].get("isActive"), bool)):
+            raise JtlFehler("Uneindeutige Shop-Zuordnung im Wawi-Artikel.")
+        if not kanaele or not kanaele[0]["isActive"]:
+            return None
     block = detail.get("images") or {}
     gruppen = block.get("saleschannelImages") or []
     if not isinstance(gruppen, list):
@@ -131,6 +175,7 @@ async def abgleichen(client):
     vorher = {r["id"]: r for r in stand["artikel"]}
     rows = await katalog(client)
     neuer_stand = {}
+    einzelshop = False
     for nr, row in enumerate(rows, 1):
         key = ident(row.get("id"))
         alt = vorher.get(key, {})
@@ -151,7 +196,9 @@ async def abgleichen(client):
             raise JtlFehler("Artikel-ID oder Artikelnummer passt nicht zum Katalog.")
         if not speicher.freigegeben(key, rev):
             continue
-        bilder = shop_bilder(detail)
+        if detail.get("salesChannels") is None and not einzelshop:
+            einzelshop = await einzelshop_pruefen(client.url)
+        bilder = shop_bilder(detail, row, einzelshop)
         if bilder is None:
             continue
         result = []

@@ -947,6 +947,8 @@ Pipeline-Status prüfen und keinen parallelen manuellen Build starten.
 Die Bilderverwaltung liest ausschließlich über die bestehende direkte Wawi-API
 und den vorhandenen FAQ-Zugang (`JTL_LOCAL_*`, `krautl-lokal`). Der separate
 Inkasso-Lesezugang lieferte beim Artikelabruf HTTP 403 und wird dafür nicht genutzt.
+Er liest bei älteren API-Versionen ausschließlich die Verkaufskanalliste; sein
+vorhandenes Zugangsverzeichnis wird dazu in die App schreibgeschützt eingebunden.
 Keine Registrierung, Rechteänderung, Wawi-Schreiboperation oder externe Bild-URL
 wird automatisch ausgeführt. Artikel-/Bildleserechte müssen auf dem installierten
 API-Stand verfügbar sein. Referenz: [JTL OpenAPI 2.1](https://developer.jtl-software.com/openapi/erp/2.1.json),
@@ -962,7 +964,13 @@ am 23.10.2026 gelesen: `GET /v2/items`, `GET /v2/items/{itemId}` und
   der aktuellen Live-Shop-Sichtbarkeit oder des Lagerbestands.
 - Nur `images.saleschannelImages` für `saleschannelId=2-2-1`, nach `sortNumber`
   sortiert. Kein Ersatz durch allgemeine, Plattform- oder eBay-Bilder.
-  Fehlende Kanalaktivierungsfelder sind ein Fehler, kein leerer/gesunder Bestand.
+  Fehlt der Artikelblock `salesChannels` (installierter Stand vom 23.10.2026),
+  prüft jeder Lauf einmal lesend `GET /v2/sales-channels`. Nur wenn `2-2-1`
+  der einzige Shop ist, genügt der boolesche Katalogstatus `isShopActive`.
+  Die installierte API meldet den Shop als Typ 0; daher werden Typ 1 sowie
+  Kanäle mit `itemCapabilities.onlineShopActivation=true` berücksichtigt,
+  außer POS (Typ 2). Mehrere Shops, unbekannte Typen oder unklare Daten brechen
+  ab und erhalten den alten Bestand. Bildzuordnungen allein beweisen keine Aktivierung.
 - Eine Zeile je Artikelnummer, auch ohne Bilder; Varianten über `parentItemId`
   gruppieren, niemals über SKU-Präfixe. Bildvorschauen maximal 240×180 Pixel;
   Bilddateien bis 20 MB und 40 Megapixel, keine Originalbilder im Browser laden.
