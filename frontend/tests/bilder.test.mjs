@@ -66,3 +66,22 @@ test("Bilder-Popup speichert Ausblenden mit Revision; Filter erlaubt erneutes Ei
   assert.equal(data[0].revision, 2);
   assert.equal(calls.filter(([,o])=>o.method==="PUT").length, 2);
 });
+
+test("Fehlendes Bild bleibt als Platzhalter mit Position sichtbar und wird nach Reparatur ersetzt", async t => {
+  const server = await createServer({server:{middlewareMode:true, hmr:false}, appType:"custom"});
+  t.after(() => server.close());
+  const { BilderListe } = await server.ssrLoadModule("/src/BilderView.jsx");
+  const artikel = [{...rows[0], bilder:[
+    {id:"bad", thumb:null, position:5, fehler:"Wawi-Bildabruf: HTTP 400."},
+    {id:"good", thumb:"abc", position:6}
+  ]}];
+  let view;
+  await act(async()=>{view=create(React.createElement(BilderListe,{artikel}));});
+  t.after(()=>act(()=>view.unmount()));
+  assert.equal(view.root.findAllByType("img").length,1);
+  assert.match(view.root.findByProps({role:"img"}).props["aria-label"], /Bildposition 5.*HTTP 400/);
+  artikel[0].bilder[0]={id:"bad",thumb:"repaired",position:5,fehler:null};
+  await act(async()=>view.update(React.createElement(BilderListe,{artikel})));
+  assert.equal(view.root.findAllByType("img").length,2);
+  assert.equal(view.root.findAllByProps({role:"img"}).length,0);
+});

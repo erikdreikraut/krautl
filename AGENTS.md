@@ -53,3 +53,5 @@
 - Elestio hat den Push von `4cf9877` am 23.10.2026 automatisch gebaut und ausgerollt. Vor manuellen Deployment-Befehlen den Pipeline-Status prüfen; keine parallelen Deployments starten.
 
 - Ältere Wawi ohne Artikelblock `salesChannels`: Katalogstatus nur nach pro Lauf bestätigtem Einzelshop `2-2-1` verwenden. Verkaufskanäle lesend über bestehenden Inkasso-Zugang; Shop meldet Typ 0 mit onlineShopActivation=true, POS Typ 2 ausschließen. Mehrere Shops/unklare Daten brechen ab. Artikel und Bilder weiterhin über FAQ-Zugang.
+
+- Einzelne fehlerhafte Bilder als sichtbare Platzhalter mit Position/Fehler erhalten; übrigen Bilderbestand übernehmen und Warnung anzeigen. Fehlende Vorschauen beim nächsten manuellen Abgleich erneut versuchen, ausgeblendete Artikel weiterhin überspringen. Globale Zugangs-/Katalog-/Verbindungsfehler nicht als erfolgreiche Teilaktualisierung behandeln.

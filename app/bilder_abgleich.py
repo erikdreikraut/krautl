@@ -18,6 +18,11 @@ SHOP = "2-2-1"
 MAX_BYTES = 20 * 1024 * 1024
 
 
+class BildFehler(JtlFehler):
+    """An individual unavailable/invalid image; catalogue and access errors stay fatal."""
+
+
+
 def ident(wert):
     try:
         return str(UUID(wert))
@@ -29,7 +34,7 @@ def vorschaubild(daten):
     try:
         with Image.open(BytesIO(daten)) as bild:
             if bild.width * bild.height > 40_000_000:
-                raise JtlFehler("Ein Bild überschreitet 40 Megapixel.")
+                raise BildFehler("Ein Bild überschreitet 40 Megapixel.")
             bild = ImageOps.exif_transpose(bild)
             bild.thumbnail((240, 180))
             rgba = bild.convert("RGBA")
@@ -39,14 +44,14 @@ def vorschaubild(daten):
             hintergrund.save(out, "JPEG", quality=82)
             return out.getvalue()
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
-        raise JtlFehler("Eine Wawi-Bilddatei konnte nicht als Vorschaubild gelesen werden.") from None
+        raise BildFehler("Eine Wawi-Bilddatei konnte nicht als Vorschaubild gelesen werden.") from None
 
 
 def datei_url(client, bild_id, bild):
     """Allow only this image on the configured Wawi origin; never log URL tokens."""
     raw = (bild or {}).get("url") or (bild or {}).get("previewUrl")
     if not isinstance(raw, str) or not raw:
-        raise JtlFehler("Wawi-Bildabruf: HTTP 404. Bild-Endpunkt fehlt oder Bild nicht gefunden; keine Download-Adresse geliefert.")
+        raise BildFehler("Wawi-Bildabruf: HTTP 404. Bild-Endpunkt fehlt oder Bild nicht gefunden; keine Download-Adresse geliefert.")
     try:
         u, base = urlsplit(raw), urlsplit(client.url)
         if (u.scheme != "https" or u.hostname != base.hostname
@@ -93,12 +98,13 @@ async def bildantwort(response):
                    if response.status_code in (401, 403) else
                    "Datei-Endpunkt oder Bild nicht gefunden." if response.status_code == 404 else
                    "Unerwartete Antwort des Bild-Endpunkts.")
-        raise JtlFehler(f"Wawi-Bildabruf: HTTP {response.status_code}. {hinweis}")
+        klasse = BildFehler if response.status_code in (400, 404, 410, 422) else JtlFehler
+        raise klasse(f"Wawi-Bildabruf: HTTP {response.status_code}. {hinweis}")
     inhalt = bytearray()
     async for chunk in response.aiter_bytes():
         inhalt.extend(chunk)
         if len(inhalt) > MAX_BYTES * 4 // 3 + 100:
-            raise JtlFehler("Eine Bilddatei überschreitet das Abruflimit von 20 MB.")
+            raise BildFehler("Eine Bilddatei überschreitet das Abruflimit von 20 MB.")
     if "json" in response.headers.get("content-type", "").lower():
         import json
         try:
@@ -107,11 +113,11 @@ async def bildantwort(response):
                 raise ValueError()
             daten = base64.b64decode(wert, validate=True)
         except (ValueError, binascii.Error):
-            raise JtlFehler("Wawi-Bildantwort enthält keine gültigen Bilddaten.") from None
+            raise BildFehler("Wawi-Bildantwort enthält keine gültigen Bilddaten.") from None
     else:
         daten = bytes(inhalt)
     if len(daten) > MAX_BYTES:
-        raise JtlFehler("Eine Bilddatei überschreitet 20 MB.")
+        raise BildFehler("Eine Bilddatei überschreitet 20 MB.")
     return await asyncio.to_thread(vorschaubild, daten)
 
 
@@ -254,15 +260,19 @@ async def abgleichen(client):
             version = bild.get("modificationDate")
             cache = next((b for b in alt.get("bilder", []) if b["id"] == bid and version and b.get("version") == version), None)
             thumb = cache["thumb"] if cache and speicher.thumb_lesen(key, cache["thumb"]) else None
+            bildfehler = None
             if not thumb:
                 try:
                     daten = await bild_laden(client, bid, bild)
+                except BildFehler as exc:
+                    bildfehler = str(exc)
                 except JtlFehler as exc:
                     raise JtlFehler(f"Artikel {sku}, Bildposition {bild['sortNumber']}: {exc}") from None
                 if not speicher.freigegeben(key, rev):
                     break
-                thumb = speicher.thumb_speichern(daten)
-            result.append({"id": bid, "thumb": thumb, "version": version, "position": bild["sortNumber"],
+                if bildfehler is None:
+                    thumb = speicher.thumb_speichern(daten)
+            result.append({"id": bid, "thumb": thumb, "fehler": bildfehler, "version": version, "position": bild["sortNumber"],
                            "hauptbild": bool(bild.get("isMainImage")), "dateiname": str(bild.get("filename") or "")[:200]})
         if speicher.freigegeben(key, rev):
             parent = row.get("parentItemId")

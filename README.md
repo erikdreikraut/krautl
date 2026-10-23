@@ -995,7 +995,13 @@ am 23.10.2026 gelesen: `GET /v2/items`, `GET /v2/items/{itemId}` und
   ausgeblendete IDs erhalten keine Detail-/Bildabrufe oder Snapshot-Updates.
   Bereits laufende HTTP-Anfragen lassen sich nicht rückwirkend verhindern;
   nach Ausblendung werden deren Ergebnisse verworfen und keine Folgeabrufe gestartet.
-- Ein OS-Lock verhindert parallele Aktualisierungen. Bei Fehler, Versionsabweichung
+- Einzelne nicht abrufbare Bilder (HTTP 400/404/410/422, ungültige Bilddaten oder
+  überschrittene Bildgrößenlimits) bleiben mit Bildposition als Fehlerplatzhalter
+  erhalten. Übrige Bilder/Artikel werden übernommen; der Lauf zeigt eine Warnung.
+  Beim nächsten manuellen Aktualisieren werden fehlende Vorschauen erneut geladen,
+  auch bei unveränderter Bildversion. Ausgeblendete Artikel bleiben ausgenommen.
+  Rechte-, Netzwerk-, Server- und Katalogfehler brechen weiterhin den Gesamtlauf ab.
+- Ein OS-Lock verhindert parallele Aktualisierungen. Bei globalem Fehler, Versionsabweichung
   oder Unterbrechung bleiben Artikel und letzter Erfolgszeitpunkt erhalten.
   Ein vollständiger Lauf veröffentlicht atomar; währenddessen geänderte
   Ausblendungen werden nicht überschrieben. Laufzeitlimit eine Stunde.

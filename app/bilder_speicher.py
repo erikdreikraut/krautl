@@ -106,7 +106,10 @@ def uebernehmen(artikel, vorher, api_ziel):
         for ident, alt in vorher.items():
             if ident not in artikel and aktuell.get(ident) == (0, alt["revision"]):
                 db.execute("DELETE FROM artikel WHERE id=?", (ident,))
-        status = {**status_lesen(db), "status": "ok", "letzter_erfolg": jetzt(), "fehler": None, "api_ziel": api_ziel}
+        bildfehler = sum(bool(b.get("fehler")) for (raw,) in
+                         db.execute("SELECT daten FROM artikel WHERE ausgeblendet=0")
+                         for b in json.loads(raw)["bilder"])
+        status = {**status_lesen(db), "status": "warnung" if bildfehler else "ok", "bildfehler": bildfehler, "letzter_erfolg": jetzt(), "fehler": None, "api_ziel": api_ziel}
         db.execute("INSERT OR REPLACE INTO status VALUES (1, ?)", (json.dumps(status),))
         # Keep only previews still referenced by the final snapshot, including hidden rows.
         verwendet = {b["thumb"] for (raw,) in db.execute("SELECT daten FROM artikel") for b in json.loads(raw)["bilder"]}

@@ -51,6 +51,7 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
         self.rows = [row(1), row(2, uid(1)), row(3)]
         self.details = {uid(1): detail(1), uid(2): detail(2, images=[]), uid(3): detail(3, shop=False)}
         self.fail_path = None
+        self.fail_status = 403
         self.hide_on_detail = None
 
     async def asyncTearDown(self):
@@ -63,7 +64,7 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(req.method, "GET")
         path = req.url.path.removeprefix("/api/eazybusiness")
         if self.fail_path == path:
-            return httpx.Response(403)
+            return httpx.Response(self.fail_status)
         if path == "/v2/items":
             return httpx.Response(200, json={"items": self.rows, "pageNumber": 1, "hasNextPage": False, "totalItems": len(self.rows)})
         if path.startswith("/v2/items/image-data/"):
@@ -289,6 +290,47 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
         output = bereinigen('Failure secret-query-value secret-api-key https://wawi.test/file?token=secret-query-value', request)
         self.assertNotIn("secret", output)
         self.assertNotIn("https://", output)
+
+    async def test_image_failure_publishes_placeholder_and_retries_unchanged_version(self):
+        self.details[uid(2)] = detail(2)
+        self.fail_path = "/v2/items/image-data/" + uid(101)
+        self.fail_status = 400
+        await self.run_sync()
+        stand = store.lesen()
+        self.assertEqual(stand["status"], "warnung")
+        self.assertEqual(stand["bildfehler"], 1)
+        bad, good = stand["artikel"]
+        self.assertIsNone(bad["bilder"][0]["thumb"])
+        self.assertIn("HTTP 400", bad["bilder"][0]["fehler"])
+        self.assertEqual(bad["bilder"][0]["position"], 2)
+        self.assertTrue(good["bilder"][0]["thumb"])
+        self.assertIsNotNone(stand["letzter_erfolg"])
+        self.fail_path = None
+        self.requests.clear()
+        await self.run_sync()
+        self.assertTrue(any(p.endswith(uid(101)) for _, p in self.requests))
+        self.assertFalse(any("image-data" in p and p.endswith(uid(102)) for _, p in self.requests))
+        self.assertEqual(store.lesen()["status"], "ok")
+        self.assertEqual(store.lesen()["bildfehler"], 0)
+        self.assertIsNone(store.lesen()["artikel"][0]["bilder"][0]["fehler"])
+
+    async def test_missing_image_without_download_url_becomes_placeholder(self):
+        self.fail_path = "/v2/items/image-data/" + uid(101)
+        self.fail_status = 404
+        await self.run_sync()
+        self.assertEqual(store.lesen()["status"], "warnung")
+        self.assertIn("HTTP 404", store.lesen()["artikel"][0]["bilder"][0]["fehler"])
+
+    async def test_hidden_placeholder_is_not_retried(self):
+        self.fail_path = "/v2/items/image-data/" + uid(101)
+        self.fail_status = 400
+        await self.run_sync()
+        store.ausblenden(uid(1), True, 0, "micha")
+        self.requests.clear()
+        await self.run_sync()
+        self.assertFalse(any(p.endswith(uid(1)) or p.endswith(uid(101)) for _, p in self.requests))
+        self.assertEqual(store.lesen()["status"], "ok")
+        self.assertIn("HTTP 400", store.lesen()["artikel"][0]["bilder"][0]["fehler"])
 
     async def test_api_roles_hide_thumbnail_and_single_run(self):
         await self.run_sync()

@@ -43,12 +43,13 @@ function ArtikelDialog({ artikel, speichern, schliessen, laeuft, fehler }) {
 
 function Thumbnail({ artikel, bild, position }) {
   const [fehler, setFehler] = useState(false);
+  const meldung = bild.fehler || (fehler || !bild.thumb ? "Vorschau nicht verfügbar" : "");
   return <figure className="shrink-0" style={{ width: "120px" }}>
-    {fehler ? <div role="img" aria-label="Vorschaubild nicht verfügbar" className="flex items-center justify-center" style={{ ...box, height: "90px", fontSize: "11px", textAlign: "center" }}>Vorschau nicht verfügbar</div> : <img
+    {meldung ? <div role="img" aria-label={`Bildposition ${bild.position ?? position + 1}: ${meldung}`} title={meldung} className="flex items-center justify-center" style={{ ...box, height: "90px", fontSize: "11px", textAlign: "center"  , color: "#9A4332", padding: "6px" }}>Bild nicht verfügbar</div> : <img
       src={`/api/bilder/${encodeURIComponent(artikel.id)}/thumb/${bild.thumb}`} loading="lazy" decoding="async"
       width="120" height="90" alt={`${artikel.name} – Bild ${position + 1}`} onError={() => setFehler(true)}
       style={{ ...box, objectFit: "contain", width: "120px", height: "90px", background: "white" }} />}
-    <figcaption className="mt-1 truncate" title={bild.dateiname} style={{ fontSize: "10px", color: "#6C6F5F" }}>{position + 1}{bild.hauptbild ? " · Hauptbild" : ""}</figcaption>
+    <figcaption className="mt-1 truncate" title={bild.dateiname} style={{ fontSize: "10px", color: "#6C6F5F" }}>{bild.position ?? position + 1}{bild.hauptbild ? " · Hauptbild" : ""}</figcaption>
   </figure>;
 }
 
@@ -115,7 +116,7 @@ export function BilderView() {
     <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
       <div><h2 className="flex items-center gap-2" style={{ fontFamily: "'Source Serif 4', serif", fontSize: "21px", fontWeight: 700, color: "#2C5A18" }}><Image size={22} /> Bilder</h2>
         <p className="mt-1" style={{ color: "#6C6F5F" }}>Shop-Bilder · {sichtbar} Artikel · {(daten?.artikel.length || 0) - sichtbar} ausgeblendet</p>
-        <p className="mt-1" style={{ fontSize: "11px", color: "#6C6F5F" }}>Letzter erfolgreicher Abruf: {zeit(daten?.letzter_erfolg)}</p>
+        <p className="mt-1" style={{ fontSize: "11px", color: "#6C6F5F" }}>Letzter abgeschlossener Abgleich: {zeit(daten?.letzter_erfolg)}</p>
       </div>
       <button type="button" onClick={aktualisieren} disabled={startet || laeuft || !daten} className="flex items-center gap-2" style={{ ...button, opacity: startet || laeuft || !daten ? 0.5 : 1 }}><RefreshCw size={15} className={laeuft ? "animate-spin" : ""} />{laeuft || startet ? "Wird aktualisiert …" : "Aktualisieren"}</button>
     </div>
@@ -124,6 +125,9 @@ export function BilderView() {
       <label className="flex items-center gap-2"><input type="checkbox" checked={ausgeblendete} onChange={e => setAusgeblendete(e.target.checked)} /> Ausgeblendete anzeigen</label>
     </div>
     {laeuft && <p role="status" className="mb-4" style={{ color: "#2C5A18" }}>{daten.fortschritt || "Aktualisierung läuft …"}</p>}
+    {daten?.artikel.some(a => !a.ausgeblendet && a.bilder.some(b => b.fehler)) && <div role="status" className="mb-4 p-3" style={{ ...box, color: "#9A4332" }}>
+      {daten.artikel.filter(a => !a.ausgeblendet).reduce((n, a) => n + a.bilder.filter(b => b.fehler).length, 0)} Bilder konnten nicht geladen werden und werden als Platzhalter angezeigt. Die übrigen Bilder sind verfügbar. Beim nächsten Aktualisieren werden diese Bilder erneut geprüft.
+    </div>}
     {(fehler || daten?.fehler) && <div role="alert" className="mb-4 p-3" style={{ ...box, color: "#9A4332" }}>{fehler || daten.fehler}<p className="mt-1">Der bisherige Bilderstand bleibt erhalten.</p></div>}
     {!daten && !fehler && <p>Lade Bilderübersicht …</p>}
     {daten && !daten.letzter_erfolg && !daten.artikel.length ? <p className="py-12 text-center" style={{ color: "#6C6F5F" }}>Mit „Aktualisieren“ lädst du die Shop-Artikel und ihre Bilder erstmals aus der Wawi.</p> : daten && <BilderListe artikel={daten.artikel} ausgeblendete={ausgeblendete} suche={suche} onArtikel={id => { setDialogFehler(""); setAuswahl(id); }} />}
