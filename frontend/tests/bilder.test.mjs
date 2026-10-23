@@ -47,12 +47,13 @@ test("Bilder-Popup speichert Ausblenden mit Revision; Filter erlaubt erneutes Ei
       return {ok:true, json:async()=>({status:"gespeichert"})};
     }
     assert.equal(url, "/api/bilder");
-    return {ok:true, json:async()=>({artikel:structuredClone(data), status:"ok", letzter_erfolg:"2026-10-23T11:00:00Z"})};
+    return {ok:true, json:async()=>({artikel:structuredClone(data), status:"ok", teilstand:true, letzter_erfolg:"2026-10-23T11:00:00Z"})};
   };
   t.after(()=> { globalThis.fetch = originalFetch; });
   let view;
   await act(async () => { view = create(React.createElement(BilderView), {createNodeMock: e=>e.type==="dialog" ? {showModal(){}}:null}); });
   t.after(()=>act(()=>view.unmount()));
+  assert.match(JSON.stringify(view.toJSON()), /Unvollständiger Zwischenstand/);
   const button = name => view.root.findAllByType("button").find(b=>b.children.includes(name));
   assert.equal(calls.filter(([,o])=>o.method==="POST").length, 0);
   await act(async()=>button("Kräuter").props.onClick());

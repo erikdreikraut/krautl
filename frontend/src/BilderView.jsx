@@ -124,11 +124,12 @@ export function BilderView() {
       <label className="flex items-center gap-2 px-3 py-2" style={box}><Search size={15} /><input type="search" aria-label="Artikelname oder Artikelnummer suchen" placeholder="Name oder Artikelnummer …" value={suche} onChange={e => setSuche(e.target.value)} style={{ background: "transparent", outline: "none" }} /></label>
       <label className="flex items-center gap-2"><input type="checkbox" checked={ausgeblendete} onChange={e => setAusgeblendete(e.target.checked)} /> Ausgeblendete anzeigen</label>
     </div>
+    {daten?.teilstand && <p role="status" className="mb-4" style={{ color: "#9A4332" }}>Unvollständiger Zwischenstand: Bereits geladene Artikel sind sichtbar. Noch nicht geprüfte Artikel können fehlen oder einen älteren Stand zeigen.</p>}
     {laeuft && <p role="status" className="mb-4" style={{ color: "#2C5A18" }}>{daten.fortschritt || "Aktualisierung läuft …"}</p>}
     {daten?.artikel.some(a => !a.ausgeblendet && a.bilder.some(b => b.fehler)) && <div role="status" className="mb-4 p-3" style={{ ...box, color: "#9A4332" }}>
       {daten.artikel.filter(a => !a.ausgeblendet).reduce((n, a) => n + a.bilder.filter(b => b.fehler).length, 0)} Bilder konnten nicht geladen werden und werden als Platzhalter angezeigt. Die übrigen Bilder sind verfügbar. Beim nächsten Aktualisieren werden diese Bilder erneut geprüft.
     </div>}
-    {(fehler || daten?.fehler) && <div role="alert" className="mb-4 p-3" style={{ ...box, color: "#9A4332" }}>{fehler || daten.fehler}<p className="mt-1">Der bisherige Bilderstand bleibt erhalten.</p></div>}
+    {(fehler || daten?.fehler) && <div role="alert" className="mb-4 p-3" style={{ ...box, color: "#9A4332" }}>{fehler || daten.fehler}<p className="mt-1">Bereits gespeicherte Artikel bleiben sichtbar. Der Abgleich wurde nicht vollständig abgeschlossen.</p></div>}
     {!daten && !fehler && <p>Lade Bilderübersicht …</p>}
     {daten && !daten.letzter_erfolg && !daten.artikel.length ? <p className="py-12 text-center" style={{ color: "#6C6F5F" }}>Mit „Aktualisieren“ lädst du die Shop-Artikel und ihre Bilder erstmals aus der Wawi.</p> : daten && <BilderListe artikel={daten.artikel} ausgeblendete={ausgeblendete} suche={suche} onArtikel={id => { setDialogFehler(""); setAuswahl(id); }} />}
     {artikel && <ArtikelDialog artikel={artikel} speichern={speichern} schliessen={() => setAuswahl(null)} laeuft={speichert} fehler={dialogFehler} />}

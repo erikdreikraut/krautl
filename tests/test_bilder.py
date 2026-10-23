@@ -130,21 +130,25 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(store.lesen()["artikel"][0]["ausgeblendet"])
         self.assertEqual(store.lesen()["artikel"][0]["bilder"][0]["version"], "2026-10-23T10:00:00Z")
 
-    async def test_failure_preserves_complete_snapshot_and_success_time(self):
+    async def test_failure_preserves_completed_rows_and_success_time(self):
         await self.run_sync()
         old = store.lesen()
         self.fail_path = "/v2/items/" + uid(2)
-        self.rows[0]["name"] = "Must not publish"
+        self.rows[0]["name"] = "Updated before failure"
         with self.assertRaises(JtlFehler):
             await self.run_sync()
-        self.assertEqual(store.lesen()["artikel"], old["artikel"])
+        self.assertEqual(store.lesen()["artikel"][0]["name"], "Updated before failure")
+        self.assertEqual(store.lesen()["artikel"][1], old["artikel"][1])
+        self.assertTrue(store.lesen()["teilstand"])
         self.assertEqual(store.lesen()["letzter_erfolg"], old["letzter_erfolg"])
         self.fail_path = None
         self.details[uid(1)].pop("salesChannels")
         with patch("app.bilder_abgleich.einzelshop_pruefen", side_effect=JtlFehler("Shop-Aktivierung unklar")):
             with self.assertRaisesRegex(JtlFehler, "Shop-Aktivierung"):
                 await self.run_sync()
-        self.assertEqual(store.lesen()["artikel"], old["artikel"])
+        self.assertEqual(store.lesen()["artikel"][0]["name"], "Updated before failure")
+        self.assertEqual(store.lesen()["artikel"][1], old["artikel"][1])
+        self.assertTrue(store.lesen()["teilstand"])
         self.assertEqual(store.lesen()["letzter_erfolg"], old["letzter_erfolg"])
 
     async def test_legacy_single_shop_checked_each_run_and_hidden_skipped(self):
@@ -331,6 +335,42 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(p.endswith(uid(1)) or p.endswith(uid(101)) for _, p in self.requests))
         self.assertEqual(store.lesen()["status"], "ok")
         self.assertIn("HTTP 400", store.lesen()["artikel"][0]["bilder"][0]["fehler"])
+
+    async def test_transient_detail_failure_retries_then_completes(self):
+        from app.bilder_abgleich import lesen_mit_wiederholung
+        client = AsyncMock()
+        client._request.side_effect = [JtlFehler("Direkte JTL-API: HTTP 500."), {"id": uid(1)}]
+        with patch("app.bilder_abgleich.asyncio.sleep", new_callable=AsyncMock):
+            result = await lesen_mit_wiederholung(client, "/v2/items/" + uid(1), "Artikel A-1")
+        self.assertEqual(result["id"], uid(1))
+        self.assertEqual(client._request.await_count, 2)
+        self.assertEqual(client._request.call_args.args[0], "GET")
+
+    async def test_persistent_failure_keeps_first_import_visible_and_recoverable(self):
+        self.fail_path = "/v2/items/" + uid(2)
+        self.fail_status = 500
+        with patch("app.bilder_abgleich.asyncio.sleep", new_callable=AsyncMock):
+            with self.assertRaisesRegex(JtlFehler, "Artikel A-2.*HTTP 500"):
+                await self.run_sync()
+        stand = store.lesen()
+        self.assertEqual(len(stand["artikel"]), 1)
+        self.assertTrue(stand["artikel"][0]["bilder"][0]["thumb"])
+        self.assertTrue(stand["teilstand"])
+        self.assertIsNone(stand["letzter_erfolg"])
+        self.assertEqual(sum(p.endswith(uid(2)) for _, p in self.requests), 3)
+        self.fail_path = None
+        await self.run_sync()
+        self.assertFalse(store.lesen()["teilstand"])
+        self.assertEqual(len(store.lesen()["artikel"]), 2)
+
+    async def test_checkpoint_cannot_overwrite_concurrent_hide(self):
+        await self.run_sync()
+        row = store.lesen()["artikel"][0]
+        store.ausblenden(uid(1), True, 0, "micha")
+        row["name"] = "Must not replace hidden"
+        store.zwischenstand(row, 0, "https://wawi.test/api/eazybusiness")
+        self.assertNotEqual(store.lesen()["artikel"][0]["name"], row["name"])
+        self.assertTrue(store.lesen()["artikel"][0]["ausgeblendet"])
 
     async def test_api_roles_hide_thumbnail_and_single_run(self):
         await self.run_sync()

@@ -90,6 +90,27 @@ def thumb_lesen(artikel_id, thumb_id):
         return row[0] if row else None
 
 
+def zwischenstand(artikel, revision, api_ziel):
+    """Publish one complete article; never delete rows or mark a run complete."""
+    with datenbank() as db:
+        db.execute("BEGIN IMMEDIATE")
+        status = status_lesen(db)
+        if status.get("api_ziel") and status["api_ziel"] != api_ziel:
+            raise ValueError("Wawi-Ziel passt nicht zum Zwischenstand.")
+        key = artikel["id"]
+        current = db.execute("SELECT ausgeblendet, revision FROM artikel WHERE id=?", (key,)).fetchone()
+        if (current or (0, 0)) != (0, revision):
+            return
+        if current is None:
+            db.execute("INSERT INTO artikel (id, daten) VALUES (?, ?)", (key, json.dumps(artikel)))
+        else:
+            db.execute("UPDATE artikel SET daten=? WHERE id=?", (json.dumps(artikel), key))
+        status.update(teilstand=True, api_ziel=api_ziel)
+        if status.get("status") != "laeuft":
+            status["status"] = "unvollstaendig"
+        db.execute("INSERT OR REPLACE INTO status VALUES (1, ?)", (json.dumps(status),))
+
+
 def uebernehmen(artikel, vorher, api_ziel):
     """Ein erfolgreicher Lauf ersetzt nur seit Laufbeginn unveränderte, sichtbare Artikel."""
     with datenbank() as db:
@@ -109,7 +130,7 @@ def uebernehmen(artikel, vorher, api_ziel):
         bildfehler = sum(bool(b.get("fehler")) for (raw,) in
                          db.execute("SELECT daten FROM artikel WHERE ausgeblendet=0")
                          for b in json.loads(raw)["bilder"])
-        status = {**status_lesen(db), "status": "warnung" if bildfehler else "ok", "bildfehler": bildfehler, "letzter_erfolg": jetzt(), "fehler": None, "api_ziel": api_ziel}
+        status = {**status_lesen(db), "status": "warnung" if bildfehler else "ok", "bildfehler": bildfehler, "teilstand": False, "letzter_erfolg": jetzt(), "fehler": None, "api_ziel": api_ziel}
         db.execute("INSERT OR REPLACE INTO status VALUES (1, ?)", (json.dumps(status),))
         # Keep only previews still referenced by the final snapshot, including hidden rows.
         verwendet = {b["thumb"] for (raw,) in db.execute("SELECT daten FROM artikel") for b in json.loads(raw)["bilder"]}

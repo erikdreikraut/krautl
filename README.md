@@ -956,7 +956,9 @@ am 23.10.2026 gelesen: `GET /v2/items`, `GET /v2/items/{itemId}` und
 `GET /v2/items/image-data/{imageId}` (JSON/Base64-Bilddaten).
 
 - Manuell über **Aktualisieren** starten; das Öffnen und Polling der Liste liest
-  ausschließlich den lokalen Stand. Keine geplanten Läufe oder automatischen Wiederholungen.
+  ausschließlich den lokalen Stand. Keine geplanten Läufe. Innerhalb eines manuellen
+  Laufs werden rein lesende Katalog-/Detailabrufe bei HTTP 500/502/503/504 oder
+  Verbindungsfehlern höchstens dreimal versucht (2 und 4 Sekunden Pause).
 - Vollständige paginierte Katalogprüfung; aktive Shop-Kandidaten über `isActive`
   und `isShopActive`, konkrete Aktivierung über
   `salesChannels.salesChannels[].salesChannelId=2-2-1` und `isActive=true`.
@@ -1002,8 +1004,12 @@ am 23.10.2026 gelesen: `GET /v2/items`, `GET /v2/items/{itemId}` und
   auch bei unveränderter Bildversion. Ausgeblendete Artikel bleiben ausgenommen.
   Rechte-, Netzwerk-, Server- und Katalogfehler brechen weiterhin den Gesamtlauf ab.
 - Ein OS-Lock verhindert parallele Aktualisierungen. Bei globalem Fehler, Versionsabweichung
-  oder Unterbrechung bleiben Artikel und letzter Erfolgszeitpunkt erhalten.
-  Ein vollständiger Lauf veröffentlicht atomar; währenddessen geänderte
+  oder Unterbrechung bleiben gespeicherte Artikel und letzter vollständiger
+  Erfolgszeitpunkt erhalten. Jeder vollständig verarbeitete Artikel wird
+  revisionsgeschützt als sichtbarer Zwischenstand gespeichert; die Oberfläche
+  kennzeichnet diesen ausdrücklich als unvollständig. Ungeprüfte alte Artikel
+  bleiben erhalten, neue ungeprüfte Artikel können fehlen. Entfernte Artikel
+  werden erst nach einem vollständig abgeschlossenen Lauf bereinigt.
   Ausblendungen werden nicht überschrieben. Laufzeitlimit eine Stunde.
 - Lokale SQLite-Datei inklusive Vorschaubildern und Ausblendungen:
   `var/bilder/bilder.sqlite3`. Docker bindet sie dauerhaft nach `/app/var/bilder`

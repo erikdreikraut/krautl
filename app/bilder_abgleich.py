@@ -192,11 +192,25 @@ def shop_bilder(detail, katalogzeile=None, einzelshop=False):
     return sorted(bilder, key=lambda b: (b["sortNumber"], b["blobIdentifier"]))
 
 
+async def lesen_mit_wiederholung(client, path, kontext, **kwargs):
+    # Restricted to GETs in the image catalogue, never FAQ writes.
+    transient = {f"Direkte JTL-API: HTTP {code}." for code in (500, 502, 503, 504)}
+    transient.add("Direkte JTL-Verbindung fehlgeschlagen (TLS/Netz/Zeitlimit).")
+    for versuch in range(3):
+        try:
+            return await client._request("GET", path, **kwargs)
+        except JtlFehler as exc:
+            if str(exc) not in transient or versuch == 2:
+                raise JtlFehler(f"{kontext}: {exc}") from None
+            speicher.status_setzen(fortschritt=f"{kontext}: erneuter Leseversuch {versuch + 2}/3 …")
+            await asyncio.sleep(2 * (versuch + 1))
+
+
 async def katalog(client):
     ergebnis, gesehen = [], set()
     total = None
     for page in range(1, 10001):
-        data = await client._request("GET", "/v2/items", params={"pageNumber": page, "pageSize": 100})
+        data = await lesen_mit_wiederholung(client, "/v2/items", f"Artikelkatalog Seite {page}", params={"pageNumber": page, "pageSize": 100})
         items = data.get("items")
         if not isinstance(items, list) or data.get("pageNumber") != page or not isinstance(data.get("totalItems"), int):
             raise JtlFehler("Ungültige Wawi-Katalogseite.")
@@ -242,7 +256,7 @@ async def abgleichen(client):
         if not isinstance(sku, str) or not sku.strip() or not isinstance(name, str) or not name.strip():
             raise JtlFehler("Artikelname oder Artikelnummer fehlt in der Wawi-Antwort.")
         speicher.status_setzen(fortschritt=f"Artikel {nr} von {len(rows)}: {sku}")
-        detail = await client._request("GET", "/v2/items/" + key)
+        detail = await lesen_mit_wiederholung(client, "/v2/items/" + key, f"Artikel {sku} (Details)")
         if detail.get("id") != key or detail.get("identifiers", {}).get("sku") != sku:
             raise JtlFehler("Artikel-ID oder Artikelnummer passt nicht zum Katalog.")
         if not speicher.freigegeben(key, rev):
@@ -281,6 +295,7 @@ async def abgleichen(client):
                 raise JtlFehler("Ein Artikel verweist auf sich selbst als Vaterartikel.")
             neuer_stand[key] = {"id": key, "sku": sku, "name": name, "parent_id": parent,
                                 "bilder": result, "aktualisiert_am": speicher.jetzt()}
+            speicher.zwischenstand(neuer_stand[key], rev, client.url)
     speicher.uebernehmen(neuer_stand, vorher, client.url)
 
 
