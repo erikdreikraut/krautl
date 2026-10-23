@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import time
 
 
@@ -36,7 +37,7 @@ BENUTZER = {
         "benutzername": "micha",
         "name": "Micha Durst",
         "titel": None,
-        "rolle": "sachbearbeiter",
+        "rolle": "grafik",
         "passwort_env": "KRAUTL_PASSWORD_MICHA",
     },
     "aneta": {
@@ -47,6 +48,26 @@ BENUTZER = {
         "passwort_env": "KRAUTL_PASSWORD_ANETA",
     },
 }
+
+
+def darf_endpunkt_nutzen(benutzer: dict, methode: str, pfad: str) -> bool:
+    """Grafik erhält ausschließlich die API der Wissensdatenbank und Sitzung."""
+    if benutzer.get("rolle") in {"admin", "sachbearbeiter"}:
+        return True
+    if (methode, pfad) in {("GET", "/auth/me"), ("POST", "/auth/logout")}:
+        return True
+    if benutzer.get("rolle") != "grafik":
+        return False
+    erlaubte_pfade = {
+        "GET": (r"/wissensbasis", r"/faq", r"/google-product-qa",
+                r"/produkte/[0-9]+/(faq-export|google-product-qa)"),
+        "POST": (r"/wissen", r"/produkte", r"/produkte/shop-import", r"/faq",
+                 r"/faq/import/(analyse|uebernehmen)", r"/google-product-qa/generieren"),
+        "PUT": (r"/wissen/[0-9]+", r"/produkte/[0-9]+", r"/faq/[0-9]+", r"/faq-rubriken"),
+        "PATCH": (r"/faq/[0-9]+/(auswahl|google-product-qa)",),
+        "DELETE": (r"/faq/[0-9]+",),
+    }
+    return any(re.fullmatch(muster, pfad) for muster in erlaubte_pfade.get(methode, ()))
 
 
 def _secret() -> bytes:

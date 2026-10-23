@@ -26,7 +26,7 @@ from .mail_versand import antwort_mit_signatur, antwort_senden, antwortadresse
 from .imap_client import lade_postfaecher, mail_loeschen as mail_imap_loeschen
 from .auth import (
     BENUTZER, COOKIE_NAME, SESSION_DAUER_SEKUNDEN, anmelden, oeffentliche_daten,
-    sitzung_erstellen, sitzung_lesen,
+    sitzung_erstellen, sitzung_lesen, darf_endpunkt_nutzen,
 )
 from .berechtigungen import (
     ROLLE_SACHBEARBEITER, darf_klassifikation_sehen, darf_mail_sehen,
@@ -238,6 +238,8 @@ async def anmeldung_erfordern(request: Request, call_next):
     if benutzer is None:
         return JSONResponse(status_code=401, content={"detail": "Anmeldung erforderlich"})
     request.state.benutzer = benutzer
+    if not darf_endpunkt_nutzen(benutzer, request.method, request.url.path):
+        return JSONResponse(status_code=403, content={"detail": "Kein Zugriff auf diesen Bereich"})
     response = await call_next(request)
     if request.method in {"POST", "PUT", "PATCH", "DELETE"} and response.status_code < 400 and (
         request.url.path.split("/")[1] in {"faq", "faq-rubriken", "produkte", "wissensvorschlaege"}
@@ -772,7 +774,7 @@ async def mail_zustaendigkeit_aendern(
     ziel = (
         "Erik (Admin)"
         if zuweisung.rolle == "admin"
-        else "Guri, Ludwig, Aneta und Micha (Sachbearbeitung)"
+        else "Guri, Ludwig und Aneta (Sachbearbeitung)"
     )
     session.add(Aktionslog(
         mail_id=mail.id,
@@ -826,6 +828,12 @@ async def rollen_mailzugriff_laden(
     }
     return {
         "rollen": [
+            {
+                "id": "grafik",
+                "name": "Grafik",
+                "benutzer": [oeffentliche_daten(b) for b in BENUTZER.values() if b["rolle"] == "grafik"],
+                "klassifikation_ids": [],
+            },
             {
                 "id": "admin",
                 "name": "Admin",

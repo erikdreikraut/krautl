@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   Search, ChevronDown, CheckCircle2, PenLine, Paperclip, X,
   Inbox as InboxIcon, Archive, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
-  LogOut, ShieldCheck, Trash2, UserRound, Eye, ArrowLeft, Lock, StickyNote,
+  LogOut, ShieldCheck, Trash2, UserRound, Eye, ArrowLeft, Lock, StickyNote, Image,
 } from "lucide-react";
 import { api } from "./api.js";
 import { useWhatsAppEingang, WhatsAppChatPanel, WhatsAppArchiv } from "./WhatsAppView.jsx";
@@ -11,6 +11,8 @@ import { WissensdatenbankViewNeu } from "./WissensdatenbankView.jsx";
 import { GesendeteAntwortenView } from "./GesendeteAntwortenView.jsx";
 import { InkassoView } from "./InkassoView.jsx";
 import { JtlSyncStatus } from "./JtlSyncStatus.jsx";
+import { GrafikAnwendung } from "./GrafikAnwendung.jsx";
+import { BilderView } from "./BilderView.jsx";
 
 // Grün/Creme an den Logo-Farben ausgerichtet (#509B32 dunkelgrün,
 // #FFFFD2 creme, #BEDC0F helles Blattgrün) — Amber/Rost bleiben als
@@ -568,7 +570,7 @@ function ZuweisenButton({ mail, onZugewiesen, deaktiviert = false }) {
             ? [{ value: "admin", label: "Erik (Admin)" }]
             : []),
           ...(mail.zuweisbareRollen.includes("sachbearbeiter")
-            ? [{ value: "sachbearbeiter", label: "Guri, Ludwig, Aneta, Micha (Sachbearbeitung)" }]
+            ? [{ value: "sachbearbeiter", label: "Guri, Ludwig, Aneta (Sachbearbeitung)" }]
             : []),
         ]}
         onWaehlen={zuweisen}
@@ -1875,6 +1877,10 @@ function RollenMailzugriffView({ konfiguration, onReload }) {
         <div className="mt-1" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{nutzerNamen(sachbearbeiter)} · {auswahl.size} von {konfiguration.klassifikationen.length} Mailarten</div>
       </div>
     </div>
+    <div className="p-4 mb-6" style={{ background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "7px" }}>
+      <b style={fontSerif}>Grafik</b>
+      <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>{nutzerNamen(konfiguration.rollen.find(r => r.id === "grafik"))} · Wissensdatenbank und Bilder · kein Mailzugriff</div>
+    </div>
     <div className="grid grid-cols-2 gap-4 rollen-grid">
       {Object.entries(gruppen).map(([gruppe, klassifikationen]) => {
         const alle = klassifikationen.every((k) => auswahl.has(k.klassifikation_id));
@@ -2731,8 +2737,9 @@ export default function KrautlUI() {
   if (!benutzer) {
     return <LoginView onAngemeldet={setBenutzer} />;
   }
+  const Anwendung = benutzer.rolle === "grafik" ? GrafikAnwendung : KrautlAnwendung;
   return (
-    <KrautlAnwendung
+    <Anwendung
       benutzer={benutzer}
       onAbmelden={async () => {
         try {
@@ -2794,9 +2801,9 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
         zustaendigSachbearbeiter: Boolean(m.zustaendig_sachbearbeiter),
         zuweisbareRollen: m.zuweisbare_rollen ?? ["admin", "sachbearbeiter"],
         zustaendigkeitLabel: (() => {
-          if (m.zustaendig_admin && m.zustaendig_sachbearbeiter) return "Erik, Guri, Ludwig, Aneta und Micha";
+          if (m.zustaendig_admin && m.zustaendig_sachbearbeiter) return "Erik, Guri, Ludwig und Aneta";
           if (m.zustaendig_admin) return "Erik (Admin)";
-          if (m.zustaendig_sachbearbeiter) return "Guri, Ludwig, Aneta, Micha (Sachbearbeitung)";
+          if (m.zustaendig_sachbearbeiter) return "Guri, Ludwig, Aneta (Sachbearbeitung)";
           return "nicht zugewiesen";
         })(),
         zielhinweis: (() => {
@@ -2906,6 +2913,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
           <NavTab icon={Receipt} label="Rechnungen" count={offeneRechnungen} accent active={tab === "rechnungen"} onClick={() => setTab("rechnungen")} />
           {["admin", "sachbearbeiter"].includes(benutzer.rolle) && <NavTab icon={Receipt} label="Inkasso" active={tab === "inkasso"} onClick={() => setTab("inkasso")} />}
           <NavTab icon={BookOpen} label="Wissensdatenbank" mobileLabel="Wissen" count={daten.wissensvorschlaege.length} accent active={tab === "wissen"} onClick={() => setTab("wissen")} />
+          {benutzer.rolle === "admin" && <NavTab icon={Image} label="Bilder" active={tab === "bilder"} onClick={() => setTab("bilder")} />}
           <EinstellungenMenu
             active={["klassifikationen", "aktionslog", "rollen"].includes(tab)}
             onWaehlen={setTab}
@@ -2959,6 +2967,7 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
       {tab === "inkasso" && ["admin", "sachbearbeiter"].includes(benutzer.rolle) && <InkassoView />}
       {tab === "rechnungen" && <RechnungenView rechnungen={daten.rechnungen} onReload={neuLaden} />}
       {tab === "wissen" && <WissensdatenbankViewNeu basis={daten.wissensbasis} faqEintraege={daten.faq} vorschlaege={daten.wissensvorschlaege} onReload={neuLaden} />}
+      {tab === "bilder" && benutzer.rolle === "admin" && <BilderView />}
       {tab === "klassifikationen" && <KlassifikationenView katalog={daten.katalog} onReload={neuLaden} />}
       {tab === "aktionslog" && <AktionslogView />}
       {tab === "archiv" && <div className="flex flex-col flex-1 min-h-0">

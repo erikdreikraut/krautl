@@ -100,7 +100,7 @@ function Formular({ editor, setEditor, speichern, produkte, familien, faqGruppen
   </div>;
 }
 
-export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onReload }) {
+export function WissensdatenbankViewNeu({ basis, faqEintraege, vorschlaege, onReload, zeigeVorschlaege = true }) {
   const [bereich, setBereich] = useState("wissen");
   const [auswahl, setAuswahl] = useState("alle");
   const [suche, setSuche] = useState("");
@@ -247,9 +247,9 @@ Das Löschen kann nicht rückgängig gemacht werden.`)) return;
 
   return <div className="flex-1 min-h-0 flex flex-col overflow-hidden knowledge-view">
     <div className="px-6 pt-5 knowledge-header" style={{ borderBottom: `1px solid ${farben.line}` }}>
-      <div className="flex items-start justify-between gap-4 knowledge-header-row"><div><h2 style={{ ...serif, fontSize: "21px", fontWeight: 700, color: farben.mossDeep }}>Wissensdatenbank</h2><p style={{ ...ui, fontSize: "12.5px", color: farben.muted }}>{basis.eintraege.length} Wissenseinträge · {faqEintraege.length} FAQ · {vorschlaege.length} Vorschläge</p></div>
+      <div className="flex items-start justify-between gap-4 knowledge-header-row"><div><h2 style={{ ...serif, fontSize: "21px", fontWeight: 700, color: farben.mossDeep }}>Wissensdatenbank</h2><p style={{ ...ui, fontSize: "12.5px", color: farben.muted }}>{basis.eintraege.length} Wissenseinträge · {faqEintraege.length} FAQ{zeigeVorschlaege && <> · {vorschlaege.length} Vorschläge</>}</p></div>
         <div className="flex gap-2 knowledge-tools"><div className="flex items-center gap-2 px-2.5 py-1.5 knowledge-search" style={{ background: farben.paperRaised, border: `1px solid ${farben.line}`, borderRadius: "6px" }}><Search size={13}/><input value={suche} onChange={(e) => setSuche(e.target.value)} placeholder="Wissen durchsuchen …" style={{ ...ui, fontSize: "12.5px", background: "transparent", outline: "none" }}/></div>{bereich !== "vorschlaege" && <button onClick={() => neu(bereich)} className="flex items-center gap-1.5 px-3 py-2 shrink-0" style={{ ...ui, fontSize: "12px", color: "#fff", background: farben.moss, borderRadius: "6px" }}><Plus size={13}/> {["faq", "google"].includes(bereich) ? "FAQ" : "Wissenseintrag"}</button>}</div></div>
-      <div className="flex flex-wrap gap-5 mt-4">{tab("wissen", "Wissen")}{tab("faq", "FAQ")}{tab("google", "Google-FAQ-Feed")}{tab("vorschlaege", `Vorschläge ${vorschlaege.length || ""}`)}</div>
+      <div className="flex flex-wrap gap-5 mt-4">{tab("wissen", "Wissen")}{tab("faq", "FAQ")}{tab("google", "Google-FAQ-Feed")}{zeigeVorschlaege && tab("vorschlaege", `Vorschläge ${vorschlaege.length || ""}`)}</div>
     </div>
     {bereich === "faq" && produkt && faqGruppen.length > 0 && <div className="flex flex-wrap items-center gap-2 px-6 py-2.5" style={{ background: farben.paperRaised, borderBottom: `1px solid ${farben.line}` }}>
       <span style={{ ...mono, fontSize: "10px", color: farben.muted }}>RUBRIKEN</span>

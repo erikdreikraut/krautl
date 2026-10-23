@@ -23,8 +23,7 @@
   sein letztes Lebenszeichen in der Datenbank
 - `app/main.py` — FastAPI mit den Endpunkten, die die Oberfläche braucht
 - `app/auth.py` — persönliche Anmeldung mit signierten Sitzungen für Erik,
-  Gursewak, Ludwig, Aneta und Micha sowie deren Rollen **Admin** beziehungsweise
-  **Sachbearbeiter**
+  Gursewak, Ludwig, Aneta und Micha sowie deren Rollen **Admin**, **Sachbearbeiter** und **Grafik**
 - `scripts/import_klassifikationen.py` — importiert/aktualisiert die
   `klassifikation`-Tabelle aus `data/mail-klassifikationen.csv` (idempotent)
 - `frontend/` — Vite+React-Oberfläche, spricht die Backend-Endpunkte über
@@ -425,7 +424,7 @@ getrennt und versucht zusätzlich, die Nachricht dauerhaft aus IMAP zu löschen.
   abgeleitete Wissensvorschläge. Admins haben stets Zugriff auf alle Mailarten.
 - Die Rollen-Matrix bestimmt zugleich die anfängliche Zuständigkeit neuer
   Mails. Über **Zuweisen** kann eine Mail anschließend exklusiv Erik als Admin
-  oder der gemeinsamen Sachbearbeitungsgruppe Guri, Ludwig, Aneta und Micha zugeordnet
+  oder der gemeinsamen Sachbearbeitungsgruppe Guri, Ludwig und Aneta zugeordnet
   werden. Admins sehen standardmäßig nur ihre eigene Arbeitsliste und können
   zur Kontrolle auf **Alle Mails** wechseln. Zuweisungen werden im Aktionslog
   mit dem auslösenden Nutzer festgehalten.
@@ -922,3 +921,22 @@ Telefon-Fallback: nur wenn Rechnung und gespeicherte Auftragsdaten keine Nummer 
 Die rechte Spalte Zuweisen ersetzt die Kanalspalte. Admins und Sachbearbeiter können jede erfasste Rechnung per Dropdown einem einzelnen aktiven Nutzer zuweisen oder die Zuweisung aufheben. Die Liste aller Rechnungen bleibt für beide Rollen sichtbar; die Zuordnung ist keine Zugriffssperre. Nur beim zugewiesenen Nutzer wird die Zeile blassrot markiert.
 
 Die Tabelle `zuweisungen` in `var/inkasso-notizen/notizen.sqlite3` entsteht beim ersten Zuweisen automatisch. Wawi-Synchronisationen verändern sie nicht. Jede Zuweisung schreibt in derselben Transaktion einen Notizeintrag `Name zugewiesen` (beim Aufheben `Zuweisung aufgehoben`) mit serverseitiger Nutzerkennung und Zeitstempel. Gleichzeitige Änderungen werden durch eine Revision geschützt; bei HTTP 409 die neu geladene Zuordnung prüfen. Notizen und Zuweisungen gemeinsam sichern, wie oben für SQLite beschrieben. Keine separate Migration und keine neuen JTL-Rechte erforderlich.
+
+
+### Nutzergruppe Grafik und Bilder
+
+Micha Durst gehört zur Gruppe **Grafik**. Er startet direkt in der Wissensdatenbank
+und darf dort Wissen, Produkte und FAQ weiterhin bearbeiten. Seine Navigation
+enthält ausschließlich **Wissensdatenbank** und **Bilder**. Mailbasierte Vorschläge,
+Eingang, Archiv, Rechnungen, Inkasso und Einstellungen sind für Grafik auch über
+direkte API-Aufrufe gesperrt. Die Rolle wird bei jeder Anfrage aus der aktuellen
+Nutzerkonfiguration gelesen; vorhandene Sitzungen erhalten keine alten Rechte.
+Erik behält als Admin alle Bereiche einschließlich Bilder. Die Sachbearbeitung
+bleibt unverändert; Micha ist dort und bei neuen Inkasso-Zuweisungen nicht mehr
+wählbar. Historische Notizen und bestehende Zuweisungen bleiben erhalten.
+
+**Bilder** ist zunächst eine leere Rubrik für Admin und Grafik ohne Upload oder
+Bildverwaltung. Es ist keine Datenmigration nötig. App und Frontend müssen mit
+dem neuen Stand laufen. Die Elestio-Pipeline hat nachweislich bereits den
+Dokumentationscommit `4cf9877` automatisch gebaut und ausgerollt; nach Push zuerst
+Pipeline-Status prüfen und keinen parallelen manuellen Build starten.

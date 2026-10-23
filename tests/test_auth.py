@@ -32,7 +32,7 @@ class AuthTest(unittest.TestCase):
     def test_micha_anmeldung_sitzung_und_fehlendes_passwort(self):
         with patch.dict(os.environ, self.umgebung, clear=False):
             micha = anmelden(" Micha ", "micha-test-passwort")
-            self.assertEqual(("Micha Durst", "sachbearbeiter"), (micha["name"], micha["rolle"]))
+            self.assertEqual(("Micha Durst", "grafik"), (micha["name"], micha["rolle"]))
             self.assertIsNone(micha["titel"])
             self.assertEqual("micha", sitzung_lesen(sitzung_erstellen("micha"))["benutzername"])
             self.assertIsNone(anmelden("micha", "falsch"))

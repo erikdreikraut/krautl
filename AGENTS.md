@@ -43,3 +43,9 @@
 ## Nutzernamen
 
 - Vollständige zentrale Anzeigenamen: Erik Schweitzer, Gursewak Singh, Ludwig Schnorrenberg, Aneta Mikolajec und Micha Durst. Mail-Signaturen verwenden diese vollständigen Namen. Bewusst kurze Anzeigen (insbesondere Inkasso-Zuweisungen) bleiben bei Vornamen; historische Protokolle und bereits versendete Mails nicht umschreiben.
+
+## Grafik
+
+- Micha Durst gehört zur Nutzergruppe `grafik`, nicht mehr zur Sachbearbeitung. Grafik darf ausschließlich Wissensdatenbank (einschließlich Bearbeiten von Wissen, Produkten und FAQ) und Bilder nutzen. Mailbasierte Vorschläge und alle übrigen internen Bereiche auch serverseitig sperren. Erik als Admin sieht weiterhin alles.
+- Bilder ist zunächst eine leere Rubrik für Admin und Grafik; Upload/Bildverwaltung noch nicht beauftragt. Historische Notizen und bestehende Inkasso-Zuweisungen bei Rollenwechseln erhalten.
+- Elestio hat den Push von `4cf9877` am 23.10.2026 automatisch gebaut und ausgerollt. Vor manuellen Deployment-Befehlen den Pipeline-Status prüfen; keine parallelen Deployments starten.

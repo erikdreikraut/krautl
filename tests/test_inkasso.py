@@ -244,7 +244,7 @@ class AbrufTest(unittest.IsolatedAsyncioTestCase):
             inkasso.speichern(await Server([invoice()]).run(), folder)
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="https://test") as web:
                 self.assertEqual((await web.get("/inkasso")).status_code, 401)
-                for user, code in (("ludwig", 200), ("erik", 200), ("aneta", 200), ("micha", 200), ("gursewak", 200)):
+                for user, code in (("ludwig", 200), ("erik", 200), ("aneta", 200), ("micha", 403), ("gursewak", 200)):
                     response = await web.get("/inkasso", headers={"Cookie": f"{COOKIE_NAME}={sitzung_erstellen(user)}"})
                     self.assertEqual(response.status_code, code)
                     if code == 200:
@@ -541,8 +541,8 @@ class InkassoZuweisungTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(result.json()["hinweise"][-1]["text"], "Aneta zugewiesen")
                 data = (await web.get("/inkasso", headers=cookie("ludwig"))).json()
                 self.assertFalse(next(r for r in data["rechnungen"] if r["id"] == "1")["mir_zugewiesen"])
-                self.assertEqual({u["benutzername"] for u in data["zuweisbare_nutzer"]}, {"erik", "aneta", "ludwig", "gursewak", "micha"})
-                self.assertEqual({u["name"] for u in data["zuweisbare_nutzer"]}, {"Erik", "Aneta", "Ludwig", "Gursewak", "Micha"})
+                self.assertEqual({u["benutzername"] for u in data["zuweisbare_nutzer"]}, {"erik", "aneta", "ludwig", "gursewak"})
+                self.assertEqual({u["name"] for u in data["zuweisbare_nutzer"]}, {"Erik", "Aneta", "Ludwig", "Gursewak"})
                 result = await web.put(url, json={"nutzer": "", "revision": 2}, headers=cookie("erik"))
                 self.assertFalse(result.json()["mir_zugewiesen"])
                 self.assertEqual(len(result.json()["hinweise"]), 3)
