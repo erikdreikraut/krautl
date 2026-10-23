@@ -192,16 +192,22 @@ def shop_bilder(detail, katalogzeile=None, einzelshop=False):
     return sorted(bilder, key=lambda b: (b["sortNumber"], b["blobIdentifier"]))
 
 
+class ArtikelServerFehler(JtlFehler):
+    """Server error after bounded GET retries; only item details may be skipped."""
+
+
 async def lesen_mit_wiederholung(client, path, kontext, **kwargs):
     # Restricted to GETs in the image catalogue, never FAQ writes.
     transient = {f"Direkte JTL-API: HTTP {code}." for code in (500, 502, 503, 504)}
+    serverfehler = set(transient)
     transient.add("Direkte JTL-Verbindung fehlgeschlagen (TLS/Netz/Zeitlimit).")
     for versuch in range(3):
         try:
             return await client._request("GET", path, **kwargs)
         except JtlFehler as exc:
             if str(exc) not in transient or versuch == 2:
-                raise JtlFehler(f"{kontext}: {exc}") from None
+                klasse = ArtikelServerFehler if str(exc) in serverfehler else JtlFehler
+                raise klasse(f"{kontext}: {exc}") from None
             speicher.status_setzen(fortschritt=f"{kontext}: erneuter Leseversuch {versuch + 2}/3 …")
             await asyncio.sleep(2 * (versuch + 1))
 
@@ -240,6 +246,7 @@ async def abgleichen(client):
     vorher = {r["id"]: r for r in stand["artikel"]}
     rows = await katalog(client)
     neuer_stand = {}
+    ungeprueft = {}
     einzelshop = False
     for nr, row in enumerate(rows, 1):
         key = ident(row.get("id"))
@@ -256,7 +263,14 @@ async def abgleichen(client):
         if not isinstance(sku, str) or not sku.strip() or not isinstance(name, str) or not name.strip():
             raise JtlFehler("Artikelname oder Artikelnummer fehlt in der Wawi-Antwort.")
         speicher.status_setzen(fortschritt=f"Artikel {nr} von {len(rows)}: {sku}")
-        detail = await lesen_mit_wiederholung(client, "/v2/items/" + key, f"Artikel {sku} (Details)")
+        try:
+            detail = await lesen_mit_wiederholung(client, "/v2/items/" + key, f"Artikel {sku} (Details)")
+        except ArtikelServerFehler as exc:
+            if speicher.freigegeben(key, rev):
+                ungeprueft[key] = {"id": key, "sku": sku, "name": name, "fehler": str(exc),
+                                  "vorhanden": bool(alt)}
+                speicher.status_setzen(ungeprueft=list(ungeprueft.values()), teilstand=True)
+            continue
         if detail.get("id") != key or detail.get("identifiers", {}).get("sku") != sku:
             raise JtlFehler("Artikel-ID oder Artikelnummer passt nicht zum Katalog.")
         if not speicher.freigegeben(key, rev):
@@ -296,7 +310,7 @@ async def abgleichen(client):
             neuer_stand[key] = {"id": key, "sku": sku, "name": name, "parent_id": parent,
                                 "bilder": result, "aktualisiert_am": speicher.jetzt()}
             speicher.zwischenstand(neuer_stand[key], rev, client.url)
-    speicher.uebernehmen(neuer_stand, vorher, client.url)
+    speicher.uebernehmen(neuer_stand, vorher, client.url, list(ungeprueft.values()))
 
 
 async def ausfuehren():

@@ -55,7 +55,7 @@ function Thumbnail({ artikel, bild, position }) {
   </figure>;
 }
 
-export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildfehler }) {
+export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildfehler, ungeprueft = [] }) {
   const gruppen = gruppieren(artikel, ausgeblendete, suche, nurBildfehler);
   return <div className="flex flex-col gap-3" aria-label="Shop-Artikel und Bilder">
     {gruppen.map(gruppe => <div key={gruppe.id} style={{ ...box, overflow: "hidden" }}>
@@ -63,6 +63,7 @@ export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildf
         <div className="shrink-0" style={{ width: "clamp(140px, 22vw, 230px)", paddingLeft: a.parent_id ? "12px" : 0, borderLeft: a.parent_id ? "3px solid #BEDC0F" : undefined }}>
           <button type="button" onClick={() => onArtikel(a.id)} className="text-left" style={{ color: "#2C5A18", fontWeight: 600, lineHeight: 1.4, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }} title={a.name}>{a.name}</button>
           <div className="mt-1" style={{ fontSize: "11px", color: "#6C6F5F" }}>Art.-Nr. {a.sku}{a.parent_id ? " · Variante" : ""}</div>
+          {ungeprueft.some(u => u.id === a.id) && <p className="mt-1" style={{ color: "#9A4332", fontSize: "11px" }}>Details ungeprüft · bisheriger Bilderstand</p>}
           {a.ausgeblendet && <span className="flex items-center gap-1 mt-1" style={{ fontSize: "11px" }}><EyeOff size={12} /> Ausgeblendet</span>}
         </div>
         <div className="flex items-start gap-3 overflow-x-auto min-w-0 flex-1 pb-1">
@@ -81,9 +82,10 @@ export function BilderStatus({ daten, fehler }) {
   const abbruch = daten?.fehler;
   const sichtbar = (daten?.artikel || []).filter(a => !a.ausgeblendet);
   const anzahl = sichtbar.reduce((n, a) => n + a.bilder.filter(b => b.fehler).length, 0);
+  const ungeprueft = (daten?.ungeprueft || []).filter(u => !daten?.artikel?.some(a => a.id === u.id && a.ausgeblendet));
   const artikelFehler = abbruch?.match(/^Artikel (.+?) \(Details\):.*HTTP (\d+)/);
   const titel = fehler ? "Verbindung zur Übersicht gestört" : laeuft ? "Abgleich läuft" :
-    abbruch ? "Abgleich abgebrochen" : daten?.teilstand ? "Abgleich noch unvollständig" :
+    abbruch ? "Abgleich abgebrochen" : ungeprueft.length && daten?.lauf_beendet_am ? "Durchlauf beendet – Artikel ungeprüft" : daten?.teilstand ? "Abgleich noch unvollständig" :
     daten?.letzter_erfolg ? "Abgleich abgeschlossen" : "Noch kein Abgleich gestartet";
   return <div role={fehler || abbruch ? "alert" : "status"} className="mb-4 p-3" style={{ ...box, color: "#242A1F" }}>
     <strong>{titel}</strong>
@@ -92,6 +94,14 @@ export function BilderStatus({ daten, fehler }) {
     {fehler && <p className="mt-1">Die Anzeige konnte nicht aktualisiert werden. Der angezeigte Stand kann veraltet sein.</p>}
     <p className="mt-1">{sichtbar.length} Artikel im gespeicherten Bestand.{daten?.teilstand ? " Die Liste ist noch nicht vollständig geprüft; Artikel können fehlen oder veraltet sein." : ""}</p>
     {anzahl > 0 && <p className="mt-1">{anzahl} Bilder sind als Platzhalter markiert. Das ist ein separates Problem beim Bildabruf. „Nur Artikel mit Bildfehlern“ zeigt die betroffenen Artikel.</p>}
+    {ungeprueft.length > 0 && <details className="mt-2" open>
+      <summary style={{ cursor: "pointer" }}>{ungeprueft.length} Artikel ungeprüft</summary>
+      <p className="mt-1">Die Wawi lieferte nach drei Versuchen keine Artikeldetails. Der Abgleich wird mit den übrigen Artikeln fortgesetzt. Beim nächsten Aktualisieren werden diese Artikel erneut geprüft.</p>
+      <ul className="mt-2" style={{ paddingLeft: "20px", listStyle: "disc" }}>{ungeprueft.map(a => <li key={a.id}>
+        <strong>{a.sku}</strong> · {a.name} · {a.vorhanden ? "Bisherige Bilder erhalten" : "Bildbestand noch unbekannt"}
+        <details><summary style={{ cursor: "pointer" }}>Fehlerdetails</summary>{a.fehler}</details>
+      </li>)}</ul>
+    </details>}
     {laeuft && <p className="mt-2" style={{ color: "#2C5A18" }}>{daten.fortschritt || "Artikel werden geladen …"}</p>}
     {(abbruch || fehler) && <details className="mt-2"><summary style={{ cursor: "pointer" }}>Technische Details</summary>
       {abbruch && <p>{abbruch}</p>}{fehler && <p>{fehler}</p>}
@@ -154,7 +164,7 @@ export function BilderView() {
     </div>
     <BilderStatus daten={daten} fehler={fehler} />
     {!daten && !fehler && <p>Lade Bilderübersicht …</p>}
-    {daten && !daten.letzter_erfolg && !daten.artikel.length ? <p className="py-12 text-center" style={{ color: "#6C6F5F" }}>Mit „Aktualisieren“ lädst du die Shop-Artikel und ihre Bilder erstmals aus der Wawi.</p> : daten && <BilderListe nurBildfehler={nurBildfehler} artikel={daten.artikel} ausgeblendete={ausgeblendete} suche={suche} onArtikel={id => { setDialogFehler(""); setAuswahl(id); }} />}
+    {daten && !daten.letzter_erfolg && !daten.artikel.length ? <p className="py-12 text-center" style={{ color: "#6C6F5F" }}>Mit „Aktualisieren“ lädst du die Shop-Artikel und ihre Bilder erstmals aus der Wawi.</p> : daten && <BilderListe ungeprueft={daten.ungeprueft || []} nurBildfehler={nurBildfehler} artikel={daten.artikel} ausgeblendete={ausgeblendete} suche={suche} onArtikel={id => { setDialogFehler(""); setAuswahl(id); }} />}
     {artikel && <ArtikelDialog artikel={artikel} speichern={speichern} schliessen={() => setAuswahl(null)} laeuft={speichert} fehler={dialogFehler} />}
   </section>;
 }

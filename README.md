@@ -1002,7 +1002,14 @@ am 23.10.2026 gelesen: `GET /v2/items`, `GET /v2/items/{itemId}` und
   erhalten. Übrige Bilder/Artikel werden übernommen; der Lauf zeigt eine Warnung.
   Beim nächsten manuellen Aktualisieren werden fehlende Vorschauen erneut geladen,
   auch bei unveränderter Bildversion. Ausgeblendete Artikel bleiben ausgenommen.
-  Rechte-, Netzwerk-, Server- und Katalogfehler brechen weiterhin den Gesamtlauf ab.
+  Rechte-, Netzwerk-, Bildserver- und Katalogfehler brechen weiterhin den Gesamtlauf ab.
+  Ausnahme: Wiederholte HTTP 500/502/503/504 bei einzelnen Artikeldetails werden
+  nach drei Versuchen übersprungen. Diese Artikel stehen separat unter
+  „Artikel ungeprüft“; vorhandene Bilder bleiben unverändert, neue Artikel
+  gelten als „Bildbestand noch unbekannt“. Der Rest des Katalogs wird verarbeitet.
+  Solange ungeprüfte Artikel verbleiben, keine Bereinigung alter Artikel und
+  keinen neuen vollständigen Erfolgszeitpunkt setzen. Nächster manueller Lauf
+  prüft diese Artikel erneut und entfernt erledigte Hinweise.
 - Ein OS-Lock verhindert parallele Aktualisierungen. Bei globalem Fehler, Versionsabweichung
   oder Unterbrechung bleiben gespeicherte Artikel und letzter vollständiger
   Erfolgszeitpunkt erhalten. Jeder vollständig verarbeitete Artikel wird

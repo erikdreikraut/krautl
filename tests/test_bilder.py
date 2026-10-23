@@ -350,13 +350,13 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
         self.fail_path = "/v2/items/" + uid(2)
         self.fail_status = 500
         with patch("app.bilder_abgleich.asyncio.sleep", new_callable=AsyncMock):
-            with self.assertRaisesRegex(JtlFehler, "Artikel A-2.*HTTP 500"):
-                await self.run_sync()
+            await self.run_sync()
         stand = store.lesen()
         self.assertEqual(len(stand["artikel"]), 1)
         self.assertTrue(stand["artikel"][0]["bilder"][0]["thumb"])
         self.assertTrue(stand["teilstand"])
         self.assertIsNone(stand["letzter_erfolg"])
+        self.assertEqual(stand["ungeprueft"][0]["sku"], "A-2")
         self.assertEqual(sum(p.endswith(uid(2)) for _, p in self.requests), 3)
         self.fail_path = None
         await self.run_sync()
@@ -384,6 +384,35 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(JtlFehler, "Detailprüfung"):
                 await diagnostic.artikel_pruefen("A-2")
         self.assertTrue(any("Serverantwort:" in str(c) for c in output.call_args_list))
+
+    async def test_skipped_article_keeps_old_images_and_processes_following_articles(self):
+        self.details[uid(2)] = detail(2)
+        self.details[uid(3)] = detail(3)
+        await self.run_sync()
+        old = store.lesen()
+        self.fail_path = "/v2/items/" + uid(2)
+        self.fail_status = 500
+        self.rows[2]["name"] = "Later article updated"
+        with patch("app.bilder_abgleich.asyncio.sleep", new_callable=AsyncMock):
+            await self.run_sync()
+        stand = store.lesen()
+        self.assertEqual(stand["artikel"][1], old["artikel"][1])
+        self.assertEqual(stand["artikel"][2]["name"], "Later article updated")
+        self.assertEqual(stand["letzter_erfolg"], old["letzter_erfolg"])
+        self.assertTrue(stand["ungeprueft"][0]["vorhanden"])
+        self.assertTrue(stand["teilstand"])
+        self.fail_path = None
+        await self.run_sync()
+        self.assertEqual(store.lesen()["ungeprueft"], [])
+        self.assertFalse(store.lesen()["teilstand"])
+
+    async def test_catalogue_server_error_still_aborts(self):
+        self.fail_path = "/v2/items"
+        self.fail_status = 500
+        with patch("app.bilder_abgleich.asyncio.sleep", new_callable=AsyncMock):
+            with self.assertRaisesRegex(JtlFehler, "Artikelkatalog Seite 1"):
+                await self.run_sync()
+        self.assertIsNone(store.lesen()["letzter_erfolg"])
 
     async def test_api_roles_hide_thumbnail_and_single_run(self):
         await self.run_sync()

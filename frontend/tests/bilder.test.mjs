@@ -108,3 +108,21 @@ test("Ein Status trennt Artikelabbruch und Bildfehler; Filter erhält Ausblendun
   assert.deepEqual(gruppieren(artikel,false,"",true).flatMap(g=>g.artikel.map(a=>a.id)),["parent"]);
   assert.equal(gruppieren(artikel,true,"",true).flatMap(g=>g.artikel).length,2);
 });
+
+test("Übersprungene Artikel werden getrennt mit unbekanntem Bildbestand aufgeführt", async t => {
+  const server=await createServer({server:{middlewareMode:true,hmr:false},appType:"custom"});
+  t.after(()=>server.close());
+  const {BilderStatus}=await server.ssrLoadModule("/src/BilderView.jsx");
+  let view;
+  await act(async()=>{view=create(React.createElement(BilderStatus,{daten:{
+    artikel:[],status:"warnung",teilstand:true,lauf_beendet_am:"2026-10-23T12:00:00Z",
+    ungeprueft:[{id:"x",sku:"20562-50",name:"Ungeprüfter Artikel",vorhanden:false,fehler:"HTTP 500"}]
+  }}));});
+  t.after(()=>act(()=>view.unmount()));
+  const text=JSON.stringify(view.toJSON());
+  assert.match(text,/Durchlauf beendet – Artikel ungeprüft/);
+  assert.match(text,/20562-50/);
+  assert.match(text,/Bildbestand noch unbekannt/);
+  assert.doesNotMatch(text,/Keine Shop-Bilder zugeordnet/);
+  assert.equal(view.root.findAllByProps({role:"alert"}).length,0);
+});
