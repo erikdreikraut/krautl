@@ -4,6 +4,7 @@ import base64
 import binascii
 from io import BytesIO
 from uuid import UUID
+from urllib.parse import urlsplit, urlunsplit, unquote, parse_qsl
 
 import httpx
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -41,33 +42,77 @@ def vorschaubild(daten):
         raise JtlFehler("Eine Wawi-Bilddatei konnte nicht als Vorschaubild gelesen werden.") from None
 
 
-async def bild_laden(client, bild_id):
-    # Never fetch arbitrary URLs from Wawi responses or expose API keys to browsers.
+def datei_url(client, bild_id, bild):
+    """Allow only this image on the configured Wawi origin; never log URL tokens."""
+    raw = (bild or {}).get("url") or (bild or {}).get("previewUrl")
+    if not isinstance(raw, str) or not raw:
+        raise JtlFehler("Wawi-Bildabruf: HTTP 404. Bild-Endpunkt fehlt oder Bild nicht gefunden; keine Download-Adresse geliefert.")
     try:
-        async with client.http.stream("GET", client.url + "/v2/items/image-data/" + ident(bild_id)) as response:
-            if response.status_code != 200:
-                raise JtlFehler(f"Wawi-Bildabruf: HTTP {response.status_code}. Bildleserechte des bestehenden FAQ-Zugangs prüfen.")
-            inhalt = bytearray()
-            async for chunk in response.aiter_bytes():
-                inhalt.extend(chunk)
-                if len(inhalt) > MAX_BYTES * 4 // 3 + 100:
-                    raise JtlFehler("Eine Bilddatei überschreitet das Abruflimit von 20 MB.")
-            if "json" in response.headers.get("content-type", "").lower():
-                import json
-                try:
-                    wert = json.loads(inhalt)
-                    if not isinstance(wert, str):
-                        raise ValueError()
-                    daten = base64.b64decode(wert, validate=True)
-                except (ValueError, binascii.Error):
-                    raise JtlFehler("Wawi-Bildantwort enthält keine gültigen Bilddaten.") from None
+        u, base = urlsplit(raw), urlsplit(client.url)
+        if (u.scheme != "https" or u.hostname != base.hostname
+                or (u.port or 443) != (base.port or 443)
+                or u.username or u.password or u.fragment
+                or any(ord(c) < 32 for c in raw)):
+            raise ValueError()
+        prefix = base.path + "/v2/file/"
+        path = unquote(u.path)
+        normal = prefix + ident(bild_id)
+        broken = prefix + "{blobId}?version=2/" + ident(bild_id)
+        query = u.query
+        if path == broken:
+            versions = [v for k, v in parse_qsl(query) if k.lower() == "version"]
+            if versions and versions != ["2"]:
+                raise ValueError()
+            if not versions:
+                query += ("&" if query else "") + "version=2"
+        elif path != normal:
+            raise ValueError()
+        return urlunsplit((base.scheme, base.netloc, normal, query, ""))
+    except (ValueError, TypeError):
+        raise JtlFehler("Unsichere oder unpassende Wawi-Bildadresse; Abruf abgebrochen.") from None
+
+
+async def bild_laden(client, bild_id, bild=None):
+    try:
+        url = client.url + "/v2/items/image-data/" + ident(bild_id)
+        # Only a missing modern endpoint permits the legacy file URL.
+        async with client.http.stream("GET", url) as response:
+            if response.status_code == 404 and bild is not None:
+                legacy = datei_url(client, bild_id, bild)
             else:
-                daten = bytes(inhalt)
-            if len(daten) > MAX_BYTES:
-                raise JtlFehler("Eine Bilddatei überschreitet 20 MB.")
-            return await asyncio.to_thread(vorschaubild, daten)
+                return await bildantwort(response)
+        async with client.http.stream("GET", legacy, follow_redirects=False) as response:
+            return await bildantwort(response)
     except httpx.HTTPError:
         raise JtlFehler("Wawi-Bildabruf fehlgeschlagen (TLS/Netz/Zeitlimit).") from None
+
+
+async def bildantwort(response):
+    if response.status_code != 200:
+        hinweis = ("Bildleserechte des bestehenden FAQ-Zugangs prüfen."
+                   if response.status_code in (401, 403) else
+                   "Datei-Endpunkt oder Bild nicht gefunden." if response.status_code == 404 else
+                   "Unerwartete Antwort des Bild-Endpunkts.")
+        raise JtlFehler(f"Wawi-Bildabruf: HTTP {response.status_code}. {hinweis}")
+    inhalt = bytearray()
+    async for chunk in response.aiter_bytes():
+        inhalt.extend(chunk)
+        if len(inhalt) > MAX_BYTES * 4 // 3 + 100:
+            raise JtlFehler("Eine Bilddatei überschreitet das Abruflimit von 20 MB.")
+    if "json" in response.headers.get("content-type", "").lower():
+        import json
+        try:
+            wert = json.loads(inhalt)
+            if not isinstance(wert, str):
+                raise ValueError()
+            daten = base64.b64decode(wert, validate=True)
+        except (ValueError, binascii.Error):
+            raise JtlFehler("Wawi-Bildantwort enthält keine gültigen Bilddaten.") from None
+    else:
+        daten = bytes(inhalt)
+    if len(daten) > MAX_BYTES:
+        raise JtlFehler("Eine Bilddatei überschreitet 20 MB.")
+    return await asyncio.to_thread(vorschaubild, daten)
 
 
 def einzelshop_bestaetigen(kanaele):
@@ -210,7 +255,7 @@ async def abgleichen(client):
             cache = next((b for b in alt.get("bilder", []) if b["id"] == bid and version and b.get("version") == version), None)
             thumb = cache["thumb"] if cache and speicher.thumb_lesen(key, cache["thumb"]) else None
             if not thumb:
-                daten = await bild_laden(client, bid)
+                daten = await bild_laden(client, bid, bild)
                 if not speicher.freigegeben(key, rev):
                     break
                 thumb = speicher.thumb_speichern(daten)

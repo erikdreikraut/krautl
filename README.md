@@ -949,7 +949,7 @@ und den vorhandenen FAQ-Zugang (`JTL_LOCAL_*`, `krautl-lokal`). Der separate
 Inkasso-Lesezugang lieferte beim Artikelabruf HTTP 403 und wird dafür nicht genutzt.
 Er liest bei älteren API-Versionen ausschließlich die Verkaufskanalliste; sein
 vorhandenes Zugangsverzeichnis wird dazu in die App schreibgeschützt eingebunden.
-Keine Registrierung, Rechteänderung, Wawi-Schreiboperation oder externe Bild-URL
+Keine Registrierung, Rechteänderung, Wawi-Schreiboperation oder fremde Bild-URL
 wird automatisch ausgeführt. Artikel-/Bildleserechte müssen auf dem installierten
 API-Stand verfügbar sein. Referenz: [JTL OpenAPI 2.1](https://developer.jtl-software.com/openapi/erp/2.1.json),
 am 23.10.2026 gelesen: `GET /v2/items`, `GET /v2/items/{itemId}` und
@@ -971,6 +971,14 @@ am 23.10.2026 gelesen: `GET /v2/items`, `GET /v2/items/{itemId}` und
   Kanäle mit `itemCapabilities.onlineShopActivation=true` berücksichtigt,
   außer POS (Typ 2). Mehrere Shops, unbekannte Typen oder unklare Daten brechen
   ab und erhalten den alten Bestand. Bildzuordnungen allein beweisen keine Aktivierung.
+- Bildabruf: zunächst `/v2/items/image-data/{id}`; nur bei HTTP 404 die gelieferte
+  Datei-URL verwenden. Erlaubt sind ausschließlich HTTPS, derselbe Host/Port wie
+  die konfigurierte Wawi und `/api/eazybusiness/v2/file/{id}` mit derselben Bild-ID.
+  Das am 23.10. beobachtete fehlerhafte Format
+  `/v2/file/%7BblobId%7D%3Fversion=2/{id}` wird gezielt auf den Datei-Pfad
+  mit Query-Parameter `version=2` normalisiert; vorhandene Abfragewerte bleiben
+  erhalten. Keine Redirects, keine URL-/Token-Ausgabe oder Speicherung im Snapshot.
+  Diese Kompatibilität ist lokal getestet; der Live-Dateiabruf steht noch aus.
 - Eine Zeile je Artikelnummer, auch ohne Bilder; Varianten über `parentItemId`
   gruppieren, niemals über SKU-Präfixe. Bildvorschauen maximal 240×180 Pixel;
   Bilddateien bis 20 MB und 40 Megapixel, keine Originalbilder im Browser laden.

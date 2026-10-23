@@ -24,7 +24,7 @@ async def main():
                     continue
                 print("Shop-Artikel gelesen:", row.get("sKU"), "| zugeordnete Shop-Bilder:", len(bilder))
                 if bilder:
-                    thumb = await bild_laden(client, bilder[0]["blobIdentifier"])
+                    thumb = await bild_laden(client, bilder[0]["blobIdentifier"], bilder[0])
                     print("Bildlesezugriff erfolgreich. Vorschaubild:", len(thumb), "Bytes; nichts gespeichert.")
                     return
             if data.get("hasNextPage") is False:

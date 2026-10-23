@@ -13,7 +13,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 import httpx
 from PIL import Image
 from app import main, bilder, bilder_speicher as store
-from app.bilder_abgleich import abgleichen, bild_laden, shop_bilder, einzelshop_bestaetigen, einzelshop_pruefen
+from app.bilder_abgleich import abgleichen, bild_laden, shop_bilder, einzelshop_bestaetigen, einzelshop_pruefen, datei_url
 from app.jtl_onprem import OnPremClient
 from app.jtl_client import JtlFehler
 from app.auth import COOKIE_NAME, sitzung_erstellen
@@ -221,6 +221,52 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
         async with self.client() as c:
             with self.assertRaisesRegex(JtlFehler, "HTTP 403"):
                 await bild_laden(c, uid(101))
+
+    async def test_legacy_file_fallback_normalizes_url_and_preserves_query(self):
+        calls = []
+        def reply(req):
+            calls.append(req)
+            if "image-data" in req.url.path:
+                return httpx.Response(404)
+            self.assertEqual(req.url.path, "/api/eazybusiness/v2/file/" + uid(101))
+            self.assertEqual(req.url.params["token"], "test-secret")
+            self.assertEqual(req.url.params["version"], "2")
+            return httpx.Response(200, content=png(), headers={"Content-Type": "image/png"})
+        async with OnPremClient("https://wawi.test/api/eazybusiness", "test-key",
+                                transport=httpx.MockTransport(reply)) as c:
+            b = {"url": c.url + "/v2/file/%7BblobId%7D%3Fversion=2/" + uid(101) + "?token=test-secret"}
+            data = await bild_laden(c, uid(101), b)
+            with Image.open(BytesIO(data)) as img:
+                self.assertEqual(img.size, (240, 180))
+        self.assertEqual(len(calls), 2)
+
+    async def test_legacy_url_rejects_other_hosts_ids_paths_and_redirects(self):
+        async with self.client() as c:
+            good = c.url + "/v2/file/" + uid(101)
+            self.assertEqual(datei_url(c, uid(101), {"url": good}), good)
+            for url in (good.replace("wawi.test", "evil.test"), good.replace("https:", "http:"),
+                        good.replace(uid(101), uid(102)), good.replace("/file/", "/users/"),
+                        good + "#fragment", good.replace("wawi.test", "user@wawi.test"),
+                        good.replace("wawi.test", "wawi.test:8443")):
+                with self.assertRaises(JtlFehler):
+                    datei_url(c, uid(101), {"url": url})
+        calls = []
+        def reply(req):
+            calls.append(req)
+            return httpx.Response(404 if len(calls) == 1 else 302,
+                                  headers={"Location": "https://evil.test"})
+        async with OnPremClient("https://wawi.test/api/eazybusiness", "key",
+                                transport=httpx.MockTransport(reply)) as c:
+            with self.assertRaisesRegex(JtlFehler, "HTTP 302"):
+                await bild_laden(c, uid(101), {"url": c.url + "/v2/file/" + uid(101)})
+        self.assertEqual(len(calls), 2)
+
+    async def test_no_legacy_fallback_for_permission_error(self):
+        self.fail_path = "/v2/items/image-data/" + uid(101)
+        async with self.client() as c:
+            with self.assertRaisesRegex(JtlFehler, "HTTP 403"):
+                await bild_laden(c, uid(101), {"url": c.url + "/v2/file/" + uid(101)})
+        self.assertEqual(len(self.requests), 1)
 
     async def test_api_roles_hide_thumbnail_and_single_run(self):
         await self.run_sync()
