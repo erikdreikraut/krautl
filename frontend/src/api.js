@@ -39,6 +39,7 @@ function postForm(pfad, params) {
 }
 
 export const api = {
+  bilderExportvorschau: text => anfrage("/bilder/exportvorschau", {method:"POST", headers:{"Content-Type":"application/json"}, body:text}),
   bilder: () => anfrage("/bilder", { cache: "no-store" }),
   bilderAktualisieren: () => anfrage("/bilder/aktualisieren", { method: "POST" }),
   bilderAusblenden: (id, ausgeblendet, revision) => anfrage(`/bilder/${encodeURIComponent(id)}/ausblenden`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ausgeblendet, revision }) }),

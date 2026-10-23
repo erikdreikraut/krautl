@@ -144,6 +144,35 @@ def uebernehmen(artikel, vorher, api_ziel, ungeprueft=None):
                 db.execute("DELETE FROM thumbs WHERE id=?", (ident,))
 
 
+def exportvorschauen(sku, bilder, nutzer):
+    """Bind export positions to current blob IDs, only replacing missing previews."""
+    with datenbank() as db:
+        db.execute("BEGIN IMMEDIATE")
+        status = status_lesen(db)
+        if any(a["sku"] == sku for a in status.get("ungeprueft", [])):
+            raise ValueError("Artikel ist ungeprüft. Zuerst Details erfolgreich abrufen.")
+        rows = [(key, json.loads(raw), hidden) for key, raw, hidden in
+                db.execute("SELECT id, daten, ausgeblendet FROM artikel")]
+        matches = [(key, data, hidden) for key, data, hidden in rows if data["sku"] == sku]
+        if len(matches) != 1 or matches[0][2]:
+            raise ValueError("Artikel nicht eindeutig vorhanden oder ausgeblendet.")
+        key, data, _ = matches[0]
+        positions = [b["position"] for b in data["bilder"]]
+        if len(set(positions)) != len(positions) or set(positions) != set(bilder):
+            raise ValueError("Bildpositionen des Exports passen nicht zum aktuellen Shop-Bestand.")
+        anzahl = 0
+        for bild in data["bilder"]:
+            if not bild.get("fehler") or bild.get("thumb"):
+                continue
+            raw = bilder[bild["position"]]
+            thumb = hashlib.sha256(raw).hexdigest()
+            db.execute("INSERT OR IGNORE INTO thumbs VALUES (?, ?)", (thumb, raw))
+            bild.update(thumb=thumb, quelle="ameise", importiert_am=jetzt(), importiert_von=nutzer)
+            anzahl += 1
+        db.execute("UPDATE artikel SET daten=? WHERE id=?", (json.dumps(data), key))
+        return anzahl
+
+
 class Belegt(Exception):
     pass
 

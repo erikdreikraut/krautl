@@ -39,6 +39,11 @@ test("Bilder-Popup speichert Ausblenden mit Revision; Filter erlaubt erneutes Ei
   const calls = [];
   globalThis.fetch = async (url, options = {}) => {
     calls.push([url, options]);
+    if (url === "/api/bilder/exportvorschau") {
+      assert.equal(options.method, "POST");
+      assert.equal(options.body, '{"format":"test"}');
+      return {ok:true,json:async()=>({sku:"20810",importiert:1})};
+    }
     if (options.method === "PUT") {
       const body = JSON.parse(options.body);
       const a = data.find(a=>url.includes(`/${a.id}/`));
@@ -66,6 +71,11 @@ test("Bilder-Popup speichert Ausblenden mit Revision; Filter erlaubt erneutes Ei
   assert.equal(data[0].ausgeblendet, false);
   assert.equal(data[0].revision, 2);
   assert.equal(calls.filter(([,o])=>o.method==="PUT").length, 2);
+  await act(async()=>view.root.findByProps({"aria-label":"Shop-Vorschaudatei importieren"}).props.onChange({
+    target:{files:[{size:17,text:async()=>'{"format":"test"}'}],value:""}
+  }));
+  assert.match(JSON.stringify(view.toJSON()),/fehlende Vorschauen ergänzt/);
+
 });
 
 test("Fehlendes Bild bleibt als Platzhalter mit Position sichtbar und wird nach Reparatur ersetzt", async t => {
@@ -81,10 +91,11 @@ test("Fehlendes Bild bleibt als Platzhalter mit Position sichtbar und wird nach 
   t.after(()=>act(()=>view.unmount()));
   assert.equal(view.root.findAllByType("img").length,1);
   assert.match(view.root.findByProps({role:"img"}).props["aria-label"], /Bildposition 5.*HTTP 400/);
-  artikel[0].bilder[0]={id:"bad",thumb:"repaired",position:5,fehler:null};
+  artikel[0].bilder[0]={id:"bad",thumb:"repaired",position:5,fehler:"HTTP 400",quelle:"ameise"};
   await act(async()=>view.update(React.createElement(BilderListe,{artikel})));
   assert.equal(view.root.findAllByType("img").length,2);
   assert.equal(view.root.findAllByProps({role:"img"}).length,0);
+  assert.match(JSON.stringify(view.toJSON()),/Exportvorschau/);
 });
 
 test("Ein Status trennt Artikelabbruch und Bildfehler; Filter erhält Ausblendungen", async t => {

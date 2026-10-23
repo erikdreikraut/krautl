@@ -1069,3 +1069,33 @@ Die Prüfung liest den Katalog bis zum Treffer und dessen Details, keine Bilder.
 Sie gibt bei Fehlern eine begrenzte, bereinigte Serverantwort aus und ändert
 keinen Bestand. HTTP 500 allein erklärt die Ursache noch nicht; Bildfehler und
 Artikel-Detailfehler nicht gleichsetzen.
+
+### Ersatzvorschauen aus einem bestätigten JTL-Shop-Export
+
+Für die ältere Wawi-API scheitern Original- und Vorschauabruf bei bestimmten
+Dateinamen mit Umlauten/Sonderzeichen im Antwortheader. Wawi bleibt unverändert:
+Fehlende Krautl-Vorschauen können aus einem Ameise-Export ergänzt werden.
+
+1. In Ameise ausschließlich JTL-Shop wählen und einen Artikel mit allen
+   Bildpositionen exportieren. CSV und exportierte Dateien zusammen aufbewahren.
+2. Lokal vorbereiten:
+   `python -m scripts.erstelle_bilder_vorschau EXPORT.csv VORSCHAU.json --jtl-shop-bestaetigt`.
+   Das Werkzeug prüft Bilddateien, CSV-Dateigrößen und eindeutige Positionen;
+   Originale bleiben unverändert. Die Bestätigung ist erforderlich, weil die CSV
+   den gewählten Verkaufskanal nicht selbst enthält.
+3. Unter Bilder → „Ersatzvorschauen aus Shop-Export“ die JSON-Datei auswählen.
+   Admin/Grafik dürfen importieren; maximal 1 MB je Datei, ein Artikel.
+   Der Import sperrt gegen laufende Abgleiche und verlangt identische Positionsmengen.
+   Ungeprüfte/ausgeblendete/unbekannte Artikel werden abgewiesen.
+   Nur fehlerhafte Bilder ohne vorhandene Vorschau erhalten eine Ersatzvorschau.
+   Sie wird an die aktuelle Bild-ID/Version gebunden, mit Nutzer/Zeit protokolliert
+   und sichtbar als „Exportvorschau“ bezeichnet. Erfolgreiche Bilder bleiben erhalten.
+4. Der nächste Abgleich versucht den normalen Download erneut. Bei erneutem
+   individuellen Bildfehler bleibt die Ersatzvorschau nur bei identischer Bild-ID
+   und Version erhalten. Ein erfolgreicher API-Abruf ersetzt sie. Der Import
+   verändert weder den letzten vollständigen Abgleich noch die Wawi.
+
+Testexport 23.10.2026: SKU 20810, acht Positionen, JTL-Shop-Filter vom Nutzer
+bestätigt. Alle acht Dateien lokal gelesen und gegen die Größen der CSV geprüft.
+Vorbereitete Datei lokal unter `var/bilder/20810-shop-vorschauen.json` (nicht in Git).
+Noch kein Import in den Produktivbestand ausgeführt.

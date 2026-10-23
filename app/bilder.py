@@ -1,5 +1,7 @@
 """Bilderübersicht für Admin und Grafik; ausschließlich manuell ausgelöste Abrufe."""
 import asyncio
+import base64
+import json
 import re
 from uuid import UUID
 
@@ -50,6 +52,42 @@ def thumbnail(artikel_id: UUID, thumb_id: str):
     if daten is None:
         raise HTTPException(404, "Vorschaubild nicht gefunden")
     return Response(daten, media_type="image/jpeg", headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+
+
+@router.post("/exportvorschau")
+async def exportvorschau(request: Request):
+    from .bilder_abgleich import vorschaubild
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > 1024 * 1024:
+            raise HTTPException(413, "Vorschaudatei darf höchstens 1 MB groß sein.")
+    try:
+        data = json.loads(body)
+        if data.get("format") != "krautl-shopvorschau-1" or data.get("kanal") != "2-2-1":
+            raise ValueError("Keine passende Shop-Vorschaudatei.")
+        sku = data["sku"]
+        if not isinstance(sku, str) or not sku.strip():
+            raise ValueError("Artikelnummer fehlt.")
+        rows = data["bilder"]
+        if not isinstance(rows, list) or not 1 <= len(rows) <= 100:
+            raise ValueError("Ungültige Bilderliste.")
+        bilder = {}
+        for row in rows:
+            pos = row["position"]
+            if type(pos) is not int or pos < 0 or pos in bilder:
+                raise ValueError("Ungültige oder doppelte Bildposition.")
+            bilder[pos] = vorschaubild(base64.b64decode(row["jpeg"], validate=True))
+    except (ValueError, KeyError, TypeError, AttributeError, JtlFehler):
+        raise HTTPException(400, "Ungültige Shop-Vorschaudatei oder Bilddaten.") from None
+    try:
+        with speicher.Laufsperre():
+            anzahl = speicher.exportvorschauen(sku, bilder, request.state.benutzer["benutzername"])
+    except speicher.Belegt as exc:
+        raise HTTPException(409, str(exc)) from None
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from None
+    return {"sku": sku, "importiert": anzahl}
 
 
 async def lauf(sperre):

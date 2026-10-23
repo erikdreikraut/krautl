@@ -286,7 +286,9 @@ async def abgleichen(client):
                 break
             bid = ident(bild["blobIdentifier"])
             version = bild.get("modificationDate")
-            cache = next((b for b in alt.get("bilder", []) if b["id"] == bid and version and b.get("version") == version), None)
+            ersatz = next((b for b in alt.get("bilder", []) if b["id"] == bid and b.get("quelle") == "ameise" and b.get("version") == version), None)
+            quelle = {}
+            cache = next((b for b in alt.get("bilder", []) if b.get("quelle") != "ameise" and b["id"] == bid and version and b.get("version") == version), None)
             thumb = cache["thumb"] if cache and speicher.thumb_lesen(key, cache["thumb"]) else None
             bildfehler = None
             if not thumb:
@@ -294,13 +296,16 @@ async def abgleichen(client):
                     daten = await bild_laden(client, bid, bild)
                 except BildFehler as exc:
                     bildfehler = str(exc)
+                    if ersatz and speicher.thumb_lesen(key, ersatz["thumb"]):
+                        thumb = ersatz["thumb"]
+                        quelle = {k: ersatz[k] for k in ("quelle", "importiert_am", "importiert_von") if k in ersatz}
                 except JtlFehler as exc:
                     raise JtlFehler(f"Artikel {sku}, Bildposition {bild['sortNumber']}: {exc}") from None
                 if not speicher.freigegeben(key, rev):
                     break
                 if bildfehler is None:
                     thumb = speicher.thumb_speichern(daten)
-            result.append({"id": bid, "thumb": thumb, "fehler": bildfehler, "version": version, "position": bild["sortNumber"],
+            result.append({**quelle, "id": bid, "thumb": thumb, "fehler": bildfehler, "version": version, "position": bild["sortNumber"],
                            "hauptbild": bool(bild.get("isMainImage")), "dateiname": str(bild.get("filename") or "")[:200]})
         if speicher.freigegeben(key, rev):
             parent = row.get("parentItemId")

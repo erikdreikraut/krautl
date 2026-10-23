@@ -414,6 +414,63 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
                 await self.run_sync()
         self.assertIsNone(store.lesen()["letzter_erfolg"])
 
+    async def test_export_preview_only_fills_missing_and_survives_api_failure(self):
+        self.fail_path = "/v2/items/image-data/" + uid(101)
+        self.fail_status = 400
+        await self.run_sync()
+        before = store.lesen()["letzter_erfolg"]
+        with self.assertRaises(ValueError):
+            store.exportvorschauen("A-1", {99: png()}, "micha")
+        self.assertIsNone(store.lesen()["artikel"][0]["bilder"][0]["thumb"])
+        self.assertEqual(store.exportvorschauen("A-1", {2: png()}, "micha"), 1)
+        self.assertEqual(store.exportvorschauen("A-1", {2: png()}, "micha"), 0)
+        self.assertEqual(store.lesen()["letzter_erfolg"], before)
+        await self.run_sync()
+        b = store.lesen()["artikel"][0]["bilder"][0]
+        self.assertEqual(b["quelle"], "ameise")
+        self.assertIsNotNone(store.thumb_lesen(uid(1), b["thumb"]))
+        self.assertIn("HTTP 400", b["fehler"])
+        store.ausblenden(uid(1), True, 0, "micha")
+        with self.assertRaises(ValueError):
+            store.exportvorschauen("A-1", {2: png()}, "micha")
+        store.ausblenden(uid(1), False, 1, "micha")
+        self.fail_path = None
+        await self.run_sync()
+        b = store.lesen()["artikel"][0]["bilder"][0]
+        self.assertIsNone(b["fehler"])
+        self.assertNotIn("quelle", b)
+
+    async def test_export_preview_never_follows_a_replaced_image_id(self):
+        self.fail_path = "/v2/items/image-data/" + uid(101)
+        self.fail_status = 400
+        await self.run_sync()
+        store.exportvorschauen("A-1", {2: png()}, "micha")
+        self.details[uid(1)]["images"]["saleschannelImages"][1]["images"][0]["blobIdentifier"] = uid(777)
+        self.fail_path = "/v2/items/image-data/" + uid(777)
+        await self.run_sync()
+        b = store.lesen()["artikel"][0]["bilder"][0]
+        self.assertEqual(b["id"], uid(777))
+        self.assertIsNone(b["thumb"])
+        self.assertNotIn("quelle", b)
+
+    async def test_export_import_endpoint_roles_and_lock(self):
+        self.fail_path = "/v2/items/image-data/" + uid(101)
+        self.fail_status = 400
+        await self.run_sync()
+        payload = {"format":"krautl-shopvorschau-1", "kanal":"2-2-1", "sku":"A-1",
+                   "bilder":[{"position":2,"jpeg":base64.b64encode(png()).decode()}]}
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="https://test") as web:
+            def cookie(user):
+                return {"Cookie": f"{COOKIE_NAME}={sitzung_erstellen(user)}"}
+            self.assertEqual((await web.post("/bilder/exportvorschau",json=payload,headers=cookie("ludwig"))).status_code,403)
+            with store.Laufsperre():
+                self.assertEqual((await web.post("/bilder/exportvorschau",json=payload,headers=cookie("micha"))).status_code,409)
+            result = await web.post("/bilder/exportvorschau",json=payload,headers=cookie("micha"))
+            self.assertEqual(result.status_code,200)
+            self.assertEqual(result.json()["importiert"],1)
+            payload["kanal"]="1-1-0"
+            self.assertEqual((await web.post("/bilder/exportvorschau",json=payload,headers=cookie("erik"))).status_code,400)
+
     async def test_api_roles_hide_thumbnail_and_single_run(self):
         await self.run_sync()
         thumb = store.lesen()["artikel"][0]["bilder"][0]["thumb"]

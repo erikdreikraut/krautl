@@ -46,11 +46,12 @@ function Thumbnail({ artikel, bild, position }) {
   const [fehler, setFehler] = useState(false);
   const meldung = bild.fehler || (fehler || !bild.thumb ? "Vorschau nicht verfügbar" : "");
   return <figure className="shrink-0" style={{ width: "120px" }}>
-    {meldung ? <div role="img" aria-label={`Bildposition ${bild.position ?? position + 1}: ${meldung}`} title={meldung} className="flex items-center justify-center" style={{ ...box, height: "90px", fontSize: "11px", textAlign: "center"  , color: "#9A4332", padding: "6px" }}>Bild nicht verfügbar</div> : <img
+    {(fehler || !bild.thumb) ? <div role="img" aria-label={`Bildposition ${bild.position ?? position + 1}: ${meldung}`} title={meldung} className="flex items-center justify-center" style={{ ...box, height: "90px", fontSize: "11px", textAlign: "center"  , color: "#9A4332", padding: "6px" }}>Bild nicht verfügbar</div> : <img
       src={`/api/bilder/${encodeURIComponent(artikel.id)}/thumb/${bild.thumb}`} loading="lazy" decoding="async"
       width="120" height="90" alt={`${artikel.name} – Bild ${position + 1}`} onError={() => setFehler(true)}
       style={{ ...box, objectFit: "contain", width: "120px", height: "90px", background: "white" }} />}
     <figcaption className="mt-1 truncate" title={bild.dateiname} style={{ fontSize: "10px", color: "#6C6F5F" }}>{bild.position ?? position + 1}{bild.hauptbild ? " · Hauptbild" : ""}</figcaption>
+    {bild.quelle === "ameise" && <p style={{ fontSize: "10px", color: "#6C6F5F" }}>Exportvorschau</p>}
     {bild.fehler && <details className="mt-1" style={{ fontSize: "11px", color: "#9A4332", overflowWrap: "anywhere" }}><summary style={{ cursor: "pointer" }}>Fehlerdetails</summary>{bild.fehler}</details>}
   </figure>;
 }
@@ -93,7 +94,7 @@ export function BilderStatus({ daten, fehler }) {
       abbruch ? <p className="mt-1">Der Abruf wurde durch einen Fehler unterbrochen. Einzelheiten stehen unter „Technische Details“.</p> : null}
     {fehler && <p className="mt-1">Die Anzeige konnte nicht aktualisiert werden. Der angezeigte Stand kann veraltet sein.</p>}
     <p className="mt-1">{sichtbar.length} Artikel im gespeicherten Bestand.{daten?.teilstand ? " Die Liste ist noch nicht vollständig geprüft; Artikel können fehlen oder veraltet sein." : ""}</p>
-    {anzahl > 0 && <p className="mt-1">{anzahl} Bilder sind als Platzhalter markiert. Das ist ein separates Problem beim Bildabruf. „Nur Artikel mit Bildfehlern“ zeigt die betroffenen Artikel.</p>}
+    {anzahl > 0 && <p className="mt-1">{anzahl} Bilder sind über die API nicht abrufbar. Sie erscheinen als Platzhalter oder, falls importiert, als Exportvorschau. „Nur Artikel mit Bildfehlern“ zeigt die betroffenen Artikel.</p>}
     {ungeprueft.length > 0 && <details className="mt-2" open>
       <summary style={{ cursor: "pointer" }}>{ungeprueft.length} Artikel ungeprüft</summary>
       <p className="mt-1">Die Wawi lieferte nach drei Versuchen keine Artikeldetails. Der Abgleich wird mit den übrigen Artikeln fortgesetzt. Beim nächsten Aktualisieren werden diese Artikel erneut geprüft.</p>
@@ -119,6 +120,8 @@ export function BilderView() {
   const [speichert, setSpeichert] = useState(false);
   const [dialogFehler, setDialogFehler] = useState("");
   const [startet, setStartet] = useState(false);
+  const [importInfo, setImportInfo] = useState("");
+  const [importiert, setImportiert] = useState(false);
   const abruf = useRef(0);
   const aktiv = useRef(false);
   const laden = useCallback(async () => {
@@ -139,6 +142,19 @@ export function BilderView() {
     try { await api.bilderAktualisieren(); await laden(); }
     catch (e) { setFehler(e.message); }
     finally { setStartet(false); }
+  };
+  const exportImport = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setImportiert(true); setImportInfo("");
+    try {
+      if (file.size > 1024 * 1024) throw new Error("Vorschaudatei darf höchstens 1 MB groß sein.");
+      const result = await api.bilderExportvorschau(await file.text());
+      setImportInfo(`Artikel ${result.sku}: ${result.importiert} fehlende Vorschauen ergänzt. Wawi unverändert.`);
+      await laden();
+    } catch (e) { setImportInfo(e.message); }
+    finally { setImportiert(false); }
   };
   const artikel = daten?.artikel.find(a => a.id === auswahl);
   const speichern = async hidden => {
@@ -162,6 +178,12 @@ export function BilderView() {
       <label className="flex items-center gap-2"><input type="checkbox" checked={ausgeblendete} onChange={e => setAusgeblendete(e.target.checked)} /> Ausgeblendete anzeigen</label>
       <label className="flex items-center gap-2"><input type="checkbox" checked={nurBildfehler} onChange={e => setNurBildfehler(e.target.checked)} /> Nur Artikel mit Bildfehlern</label>
     </div>
+    <details className="mb-4" style={{ fontSize: "12px" }}>
+      <summary style={{ cursor: "pointer" }}>Ersatzvorschauen aus Shop-Export</summary>
+      <p className="my-2">Vorbereitete Krautl-Vorschaudatei auswählen. Ergänzt nur fehlende Vorschauen; Wawi bleibt unverändert.</p>
+      <input aria-label="Shop-Vorschaudatei importieren" type="file" accept=".json" disabled={laeuft || importiert} onChange={exportImport} />
+      {importInfo && <p role="status" className="mt-2">{importInfo}</p>}
+    </details>
     <BilderStatus daten={daten} fehler={fehler} />
     {!daten && !fehler && <p>Lade Bilderübersicht …</p>}
     {daten && !daten.letzter_erfolg && !daten.artikel.length ? <p className="py-12 text-center" style={{ color: "#6C6F5F" }}>Mit „Aktualisieren“ lädst du die Shop-Artikel und ihre Bilder erstmals aus der Wawi.</p> : daten && <BilderListe ungeprueft={daten.ungeprueft || []} nurBildfehler={nurBildfehler} artikel={daten.artikel} ausgeblendete={ausgeblendete} suche={suche} onArtikel={id => { setDialogFehler(""); setAuswahl(id); }} />}
