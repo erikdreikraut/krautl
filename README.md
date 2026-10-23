@@ -978,7 +978,11 @@ am 23.10.2026 gelesen: `GET /v2/items`, `GET /v2/items/{itemId}` und
   `/v2/file/%7BblobId%7D%3Fversion=2/{id}` wird gezielt auf den Datei-Pfad
   mit Query-Parameter `version=2` normalisiert; vorhandene Abfragewerte bleiben
   erhalten. Keine Redirects, keine URL-/Token-Ausgabe oder Speicherung im Snapshot.
-  Diese Kompatibilität ist lokal getestet; der Live-Dateiabruf steht noch aus.
+  Der erste Live-Dateiabruf ist bestätigt; ein späterer Abruf im Gesamtlauf
+  liefert noch HTTP 400. Zur Eingrenzung alle sichtbaren Shop-Bilder lesend bis
+  zum ersten Fehler prüfen: `docker compose exec -T app python -u -m scripts.pruefe_bilder_api --alle`.
+  Die Diagnose nennt Artikel/Bildposition und eine begrenzte, bereinigte
+  Serverantwort; sie veröffentlicht keinen Bestand und speichert keine Bilder.
 - Eine Zeile je Artikelnummer, auch ohne Bilder; Varianten über `parentItemId`
   gruppieren, niemals über SKU-Präfixe. Bildvorschauen maximal 240×180 Pixel;
   Bilddateien bis 20 MB und 40 Megapixel, keine Originalbilder im Browser laden.

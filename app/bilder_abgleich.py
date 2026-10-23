@@ -255,7 +255,10 @@ async def abgleichen(client):
             cache = next((b for b in alt.get("bilder", []) if b["id"] == bid and version and b.get("version") == version), None)
             thumb = cache["thumb"] if cache and speicher.thumb_lesen(key, cache["thumb"]) else None
             if not thumb:
-                daten = await bild_laden(client, bid, bild)
+                try:
+                    daten = await bild_laden(client, bid, bild)
+                except JtlFehler as exc:
+                    raise JtlFehler(f"Artikel {sku}, Bildposition {bild['sortNumber']}: {exc}") from None
                 if not speicher.freigegeben(key, rev):
                     break
                 thumb = speicher.thumb_speichern(daten)

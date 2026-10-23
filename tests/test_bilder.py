@@ -268,6 +268,28 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
                 await bild_laden(c, uid(101), {"url": c.url + "/v2/file/" + uid(101)})
         self.assertEqual(len(self.requests), 1)
 
+    async def test_full_diagnostic_reaches_later_failure_without_publishing(self):
+        from scripts import pruefe_bilder_api as diagnostic
+        self.details[uid(2)] = detail(2)
+        self.fail_path = "/v2/items/image-data/" + uid(102)
+        with patch.object(diagnostic.OnPremClient, "aus_umgebung", return_value=self.client()), patch("builtins.print"):
+            with self.assertRaisesRegex(JtlFehler, "HTTP 403"):
+                await diagnostic.main(alle=True)
+        self.assertTrue(any(p.endswith(uid(101)) for _, p in self.requests))
+        self.assertTrue(any(p.endswith(uid(102)) for _, p in self.requests))
+        self.assertEqual(store.lesen()["artikel"], [])
+        self.assertIsNone(store.lesen()["letzter_erfolg"])
+        with self.assertRaisesRegex(JtlFehler, "Artikel A-2, Bildposition 2"):
+            await self.run_sync()
+
+    def test_diagnostic_redacts_credentials_and_urls(self):
+        from scripts.pruefe_bilder_api import bereinigen
+        request = httpx.Request("GET", "https://wawi.test/file?token=secret-query-value",
+                                headers={"Authorization": "Wawi secret-api-key"})
+        output = bereinigen('Failure secret-query-value secret-api-key https://wawi.test/file?token=secret-query-value', request)
+        self.assertNotIn("secret", output)
+        self.assertNotIn("https://", output)
+
     async def test_api_roles_hide_thumbnail_and_single_run(self):
         await self.run_sync()
         thumb = store.lesen()["artikel"][0]["bilder"][0]["thumb"]
