@@ -1076,15 +1076,21 @@ Für die ältere Wawi-API scheitern Original- und Vorschauabruf bei bestimmten
 Dateinamen mit Umlauten/Sonderzeichen im Antwortheader. Wawi bleibt unverändert:
 Fehlende Krautl-Vorschauen können aus einem Ameise-Export ergänzt werden.
 
-1. In Ameise ausschließlich JTL-Shop wählen und einen Artikel mit allen
+1. In Ameise ausschließlich JTL-Shop wählen und die gewünschten Artikel mit allen
    Bildpositionen exportieren. CSV und exportierte Dateien zusammen aufbewahren.
 2. Lokal vorbereiten:
    `python -m scripts.erstelle_bilder_vorschau EXPORT.csv VORSCHAU.json --jtl-shop-bestaetigt`.
    Das Werkzeug prüft Bilddateien, CSV-Dateigrößen und eindeutige Positionen;
-   Originale bleiben unverändert. Die Bestätigung ist erforderlich, weil die CSV
+   Originale bleiben unverändert. JPG, PNG und WebP werden unterstützt. Mehrere
+   Artikel werden in einer Sammeldatei zusammengefasst; unvollständige Artikel
+   werden mit Grund ausgelassen, niemals nur teilweise vorbereitet. Die Bestätigung ist erforderlich, weil die CSV
    den gewählten Verkaufskanal nicht selbst enthält.
 3. Unter Bilder → „Ersatzvorschauen aus Shop-Export“ die JSON-Datei auswählen.
-   Admin/Grafik dürfen importieren; maximal 1 MB je Datei, ein Artikel.
+   Admin/Grafik dürfen importieren. Sammeldateien bis 20 MB werden im Browser
+   nacheinander in Einzelartikel-Anfragen von maximal 1 MB aufgeteilt.
+   Ein Ergebnisbericht nennt ergänzte Vorschauen und ausgelassene Artikel.
+   Bei Verbindungs-/Serverfehlern stoppt der Import; erneutes Auswählen ist
+   möglich, bereits vorhandene Vorschauen werden nicht überschrieben.
    Der Import sperrt gegen laufende Abgleiche und verlangt identische Positionsmengen.
    Ungeprüfte/ausgeblendete/unbekannte Artikel werden abgewiesen.
    Nur fehlerhafte Bilder ohne vorhandene Vorschau erhalten eine Ersatzvorschau.

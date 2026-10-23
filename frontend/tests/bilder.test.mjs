@@ -137,3 +137,27 @@ test("Ãœbersprungene Artikel werden getrennt mit unbekanntem Bildbestand aufgefÃ
   assert.doesNotMatch(text,/Keine Shop-Bilder zugeordnet/);
   assert.equal(view.root.findAllByProps({role:"alert"}).length,0);
 });
+
+test("Sammelimport sendet artikelweise, berichtet Konflikte und stoppt bei Verbindungsfehlern", async t => {
+  const server=await createServer({server:{middlewareMode:true,hmr:false},appType:"custom"});
+  t.after(()=>server.close());
+  const {importiereVorschaudatei}=await server.ssrLoadModule("/src/BilderView.jsx");
+  const item=sku=>({format:"krautl-shopvorschau-1",kanal:"2-2-1",sku,bilder:[]});
+  const data={format:"krautl-shopvorschau-2",kanal:"2-2-1",artikel:["A","B","C"].map(item),ausgelassen:[{sku:"X",grund:"Datei fehlt"}]};
+  const calls=[];
+  const result=await importiereVorschaudatei(JSON.stringify(data),async body=>{
+    const a=JSON.parse(body);calls.push(a.sku);
+    if(a.sku==="B") throw Object.assign(new Error("Positionen passen nicht"),{status:409});
+    return {importiert:2};
+  });
+  assert.deepEqual(calls,["A","B","C"]);
+  assert.equal(result.importiert,4);
+  assert.deepEqual(result.ausgelassen.map(a=>a.sku),["X","B"]);
+  const stopped=await importiereVorschaudatei(JSON.stringify(data),async()=>{throw new Error("Netzfehler");});
+  assert.match(stopped.abbruch,/erneut importiert/);
+  assert.equal(stopped.importiert,0);
+  data.artikel.push(item("A"));
+  let sent=false;
+  await assert.rejects(()=>importiereVorschaudatei(JSON.stringify(data),async()=>{sent=true;}),/doppelte/);
+  assert.equal(sent,false);
+});

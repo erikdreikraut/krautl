@@ -110,6 +110,46 @@ export function BilderStatus({ daten, fehler }) {
   </div>;
 }
 
+export async function importiereVorschaudatei(text, senden, fortschritt = () => {}) {
+  const data = JSON.parse(text);
+  if (data.format !== "krautl-shopvorschau-2") {
+    const result = await senden(text);
+    return {importiert: result.importiert, verarbeitet: 1, ausgelassen: []};
+  }
+  if (data.kanal !== "2-2-1" || !Array.isArray(data.artikel) || !data.artikel.length || data.artikel.length > 2000) {
+    throw new Error("Ungültige Sammel-Vorschaudatei.");
+  }
+  const gesehen = new Set();
+  const pakete = data.artikel.map(a => {
+    if (a.format !== "krautl-shopvorschau-1" || a.kanal !== "2-2-1" ||
+        typeof a.sku !== "string" || !a.sku.trim() || gesehen.has(a.sku) || !Array.isArray(a.bilder)) {
+      throw new Error("Ungültige oder doppelte Artikel in der Sammeldatei.");
+    }
+    gesehen.add(a.sku);
+    const body = JSON.stringify(a);
+    if (new Blob([body]).size > 1024 * 1024) throw new Error(`Artikel ${a.sku}: Vorschauen größer als 1 MB.`);
+    return {sku:a.sku, body};
+  });
+  const ausgelassen = Array.isArray(data.ausgelassen) ? data.ausgelassen.map(a=>({sku:String(a.sku),grund:String(a.grund)})) : [];
+  let importiert = 0, verarbeitet = 0;
+  for (let i = 0; i < pakete.length; i++) {
+    const paket = pakete[i];
+    fortschritt(`Import ${i + 1} von ${pakete.length}: Artikel ${paket.sku}`);
+    try {
+      const result = await senden(paket.body);
+      importiert += result.importiert;
+      verarbeitet++;
+    } catch (e) {
+      if ([400,409].includes(e.status) && !/aktualisierung läuft bereits/i.test(e.message)) {
+        ausgelassen.push({sku:paket.sku, grund:e.message});
+      } else {
+        return {importiert,verarbeitet,ausgelassen,abbruch:`Import bei ${paket.sku} angehalten: ${e.message}. Bereits importierte Vorschauen bleiben erhalten. Die Datei kann erneut importiert werden.`};
+      }
+    }
+  }
+  return {importiert,verarbeitet,ausgelassen};
+}
+
 export function BilderView() {
   const [daten, setDaten] = useState(null);
   const [fehler, setFehler] = useState("");
@@ -122,6 +162,7 @@ export function BilderView() {
   const [startet, setStartet] = useState(false);
   const [importInfo, setImportInfo] = useState("");
   const [importiert, setImportiert] = useState(false);
+  const [importErgebnis, setImportErgebnis] = useState(null);
   const abruf = useRef(0);
   const aktiv = useRef(false);
   const laden = useCallback(async () => {
@@ -147,11 +188,12 @@ export function BilderView() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    setImportiert(true); setImportInfo("");
+    setImportiert(true); setImportInfo(""); setImportErgebnis(null);
     try {
-      if (file.size > 1024 * 1024) throw new Error("Vorschaudatei darf höchstens 1 MB groß sein.");
-      const result = await api.bilderExportvorschau(await file.text());
-      setImportInfo(`Artikel ${result.sku}: ${result.importiert} fehlende Vorschauen ergänzt. Wawi unverändert.`);
+      if (file.size > 20 * 1024 * 1024) throw new Error("Vorschaudatei darf höchstens 20 MB groß sein.");
+      const result = await importiereVorschaudatei(await file.text(), api.bilderExportvorschau, setImportInfo);
+      setImportErgebnis(result);
+      setImportInfo(`${result.importiert} fehlende Vorschauen ergänzt; ${result.verarbeitet} Artikel geprüft, ${result.ausgelassen.length} ausgelassen. Wawi unverändert.`);
       await laden();
     } catch (e) { setImportInfo(e.message); }
     finally { setImportiert(false); }
@@ -171,7 +213,7 @@ export function BilderView() {
         <p className="mt-1" style={{ color: "#6C6F5F" }}>Shop-Bilder · {sichtbar} Artikel · {(daten?.artikel.length || 0) - sichtbar} ausgeblendet</p>
         <p className="mt-1" style={{ fontSize: "11px", color: "#6C6F5F" }}>{daten?.letzter_erfolg ? `Letzter vollständiger Abgleich: ${zeit(daten.letzter_erfolg)}` : "Ein vollständiger Abgleich steht noch aus."}</p>
       </div>
-      <button type="button" onClick={aktualisieren} disabled={startet || laeuft || !daten} className="flex items-center gap-2" style={{ ...button, opacity: startet || laeuft || !daten ? 0.5 : 1 }}><RefreshCw size={15} className={laeuft ? "animate-spin" : ""} />{laeuft || startet ? "Wird aktualisiert …" : "Aktualisieren"}</button>
+      <button type="button" onClick={aktualisieren} disabled={startet || laeuft || importiert || !daten} className="flex items-center gap-2" style={{ ...button, opacity: startet || laeuft || !daten ? 0.5 : 1 }}><RefreshCw size={15} className={laeuft ? "animate-spin" : ""} />{laeuft || startet ? "Wird aktualisiert …" : "Aktualisieren"}</button>
     </div>
     <div className="flex flex-wrap gap-5 items-center mb-5">
       <label className="flex items-center gap-2 px-3 py-2" style={box}><Search size={15} /><input type="search" aria-label="Artikelname oder Artikelnummer suchen" placeholder="Name oder Artikelnummer …" value={suche} onChange={e => setSuche(e.target.value)} style={{ background: "transparent", outline: "none" }} /></label>
@@ -183,6 +225,10 @@ export function BilderView() {
       <p className="my-2">Vorbereitete Krautl-Vorschaudatei auswählen. Ergänzt nur fehlende Vorschauen; Wawi bleibt unverändert.</p>
       <input aria-label="Shop-Vorschaudatei importieren" type="file" accept=".json" disabled={laeuft || importiert} onChange={exportImport} />
       {importInfo && <p role="status" className="mt-2">{importInfo}</p>}
+      {importErgebnis?.abbruch && <p role="alert" className="mt-2">{importErgebnis.abbruch}</p>}
+      {!!importErgebnis?.ausgelassen.length && <details className="mt-2"><summary>Ausgelassene Artikel anzeigen</summary><ul>
+        {importErgebnis.ausgelassen.map((a,i)=><li key={i}>{a.sku}: {a.grund}</li>)}
+      </ul></details>}
     </details>
     <BilderStatus daten={daten} fehler={fehler} />
     {!daten && !fehler && <p>Lade Bilderübersicht …</p>}
