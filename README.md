@@ -935,8 +935,80 @@ Erik behält als Admin alle Bereiche einschließlich Bilder. Die Sachbearbeitung
 bleibt unverändert; Micha ist dort und bei neuen Inkasso-Zuweisungen nicht mehr
 wählbar. Historische Notizen und bestehende Zuweisungen bleiben erhalten.
 
-**Bilder** ist zunächst eine leere Rubrik für Admin und Grafik ohne Upload oder
-Bildverwaltung. Es ist keine Datenmigration nötig. App und Frontend müssen mit
+**Bilder** enthält die unten beschriebene Shop-Bilderübersicht für Admin und Grafik.
+Es ist keine Postgres-Datenmigration nötig. App und Frontend müssen mit
 dem neuen Stand laufen. Die Elestio-Pipeline hat nachweislich bereits den
 Dokumentationscommit `4cf9877` automatisch gebaut und ausgerollt; nach Push zuerst
 Pipeline-Status prüfen und keinen parallelen manuellen Build starten.
+
+
+### Shop-Bilderübersicht
+
+Die Bilderverwaltung liest ausschließlich über die bestehende direkte Wawi-API
+und den vorhandenen FAQ-Zugang (`JTL_LOCAL_*`, `krautl-lokal`). Der separate
+Inkasso-Lesezugang lieferte beim Artikelabruf HTTP 403 und wird dafür nicht genutzt.
+Keine Registrierung, Rechteänderung, Wawi-Schreiboperation oder externe Bild-URL
+wird automatisch ausgeführt. Artikel-/Bildleserechte müssen auf dem installierten
+API-Stand verfügbar sein. Referenz: [JTL OpenAPI 2.1](https://developer.jtl-software.com/openapi/erp/2.1.json),
+am 23.10.2026 gelesen: `GET /v2/items`, `GET /v2/items/{itemId}` und
+`GET /v2/items/image-data/{imageId}` (JSON/Base64-Bilddaten).
+
+- Manuell über **Aktualisieren** starten; das Öffnen und Polling der Liste liest
+  ausschließlich den lokalen Stand. Keine geplanten Läufe oder automatischen Wiederholungen.
+- Vollständige paginierte Katalogprüfung; aktive Shop-Kandidaten über `isActive`
+  und `isShopActive`, konkrete Aktivierung über
+  `salesChannels.salesChannels[].salesChannelId=2-2-1` und `isActive=true`.
+  Das bedeutet in Wawi für den Shop aktiviert, nicht eine zusätzliche Prüfung
+  der aktuellen Live-Shop-Sichtbarkeit oder des Lagerbestands.
+- Nur `images.saleschannelImages` für `saleschannelId=2-2-1`, nach `sortNumber`
+  sortiert. Kein Ersatz durch allgemeine, Plattform- oder eBay-Bilder.
+  Fehlende Kanalaktivierungsfelder sind ein Fehler, kein leerer/gesunder Bestand.
+- Eine Zeile je Artikelnummer, auch ohne Bilder; Varianten über `parentItemId`
+  gruppieren, niemals über SKU-Präfixe. Bildvorschauen maximal 240×180 Pixel;
+  Bilddateien bis 20 MB und 40 Megapixel, keine Originalbilder im Browser laden.
+  Unveränderte Bilder mit bestätigter `modificationDate` aus lokalem Cache nutzen.
+- **Ausblenden** im Artikel-Popup gilt für alle Admin-/Grafik-Nutzer. Die
+  Einstellung wird separat vom Wawi-Snapshot mit Revision, Nutzer und Zeitpunkt
+  gespeichert. **Ausgeblendete anzeigen** zeigt die gespeicherten Daten und
+  erlaubt Wieder-Einblenden; aktualisiert wird erst beim nächsten manuellen Lauf.
+  Der gemeinsame Katalogabruf enthält technisch weiterhin alle Katalogzeilen;
+  ausgeblendete IDs erhalten keine Detail-/Bildabrufe oder Snapshot-Updates.
+  Bereits laufende HTTP-Anfragen lassen sich nicht rückwirkend verhindern;
+  nach Ausblendung werden deren Ergebnisse verworfen und keine Folgeabrufe gestartet.
+- Ein OS-Lock verhindert parallele Aktualisierungen. Bei Fehler, Versionsabweichung
+  oder Unterbrechung bleiben Artikel und letzter Erfolgszeitpunkt erhalten.
+  Ein vollständiger Lauf veröffentlicht atomar; währenddessen geänderte
+  Ausblendungen werden nicht überschrieben. Laufzeitlimit eine Stunde.
+- Lokale SQLite-Datei inklusive Vorschaubildern und Ausblendungen:
+  `var/bilder/bilder.sqlite3`. Docker bindet sie dauerhaft nach `/app/var/bilder`
+  ein und stellt der App das vorhandene TLS-Verzeichnis lesend bereit.
+  SQLite konsistent über Backup-API oder bei gestoppter App sichern. Kein
+  Löschen/Ersetzen dieses Verzeichnisses bei Deployments.
+
+Nach abgeschlossenem automatischem Deployment einmal lesend prüfen:
+
+```bash
+cd /opt/app/krautl
+docker compose exec -T app python -m scripts.pruefe_bilder_api
+```
+
+Der Befehl prüft einen nicht ausgeblendeten aktiven Shop-Artikel samt einem Bild
+über den bestehenden FAQ-Zugang. Er schreibt nichts in Wawi und veröffentlicht
+keinen Bilderbestand. Bei HTTP 403 keine neue Registrierung auf Verdacht: zuerst
+Artikel-/Bildleserecht des vorhandenen Zugangs und installierte API-Version prüfen.
+Erst danach in **Bilder → Aktualisieren** den ersten vollständigen Abruf starten.
+
+Falls die automatische Pipeline nicht deployt und kein Lauf aktiv ist:
+
+```bash
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git checkout main &&
+git pull --ff-only origin main &&
+docker compose build app frontend &&
+docker compose up -d --no-deps app frontend
+```
+
+Keine neue Wawi-App und keine Postgres-Migration notwendig. Neue SQLite-Tabellen
+entstehen beim ersten Zugriff. Produktivnachweis steht bis zur erfolgreichen
+API-Prüfung und dem ersten vollständigen manuellen Abruf aus.

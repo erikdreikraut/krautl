@@ -39,6 +39,9 @@ function postForm(pfad, params) {
 }
 
 export const api = {
+  bilder: () => anfrage("/bilder", { cache: "no-store" }),
+  bilderAktualisieren: () => anfrage("/bilder/aktualisieren", { method: "POST" }),
+  bilderAusblenden: (id, ausgeblendet, revision) => anfrage(`/bilder/${encodeURIComponent(id)}/ausblenden`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ausgeblendet, revision }) }),
   inkassoZuweisen: (id, nutzer, revision) => anfrage(`/inkasso/${encodeURIComponent(id)}/zuweisung`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nutzer, revision }) }),
   inkassoHinweis: (id, text, anfrage_id) => anfrage(`/inkasso/${encodeURIComponent(id)}/hinweis`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, anfrage_id }) }),
   inkassoAktualisieren: (ids) => anfrage("/inkasso/aktualisieren", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) }),

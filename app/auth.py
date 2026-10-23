@@ -59,11 +59,11 @@ def darf_endpunkt_nutzen(benutzer: dict, methode: str, pfad: str) -> bool:
     if benutzer.get("rolle") != "grafik":
         return False
     erlaubte_pfade = {
-        "GET": (r"/wissensbasis", r"/faq", r"/google-product-qa",
+        "GET": (r"/bilder", r"/bilder/[0-9a-fA-F-]{36}/thumb/[0-9a-f]{64}", r"/wissensbasis", r"/faq", r"/google-product-qa",
                 r"/produkte/[0-9]+/(faq-export|google-product-qa)"),
-        "POST": (r"/wissen", r"/produkte", r"/produkte/shop-import", r"/faq",
+        "POST": (r"/bilder/aktualisieren", r"/wissen", r"/produkte", r"/produkte/shop-import", r"/faq",
                  r"/faq/import/(analyse|uebernehmen)", r"/google-product-qa/generieren"),
-        "PUT": (r"/wissen/[0-9]+", r"/produkte/[0-9]+", r"/faq/[0-9]+", r"/faq-rubriken"),
+        "PUT": (r"/bilder/[0-9a-fA-F-]{36}/ausblenden", r"/wissen/[0-9]+", r"/produkte/[0-9]+", r"/faq/[0-9]+", r"/faq-rubriken"),
         "PATCH": (r"/faq/[0-9]+/(auswahl|google-product-qa)",),
         "DELETE": (r"/faq/[0-9]+",),
     }

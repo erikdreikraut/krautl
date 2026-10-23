@@ -16,8 +16,8 @@ test("Grafik lädt nur Wissen und FAQ, zeigt zwei Bereiche und erlaubt Bearbeitu
   const requests = [];
   globalThis.fetch = async url => {
     requests.push(url);
-    assert.ok(["/api/wissensbasis", "/api/faq"].includes(url), `Unerlaubter Abruf: ${url}`);
-    return { ok: true, json: async () => url.endsWith("wissensbasis") ? { produkte: [], familien: [], eintraege: [] } : [] };
+    assert.ok(["/api/wissensbasis", "/api/faq", "/api/bilder"].includes(url), `Unerlaubter Abruf: ${url}`);
+    return { ok: true, json: async () => url.endsWith("wissensbasis") ? { produkte: [], familien: [], eintraege: [] } : url.endsWith("bilder") ? { artikel: [], status: "unbekannt" } : [] };
   };
   t.after(() => { globalThis.fetch = originalFetch; globalThis.requestAnimationFrame = originalRaf; globalThis.cancelAnimationFrame = originalCancelRaf; });
   let view;
@@ -32,5 +32,5 @@ test("Grafik lädt nur Wissen und FAQ, zeigt zwei Bereiche und erlaubt Bearbeitu
   await act(async () => add.props.onClick());
   assert.match(JSON.stringify(view.toJSON()), /Speichern/);
   await act(async () => nav.findAllByType("button")[1].props.onClick());
-  assert.match(JSON.stringify(view.toJSON()), /Hier sind noch keine Bilder hinterlegt/);
+  assert.match(JSON.stringify(view.toJSON()), /Shop-Artikel und ihre Bilder erstmals/);
 });

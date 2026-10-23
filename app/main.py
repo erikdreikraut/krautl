@@ -61,6 +61,8 @@ from .jtl_sync_status import status_laden as jtl_status_laden
 app = FastAPI(title="Krautl API")
 from .inkasso import router as inkasso_router
 app.include_router(inkasso_router)
+from .bilder import router as bilder_router, beenden as bilder_beenden
+app.include_router(bilder_router)
 app.include_router(gesendet_router)
 from .faq_import import router as faq_import_router
 app.include_router(faq_import_router)
@@ -371,6 +373,7 @@ async def on_startup():
 
 @app.on_event("shutdown")
 async def google_qa_beenden():
+    await bilder_beenden()
     for name in ("google_qa_task", "gesendet_task", "whatsapp_task"):
         task = getattr(app.state, name, None)
         if task:

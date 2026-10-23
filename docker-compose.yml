@@ -26,6 +26,8 @@ services:
       - ./var/inkasso:/app/var/inkasso:ro
       - ./var/inkasso-auftraege:/app/var/inkasso-auftraege
       - ./var/inkasso-notizen:/app/var/inkasso-notizen
+      - ./var/bilder:/app/var/bilder
+      - ./var/jtl-tls:/app/var/jtl-tls:ro
     depends_on:
       db:
         condition: service_healthy
