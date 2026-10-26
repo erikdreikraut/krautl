@@ -3,6 +3,7 @@ import base64
 import copy
 import hashlib
 import json
+import re
 from io import BytesIO
 import httpx
 from PIL import Image, ImageOps
@@ -39,6 +40,26 @@ def sichern(job, datei=None):
 
 def oeffentlich(job):
     return {k: job.get(k) for k in ("id", "artikel", "bild_id", "neu_id", "status", "meldung", "erstellt", "position", "art", "reihenfolge")}
+
+
+def ablehnungsdetails(response):
+    """Keep bounded validation details in the local journal, never in API output."""
+    try:
+        body = response.json()
+    except ValueError:
+        return "Keine strukturierte Fehlerantwort der Wawi."
+    if not isinstance(body, dict):
+        return "Keine strukturierte Fehlerantwort der Wawi."
+    selected = {k: v for k, v in body.items()
+                if k.lower() in {"title", "detail", "message", "errors", "status"}}
+    text = json.dumps(selected, ensure_ascii=False)
+    auth = response.request.headers.get("Authorization", "")
+    for secret in (auth, auth.removeprefix("Wawi ")):
+        if secret:
+            text = text.replace(secret, "[ausgeblendet]")
+    text = re.sub(r'https?://[^\s"<>]+', '[URL]', text)
+    text = re.sub(r'[A-Za-z0-9_+/=-]{32,}', '[lange Kennung]', text)
+    return text[:4000]
 
 
 def datei_pruefen(raw):
@@ -290,7 +311,7 @@ async def umordnen(c, artikel, revision, anfrage_id, reihenfolge, vorher, nutzer
         if fingerprint(before) != fingerprint(desired):
             response=await c.http.patch(c.url+"/v2/items/"+artikel,json={"images":desired})
             if response.status_code in {400,401,402,403,404,413,415,422}:
-                job.update(status="abgelehnt",meldung=f"Wawi hat die Reihenfolge abgelehnt (HTTP {response.status_code}).")
+                job.update(status="abgelehnt",meldung=f"Wawi hat die Reihenfolge abgelehnt (HTTP {response.status_code}).", diagnose=ablehnungsdetails(response))
                 sichern(job)
                 return oeffentlich(job)
             if response.status_code != 200:

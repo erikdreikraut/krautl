@@ -223,3 +223,27 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
                 await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
         self.assertFalse(any(m!="GET" for m,p in self.calls))
         self.assertEqual(auftraege(),[])
+
+
+    async def test_rejected_order_keeps_private_validation_details_without_replay(self):
+        from app.bilder_upload import umordnen, oeffentlich
+        before=self.order_fixture()
+        def reject(req):
+            if req.method == "PATCH":
+                self.calls.append((req.method,req.url.path))
+                return httpx.Response(400,json={
+                    "Title":"Validation failed", "Errors":{"images":["duplicate channel"]},
+                    "Detail":"Wawi test https://private.example/path", "Instance":"private-instance"})
+            return self.transport(req)
+        async with OnPremClient(URL,"test",transport=httpx.MockTransport(reject)) as c:
+            result=await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
+            self.assertEqual(result["status"],"abgelehnt")
+            await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
+        job=auftraege()[0]
+        self.assertIn("duplicate channel",job["diagnose"])
+        self.assertNotIn("Wawi test",job["diagnose"])
+        self.assertNotIn("private.example",job["diagnose"])
+        self.assertNotIn("private-instance",job["diagnose"])
+        self.assertNotIn("diagnose",oeffentlich(job))
+        self.assertEqual(sum(m=="PATCH" for m,p in self.calls),1)
+        self.assertEqual(self.detail["images"]["saleschannelImages"][0]["images"],[img(OLD),img(NEW,2,False)])
