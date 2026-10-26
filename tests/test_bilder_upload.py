@@ -208,7 +208,7 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
         actual=self.detail["images"]
         self.assertEqual(actual["saleschannelImages"][1:],original["saleschannelImages"][1:])
         for field in ("defaultImages","platformImages","ebayImages"):
-            self.assertEqual(actual[field],original[field])
+            self.assertEqual(actual[field],original[field][:1] if field in ("platformImages","ebayImages") else original[field])
         self.assertEqual(actual["saleschannelImages"][0]["images"],[img(NEW),img(OLD,2,False)])
         self.assertEqual(sum(m=="PATCH" for m,p in self.calls),1)
 
@@ -247,3 +247,34 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("diagnose",oeffentlich(job))
         self.assertEqual(sum(m=="PATCH" for m,p in self.calls),1)
         self.assertEqual(self.detail["images"]["saleschannelImages"][0]["images"],[img(OLD),img(NEW,2,False)])
+
+
+    async def test_reorder_coalesces_identical_wawi_channel_duplicates_on_wire(self):
+        import copy
+        from app.bilder_upload import umordnen, fingerprint
+        before=self.order_fixture()
+        group={"saleschannelId":"1-1-0","images":[img(OLD),img(NEW,2,False)]}
+        duplicate=copy.deepcopy(group)
+        duplicate["images"].reverse()
+        self.detail["images"]["saleschannelImages"].extend([group,duplicate])
+        original=copy.deepcopy(self.detail["images"])
+        def validate(req):
+            if req.method=="PATCH":
+                groups=json.loads(req.content)["images"]["saleschannelImages"]
+                ids=[g["saleschannelId"] for g in groups]
+                if len(ids)!=len(set(ids)):
+                    return httpx.Response(400,json={"Errors":{"request":["The request field is required."]}})
+                self.assertEqual([g for g in groups if g["saleschannelId"]=="1-1-0"],[group])
+            return self.transport(req)
+        async with OnPremClient(URL,"test",transport=httpx.MockTransport(validate)) as c:
+            result=await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
+        self.assertEqual(result["status"],"wawi",result)
+        self.assertEqual(len(original["saleschannelImages"]),4)
+        self.assertEqual(len(auftraege()[0]["vorher"]["saleschannelImages"]),4)
+        self.assertEqual(sum(m=="PATCH" for m,p in self.calls),1)
+        # Readback may collapse identical duplicates, but not ignore actual changes.
+        collapsed=copy.deepcopy(original)
+        collapsed["saleschannelImages"].pop()
+        self.assertEqual(fingerprint(original),fingerprint(collapsed))
+        collapsed["saleschannelImages"][-1]["images"][0]["sortNumber"]=9
+        self.assertNotEqual(fingerprint(original),fingerprint(collapsed))

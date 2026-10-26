@@ -124,6 +124,23 @@ def shop(block):
     return matches[0]["images"] if matches else []
 
 
+def schreibblock(block):
+    """Coalesce identical repeated channel groups, never differing assignments."""
+    result = copy.deepcopy(block)
+    for field in ("platformImages", "saleschannelImages", "ebayImages"):
+        seen = set()
+        groups = []
+        for group in result.get(field, []):
+            normalized = {**group, "images": sorted(
+                group["images"], key=lambda b: json.dumps(b, sort_keys=True))}
+            key = json.dumps(normalized, sort_keys=True)
+            if key not in seen:
+                groups.append(group)
+                seen.add(key)
+        result[field] = groups
+    return result
+
+
 def fingerprint(block):
     def canonical(value):
         if isinstance(value, dict):
@@ -131,7 +148,7 @@ def fingerprint(block):
         if isinstance(value, list):
             return sorted((canonical(v) for v in value), key=lambda v:json.dumps(v,sort_keys=True))
         return value
-    return json.dumps(canonical(block), sort_keys=True)
+    return json.dumps(canonical(schreibblock(block)), sort_keys=True)
 
 
 async def detail_lesen(c, artikel, sku):
@@ -227,7 +244,7 @@ async def uebertragen(c, artikel, bild_id, revision, anfrage_id, raw, nutzer):
             raise ValueError("Bilder wurden zwischenzeitlich geändert; Zuordnung noch offen.")
         # No binary replacement/deletion: retain every other channel's references.
         if fingerprint(desired) != fingerprint(block):
-            response = await c.http.patch(c.url + "/v2/items/" + artikel, json={"images":desired})
+            response = await c.http.patch(c.url + "/v2/items/" + artikel, json={"images":schreibblock(desired)})
             if response.status_code != 200:
                 raise JtlFehler(f"Bildzuordnung: HTTP {response.status_code}. Ausgang muss geprüft werden.")
         return await pruefen(c, job)
@@ -309,7 +326,7 @@ async def umordnen(c, artikel, revision, anfrage_id, reihenfolge, vorher, nutzer
     sichern(job,b"")
     try:
         if fingerprint(before) != fingerprint(desired):
-            response=await c.http.patch(c.url+"/v2/items/"+artikel,json={"images":desired})
+            response=await c.http.patch(c.url+"/v2/items/"+artikel,json={"images":schreibblock(desired)})
             if response.status_code in {400,401,402,403,404,413,415,422}:
                 job.update(status="abgelehnt",meldung=f"Wawi hat die Reihenfolge abgelehnt (HTTP {response.status_code}).", diagnose=ablehnungsdetails(response))
                 sichern(job)
