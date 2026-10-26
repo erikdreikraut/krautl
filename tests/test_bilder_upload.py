@@ -176,3 +176,15 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
             result=await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
         self.assertEqual(result["status"],"wawi")
         self.assertEqual({k:store.lesen().get(k) for k in original},original)
+
+
+    def test_channel_errors_identify_block_without_guessing_assignment(self):
+        import copy
+        bad=copy.deepcopy(self.detail)
+        bad["images"]["platformImages"]=[{"images":[]}]
+        with self.assertRaisesRegex(ValueError,"platformImages: platformId fehlt"):
+            bildblock(bad)
+        bad=copy.deepcopy(self.detail)
+        bad["images"]["saleschannelImages"].append(copy.deepcopy(bad["images"]["saleschannelImages"][0]))
+        with self.assertRaisesRegex(ValueError,"saleschannelImages: saleschannelId ist mehrfach"):
+            bildblock(bad)

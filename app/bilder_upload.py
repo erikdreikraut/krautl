@@ -82,8 +82,10 @@ def bildblock(detail):
             seen = set()
             for g in rows:
                 key = g.get(groupkey)
-                if not isinstance(key, (str, int)) or key in seen:
-                    raise ValueError("Uneindeutiger Bildkanal.")
+                if type(key) not in (str, int) or key == "":
+                    raise ValueError(f"Bildzuordnung {field}: {groupkey} fehlt oder hat ein ungültiges Format. Keine Änderung ausgeführt.")
+                if key in seen:
+                    raise ValueError(f"Bildzuordnung {field}: {groupkey} ist mehrfach enthalten. Keine Änderung ausgeführt.")
                 seen.add(key)
                 groups.append({groupkey:key,"images":[image(b) for b in g.get("images", [])]})
             result[field] = groups

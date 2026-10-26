@@ -136,7 +136,7 @@ export function BildReihe({a, onBild, auftraege=[], gesperrt=false, ungeprueft=f
     {entwurf&&<div className="flex flex-wrap items-center gap-3 mt-2">
       <button type="button" style={button} disabled={blockiert||!!veraltet} onClick={speichern}>Reihenfolge speichern</button>
       <button type="button" disabled={sendet} onClick={()=>{setEntwurf(null);auftrag.current=null;setInfo("");}}>Verwerfen</button>
-      <span style={{fontSize:11}}>{veraltet?"Bildbestand wurde geändert. Bitte Entwurf verwerfen und neu sortieren.":"Noch nicht gespeichert · erstes Bild wird Hauptbild"}</span>
+      {veraltet&&<span style={{fontSize:11}}>Bildbestand wurde geändert. Bitte Entwurf verwerfen und neu sortieren.</span>}
     </div>}
     {info&&<p role="status" className="mt-2" style={{fontSize:12}}>{info}</p>}
   </div>;

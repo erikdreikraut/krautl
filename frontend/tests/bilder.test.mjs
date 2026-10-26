@@ -243,6 +243,7 @@ test("Drag-and-drop bleibt lokal bis Speichern, erstes Bild wird Hauptbild und P
   await act(async()=>slots()[1].props.onDragStart({dataTransfer:transfer}));
   await act(async()=>slots()[0].props.onDrop({preventDefault(){}}));
   assert.equal(calls.length,0);
+  assert.doesNotMatch(JSON.stringify(view.toJSON()),/Noch nicht gespeichert · erstes Bild wird Hauptbild/);
   await act(async()=>view.update(render(structuredClone(a))));
   assert.equal(view.root.findAllByType("img")[0].props.src.endsWith("/y"),true);
   assert.match(view.root.findAllByType("figcaption")[0].children.join(""),/1.*Hauptbild/);
