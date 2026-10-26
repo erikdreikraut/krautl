@@ -188,3 +188,38 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
         bad["images"]["saleschannelImages"].append(copy.deepcopy(bad["images"]["saleschannelImages"][0]))
         with self.assertRaisesRegex(ValueError,"saleschannelImages: saleschannelId ist mehrfach"):
             bildblock(bad)
+
+
+    async def test_reorder_preserves_repeated_non_shop_groups_exactly(self):
+        import copy
+        from app.bilder_upload import umordnen
+        before=self.order_fixture()
+        block=self.detail["images"]
+        block["saleschannelImages"].extend([
+            {"saleschannelId":"1-1-0","images":[img(OLD)]},
+            {"saleschannelId":"1-1-0","images":[img(NEW,3,False)]},
+        ])
+        block["platformImages"]=[{"platformId":"platform","images":[img(OLD)]}]*2
+        block["ebayImages"]=[{"ebayAccountId":"account","images":[img(OLD)]}]*2
+        original=copy.deepcopy(block)
+        async with self.client() as c:
+            result=await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
+        self.assertEqual(result["status"],"wawi",result)
+        actual=self.detail["images"]
+        self.assertEqual(actual["saleschannelImages"][1:],original["saleschannelImages"][1:])
+        for field in ("defaultImages","platformImages","ebayImages"):
+            self.assertEqual(actual[field],original[field])
+        self.assertEqual(actual["saleschannelImages"][0]["images"],[img(NEW),img(OLD,2,False)])
+        self.assertEqual(sum(m=="PATCH" for m,p in self.calls),1)
+
+    async def test_reorder_duplicate_shop_blocks_before_any_write(self):
+        import copy
+        from app.bilder_upload import umordnen
+        before=self.order_fixture()
+        self.detail["images"]["saleschannelImages"].append(
+            copy.deepcopy(self.detail["images"]["saleschannelImages"][0]))
+        async with self.client() as c:
+            with self.assertRaisesRegex(ValueError,"saleschannelId ist mehrfach"):
+                await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
+        self.assertFalse(any(m!="GET" for m,p in self.calls))
+        self.assertEqual(auftraege(),[])

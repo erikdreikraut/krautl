@@ -84,7 +84,9 @@ def bildblock(detail):
                 key = g.get(groupkey)
                 if type(key) not in (str, int) or key == "":
                     raise ValueError(f"Bildzuordnung {field}: {groupkey} fehlt oder hat ein ungültiges Format. Keine Änderung ausgeführt.")
-                if key in seen:
+                # Non-target groups may repeat in installed Wawi responses. Preserve
+                # every entry; only the shop group must be unique for mutation.
+                if field == "saleschannelImages" and key == SHOP and key in seen:
                     raise ValueError(f"Bildzuordnung {field}: {groupkey} ist mehrfach enthalten. Keine Änderung ausgeführt.")
                 seen.add(key)
                 groups.append({groupkey:key,"images":[image(b) for b in g.get("images", [])]})
