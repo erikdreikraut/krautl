@@ -165,3 +165,14 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
             self.detail["images"]["saleschannelImages"][0]["images"][0]["sortNumber"]=3
             with self.assertRaises(ValueError):await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
         self.assertFalse(any(m!="GET" for m,p in self.calls))
+
+
+    async def test_single_change_preserves_global_sync_status(self):
+        from app.bilder_upload import umordnen
+        before=self.order_fixture()
+        store.status_setzen(status="ok",teilstand=False,letzter_erfolg="2026-10-26T09:00:00Z",fehler=None)
+        original={k:store.lesen().get(k) for k in ("status","teilstand","letzter_erfolg","fehler")}
+        async with self.client() as c:
+            result=await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
+        self.assertEqual(result["status"],"wawi")
+        self.assertEqual({k:store.lesen().get(k) for k in original},original)

@@ -90,7 +90,7 @@ def thumb_lesen(artikel_id, thumb_id):
         return row[0] if row else None
 
 
-def zwischenstand(artikel, revision, api_ziel):
+def zwischenstand(artikel, revision, api_ziel, *, abgleich=True):
     """Publish one complete article; never delete rows or mark a run complete."""
     with datenbank() as db:
         db.execute("BEGIN IMMEDIATE")
@@ -105,6 +105,8 @@ def zwischenstand(artikel, revision, api_ziel):
             db.execute("INSERT INTO artikel (id, daten) VALUES (?, ?)", (key, json.dumps(artikel)))
         else:
             db.execute("UPDATE artikel SET daten=? WHERE id=?", (json.dumps(artikel), key))
+        if not abgleich:
+            return
         status.update(teilstand=True, api_ziel=api_ziel)
         if status.get("status") != "laeuft":
             status["status"] = "unvollstaendig"

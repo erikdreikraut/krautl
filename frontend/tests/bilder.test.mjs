@@ -264,3 +264,16 @@ test("Geänderter Bildbestand sperrt Reihenfolgeentwurf statt ihn zu überschrei
   assert.equal(view.root.findAllByType("button").find(b=>b.children.includes("Reihenfolge speichern")).props.disabled,true);
   assert.match(JSON.stringify(view.toJSON()),/Bildbestand wurde geändert/);
 });
+
+
+test("Abgleichhinweise bleiben eingeklappt und Exportvorschauen zählen nicht als fehlend",async t=>{
+  const server=await createServer({server:{middlewareMode:true,hmr:false},appType:"custom"});t.after(()=>server.close());
+  const {BilderStatus}=await server.ssrLoadModule("/src/BilderView.jsx");
+  let view;await act(async()=>{view=create(React.createElement(BilderStatus,{daten:{status:"fehler",fehler:"Abbruch",teilstand:true,artikel:[{bilder:[{thumb:"x",quelle:"ameise",fehler:"400"},{thumb:null,fehler:"400"}]}]}}));});
+  t.after(()=>act(()=>view.unmount()));
+  assert.equal(view.root.findAllByType("details").length,1);
+  assert.ok(!view.root.findByType("details").props.open);
+  const summary=view.root.findByType("summary").children.join("");
+  assert.match(summary,/1 Vorschauen fehlen/);
+  assert.doesNotMatch(summary,/2 Vorschauen fehlen|API|Exportvorschau/);
+});

@@ -146,7 +146,7 @@ export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildf
   const gruppen = gruppieren(artikel, ausgeblendete, suche, nurBildfehler);
   return <div aria-label="Shop-Artikel und Bilder">
     {nachKategorien(gruppen).map(abschnitt => <section key={abschnitt.kategorie?.id || "unbekannt"} className="mb-5">
-      <h3 className="mt-4 mb-2" style={{fontSize:"13px", fontWeight:600, color:"#2C5A18"}}>{abschnitt.kategorie?.name || "Shop-Kategorie noch nicht zugeordnet"}</h3>
+      <h3 className="mt-4 mb-2" style={{fontSize:"13px", fontWeight:600, color:"#2C5A18"}} hidden={!abschnitt.kategorie}>{abschnitt.kategorie?.name}</h3>
       {abschnitt.gruppen.map(gruppe => <div key={gruppe.id}>
 
       {gruppe.artikel.map((a, i) => <div key={a.id} className="flex gap-4 py-2" style={{ opacity: a.ausgeblendet ? 0.6 : 1 }}>
@@ -178,26 +178,24 @@ export function BilderStatus({ daten, fehler }) {
   const titel = fehler ? "Verbindung zur Übersicht gestört" : laeuft ? "Abgleich läuft" :
     abbruch ? "Abgleich abgebrochen" : ungeprueft.length && daten?.lauf_beendet_am ? "Durchlauf beendet – Artikel ungeprüft" : daten?.teilstand ? "Abgleich noch unvollständig" :
     daten?.letzter_erfolg ? "Abgleich abgeschlossen" : "Noch kein Abgleich gestartet";
-  return <div role={fehler || abbruch ? "alert" : "status"} className="mb-4 p-3" style={{ ...box, color: "#242A1F" }}>
-    <strong>{titel}</strong>
-    {artikelFehler ? <p className="mt-1">Die Wawi kann die Details von Artikel {artikelFehler[1]} nicht liefern (HTTP {artikelFehler[2]}). Die Ursache ist noch ungeklärt.</p> :
-      abbruch ? <p className="mt-1">Der Abruf wurde durch einen Fehler unterbrochen. Einzelheiten stehen unter „Technische Details“.</p> : null}
-    {fehler && <p className="mt-1">Die Anzeige konnte nicht aktualisiert werden. Der angezeigte Stand kann veraltet sein.</p>}
-    <p className="mt-1">{sichtbar.length} Artikel im gespeicherten Bestand.{daten?.teilstand ? " Die Liste ist noch nicht vollständig geprüft; Artikel können fehlen oder veraltet sein." : ""}</p>
-    {anzahl > 0 && <p className="mt-1">{anzahl} Bilder sind über die API nicht abrufbar. Sie erscheinen als Platzhalter oder, falls importiert, als Exportvorschau. „Nur Artikel mit Bildfehlern“ zeigt die betroffenen Artikel.</p>}
-    {ungeprueft.length > 0 && <details className="mt-2" open>
-      <summary style={{ cursor: "pointer" }}>{ungeprueft.length} Artikel ungeprüft</summary>
-      <p className="mt-1">Die Wawi lieferte nach drei Versuchen keine Artikeldetails. Der Abgleich wird mit den übrigen Artikeln fortgesetzt. Beim nächsten Aktualisieren werden diese Artikel erneut geprüft.</p>
-      <ul className="mt-2" style={{ paddingLeft: "20px", listStyle: "disc" }}>{ungeprueft.map(a => <li key={a.id}>
-        <strong>{a.sku}</strong> · {a.name} · {a.vorhanden ? "Bisherige Bilder erhalten" : "Bildbestand noch unbekannt"}
-        <details><summary style={{ cursor: "pointer" }}>Fehlerdetails</summary>{a.fehler}</details>
-      </li>)}</ul>
-    </details>}
-    {laeuft && <p className="mt-2" style={{ color: "#2C5A18" }}>{daten.fortschritt || "Artikel werden geladen …"}</p>}
-    {(abbruch || fehler) && <details className="mt-2"><summary style={{ cursor: "pointer" }}>Technische Details</summary>
-      {abbruch && <p>{abbruch}</p>}{fehler && <p>{fehler}</p>}
-    </details>}
-  </div>;
+  const fehlend = sichtbar.reduce((n,a)=>n+a.bilder.filter(b=>!b.thumb).length,0);
+  const ersatz = sichtbar.reduce((n,a)=>n+a.bilder.filter(b=>b.quelle==="ameise"&&b.thumb).length,0);
+  return <details className="mb-3" style={{fontSize:12,color:"#6C6F5F"}}>
+    <summary role={fehler||abbruch ? "alert" : "status"} style={{cursor:"pointer"}}>
+      {titel}{ungeprueft.length ? ` · ${ungeprueft.length} Artikel ungeprüft` : ""}{fehlend ? ` · ${fehlend} Vorschauen fehlen` : ""}
+      {laeuft ? ` · ${daten.fortschritt||"Wird geladen …"}` : ""}
+    </summary>
+    <div className="mt-2" style={{lineHeight:1.6}}>
+      {daten?.letzter_erfolg&&<p>Letzter vollständiger Abgleich: {zeit(daten.letzter_erfolg)}</p>}
+      {daten?.lauf_beendet_am&&<p>Letzter beendeter Durchlauf: {zeit(daten.lauf_beendet_am)}</p>}
+      {daten?.teilstand&&<p>Der letzte Abgleich ist nicht vollständig bestätigt. Das bedeutet nicht, dass sämtliche angezeigten Artikel fehlen oder fehlerhaft sind.</p>}
+      {ersatz>0&&<p>{ersatz} Bilder haben eine verfügbare Exportvorschau.</p>}
+      {anzahl>0&&<p>{anzahl} Bildabrufe waren gestört; davon fehlen aktuell {fehlend} Vorschauen.</p>}
+      {artikelFehler&&<p>Artikel {artikelFehler[1]}: HTTP {artikelFehler[2]}. Die Ursache ist noch ungeklärt.</p>}
+      {ungeprueft.length>0&&<ul style={{paddingLeft:20,listStyle:"disc"}}>{ungeprueft.map(a=><li key={a.id}><strong>{a.sku}</strong> · {a.name} · {a.vorhanden?"Bisherige Bilder erhalten":"Bildbestand noch unbekannt"}<p>{a.fehler}</p></li>)}</ul>}
+      {abbruch&&<p>{abbruch}</p>}{fehler&&<p>{fehler}</p>}
+    </div>
+  </details>;
 }
 
 export async function importiereVorschaudatei(text, senden, fortschritt = () => {}) {
@@ -303,7 +301,6 @@ export function BilderView() {
     <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
       <div><h2 className="flex items-center gap-2" style={{ fontFamily: "'Source Serif 4', serif", fontSize: "21px", fontWeight: 700, color: "#2C5A18" }}><Image size={22} /> Bilder</h2>
         <p className="mt-1" style={{ color: "#6C6F5F" }}>Shop-Bilder · {sichtbar} Artikel · {(daten?.artikel.length || 0) - sichtbar} ausgeblendet</p>
-        <p className="mt-1" style={{ fontSize: "11px", color: "#6C6F5F" }}>{daten?.letzter_erfolg ? `Letzter vollständiger Abgleich: ${zeit(daten.letzter_erfolg)}` : "Ein vollständiger Abgleich steht noch aus."}</p>
       </div>
       <button type="button" onClick={aktualisieren} disabled={startet || laeuft || importiert || !daten} className="flex items-center gap-2" style={{ ...button, opacity: startet || laeuft || !daten ? 0.5 : 1 }}><RefreshCw size={15} className={laeuft ? "animate-spin" : ""} />{laeuft || startet ? "Wird aktualisiert …" : "Aktualisieren"}</button>
     </div>
@@ -322,7 +319,6 @@ export function BilderView() {
         {importErgebnis.ausgelassen.map((a,i)=><li key={i}>{a.sku}: {a.grund}</li>)}
       </ul></details>}
     </details>
-    <p className="mb-3" style={{fontSize:11,color:"#6C6F5F"}}>✓ Gespeicherter Wawi-Stand · … Übertragung ungeklärt · W Änderung in Wawi bestätigt. Die Veröffentlichung im Shop ist noch nicht automatisch prüfbar.</p>
     {(daten?.bildauftraege||[]).filter(j=>["sendet","unklar"].includes(j.status)).map(j=><div key={j.id} className="mb-2 p-2" style={box}><p>{daten?.artikel.find(a=>a.id===j.artikel)?.sku}: {j.meldung}</p><button onClick={async()=>{setAuftragFehler("");try{await api.bilderAuftragPruefen(j.id);await laden();}catch(e){setAuftragFehler(e.message);}}}>Wawi-Stand prüfen</button></div>)}
     {auftragFehler&&<p role="alert">{auftragFehler}</p>}
     <BilderStatus daten={daten} fehler={fehler} />

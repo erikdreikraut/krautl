@@ -242,7 +242,7 @@ async def pruefen(c, job):
         result.append(value)
     a["bilder"]=result
     a["aktualisiert_am"]=store.jetzt()
-    store.zwischenstand(a,a["revision"],c.url)
+    store.zwischenstand(a,a["revision"],c.url,abgleich=False)
     job.update(status="wawi",meldung="In Wawi bestätigt. Veröffentlichung im Shop noch nicht geprüft.")
     sichern(job)
     return oeffentlich(job)

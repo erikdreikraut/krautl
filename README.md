@@ -1201,3 +1201,20 @@ vollständiges Rücklesen. Keine Bilddateien werden neu hochgeladen; auch vorhan
 Exportvorschauen bleiben erhalten. Unklare Aufträge werden über die bestehende
 Wawi-Prüfung nur lesend geprüft. Produktive Schreibabnahme weiterhin ausstehend.
 Deployment wie Bild-Upload: App und Frontend neu bauen, keine manuelle Migration.
+
+
+### Bilder: Vollständigkeit nachvollziehen
+
+Abgleichhinweise erscheinen als kurze aufklappbare Statuszeile. Verfügbare
+Exportvorschauen zählen nicht als fehlende Vorschauen. Unbestätigte Kategorien
+bekommen keine pauschale Zwischenüberschrift. Einzelbild-/Reihenfolgeänderungen
+verändern den Gesamtabgleichstatus nicht mehr; historische Abbrüche oder fehlende
+Erfolgszeitpunkte werden nicht nachträglich ohne Nachweis korrigiert.
+
+Rein lesende Prüfung auf dem Server:
+`docker compose exec -T app python -m scripts.pruefe_bilder_vollstaendigkeit`.
+Vergleicht nach Einzelshop-Prüfung den vollständigen aktuellen Katalog mit dem
+lokalen Bestand, nennt fehlende Artikel, inzwischen nicht mehr aktive Artikel,
+Ausblendungen und offene Detailprüfungen. Kein Bilddownload, keine Änderung am
+Abgleichstatus. Artikelabdeckung beweist nicht die Vollständigkeit sämtlicher
+Bilder oder deren tatsächliche Veröffentlichung im öffentlichen Shop.
