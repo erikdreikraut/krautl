@@ -61,7 +61,7 @@ def darf_endpunkt_nutzen(benutzer: dict, methode: str, pfad: str) -> bool:
     erlaubte_pfade = {
         "GET": (r"/bilder/[0-9a-fA-F-]{36}/gross/[0-9a-fA-F-]{36}", r"/bilder", r"/bilder/[0-9a-fA-F-]{36}/thumb/[0-9a-f]{64}", r"/wissensbasis", r"/faq", r"/google-product-qa",
                 r"/produkte/[0-9]+/(faq-export|google-product-qa)"),
-        "POST": (r"/bilder/[0-9a-fA-F-]{36}/datei", r"/bilder/auftraege/[0-9a-fA-F-]{36}/pruefen", r"/bilder/aktualisieren", r"/bilder/exportvorschau", r"/wissen", r"/produkte", r"/produkte/shop-import", r"/faq",
+        "POST": (r"/bilder/[0-9a-fA-F-]{36}/reihenfolge", r"/bilder/[0-9a-fA-F-]{36}/datei", r"/bilder/auftraege/[0-9a-fA-F-]{36}/pruefen", r"/bilder/aktualisieren", r"/bilder/exportvorschau", r"/wissen", r"/produkte", r"/produkte/shop-import", r"/faq",
                  r"/faq/import/(analyse|uebernehmen)", r"/google-product-qa/generieren"),
         "PUT": (r"/bilder/[0-9a-fA-F-]{36}/ausblenden", r"/wissen/[0-9]+", r"/produkte/[0-9]+", r"/faq/[0-9]+", r"/faq-rubriken"),
         "PATCH": (r"/faq/[0-9]+/(auswahl|google-product-qa)",),

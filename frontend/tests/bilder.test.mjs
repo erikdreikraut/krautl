@@ -224,3 +224,43 @@ test("Bildliste öffnet Thumbnail und Plus; Wawi-Erfolg wird nicht als Shop-Erfo
   assert.equal(chosen[1],null);
   assert.ok(view.root.findByProps({"aria-label":"In Wawi bestätigt; Shop-Veröffentlichung ungeprüft"}));
 });
+
+
+test("Drag-and-drop bleibt lokal bis Speichern, erstes Bild wird Hauptbild und Polling erhält Entwurf", async t=>{
+  const server=await createServer({server:{middlewareMode:true,hmr:false},appType:"custom"});
+  t.after(()=>server.close());
+  const {BildReihe}=await server.ssrLoadModule("/src/BilderView.jsx");
+  const {api}=await server.ssrLoadModule("/src/api.js");
+  const old=api.bilderReihenfolge,calls=[];
+  api.bilderReihenfolge=async(...args)=>{calls.push(args);return {status:"wawi",meldung:"In Wawi bestätigt"};};
+  t.after(()=>{api.bilderReihenfolge=old;});
+  const a={...rows[0],bilder:[{id:"a",position:1,hauptbild:true,thumb:"x"},{id:"b",position:2,hauptbild:false,thumb:"y"}]};
+  let view;
+  const render=a=>React.createElement(BildReihe,{a,onBild:()=>{},aktualisiert:async()=>{}});
+  await act(async()=>{view=create(render(a));});t.after(()=>act(()=>view.unmount()));
+  const slots=()=>view.root.findAll(n=>n.type==="div"&&n.props.draggable!==undefined);
+  const transfer={setData(){}};
+  await act(async()=>slots()[1].props.onDragStart({dataTransfer:transfer}));
+  await act(async()=>slots()[0].props.onDrop({preventDefault(){}}));
+  assert.equal(calls.length,0);
+  await act(async()=>view.update(render(structuredClone(a))));
+  assert.equal(view.root.findAllByType("img")[0].props.src.endsWith("/y"),true);
+  assert.match(view.root.findAllByType("figcaption")[0].children.join(""),/1.*Hauptbild/);
+  const save=()=>view.root.findAllByType("button").find(b=>b.children.includes("Reihenfolge speichern"));
+  await act(async()=>save().props.onClick());
+  assert.deepEqual(calls[0][1].reihenfolge,["b","a"]);
+  assert.deepEqual(calls[0][1].vorher,a.bilder.map(({id,position,hauptbild})=>({id,position,hauptbild})));
+  assert.equal(calls.length,1);
+});
+
+test("Geänderter Bildbestand sperrt Reihenfolgeentwurf statt ihn zu überschreiben",async t=>{
+  const server=await createServer({server:{middlewareMode:true,hmr:false},appType:"custom"});t.after(()=>server.close());
+  const {BildReihe}=await server.ssrLoadModule("/src/BilderView.jsx");
+  const a={...rows[0],bilder:[{id:"a",position:1,hauptbild:true},{id:"b",position:2,hauptbild:false}]};
+  let view;
+  await act(async()=>{view=create(React.createElement(BildReihe,{a}));});t.after(()=>act(()=>view.unmount()));
+  await act(async()=>view.root.findByProps({"aria-label":"Bild 2 verschieben: Pfeil links oder rechts"}).props.onKeyDown({key:"ArrowLeft",preventDefault(){}}));
+  await act(async()=>view.update(React.createElement(BildReihe,{a:{...a,bilder:[...a.bilder,{id:"c",position:3,hauptbild:false}]}})));
+  assert.equal(view.root.findAllByType("button").find(b=>b.children.includes("Reihenfolge speichern")).props.disabled,true);
+  assert.match(JSON.stringify(view.toJSON()),/Bildbestand wurde geändert/);
+});

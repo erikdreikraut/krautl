@@ -1181,3 +1181,23 @@ geprüfte Shop-Veröffentlichung; „…“ = laufend/ungeklärt; „W“ = von 
 öffentlichen Shop kann derzeit nicht automatisch nachgewiesen werden.
 
 Deployment: App und Frontend neu bauen; keine manuelle Datenmigration nötig.
+
+
+### Bilderreihenfolge ändern
+
+Thumbnails innerhalb einer Artikelzeile ziehen; alternativ den kleinen ↔-Griff
+per Tab fokussieren und mit Pfeil links/rechts verschieben. Die Vorschau markiert
+das erste Bild als Hauptbild. „Reihenfolge speichern“ überträgt die gesamte
+Reihenfolge mit Positionen ab 1 und genau einem Hauptbild; „Verwerfen“ verwirft
+den lokalen Entwurf. Zwischen verschiedenen Artikeln kann nicht verschoben werden.
+Polling erhält den Entwurf; bei verändertem Bildbestand wird er gesperrt.
+Während des Entwurfs sind Hinzufügen und Bildaustausch in dieser Zeile gesperrt.
+
+POST `/bilder/{artikel_id}/reihenfolge` prüft Rolle, Artikelrevision, bisherige
+Positionen/Hauptbild und exakte vollständige Bild-ID-Menge gegen lokalen und
+frisch gelesenen Wawi-Stand. Der gespeicherte Auftrag schreibt ausschließlich
+Bildzuordnungen per v2 PATCH, erhält alle anderen Kanäle und bestätigt durch
+vollständiges Rücklesen. Keine Bilddateien werden neu hochgeladen; auch vorhandene
+Exportvorschauen bleiben erhalten. Unklare Aufträge werden über die bestehende
+Wawi-Prüfung nur lesend geprüft. Produktive Schreibabnahme weiterhin ausstehend.
+Deployment wie Bild-Upload: App und Frontend neu bauen, keine manuelle Migration.

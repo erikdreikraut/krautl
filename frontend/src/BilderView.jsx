@@ -85,7 +85,64 @@ function Thumbnail({ artikel, bild, position, onBild, auftrag, ungeprueft }) {
   </figure>;
 }
 
-export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildfehler, ungeprueft = [], onBild, auftraege = [], gesperrt=false }) {
+const bildStand = a => JSON.stringify([a.revision,a.bilder.map(b=>[b.id,b.position,b.hauptbild])]);
+
+export function BildReihe({a, onBild, auftraege=[], gesperrt=false, ungeprueft=false, aktualisiert=async()=>{}}) {
+  const [entwurf,setEntwurf]=useState(null), [sendet,setSendet]=useState(false), [info,setInfo]=useState("");
+  const drag=useRef(null), klickSperre=useRef(0), auftrag=useRef(null);
+  const blockiert=gesperrt||ungeprueft||a.ausgeblendet||sendet||auftraege.some(j=>j.artikel===a.id&&["sendet","unklar"].includes(j.status));
+  const veraltet=entwurf&&entwurf.stand!==bildStand(a);
+  const liste=entwurf&&!veraltet ? entwurf.ids.map(id=>a.bilder.find(b=>b.id===id)) : a.bilder;
+  const bewegen=(von,nach)=>{
+    if(blockiert||veraltet||von===nach)return;
+    const ids=liste.map(b=>b.id), start=ids.indexOf(von), ziel=ids.indexOf(nach);
+    if(start<0||ziel<0)return;
+    ids.splice(ziel,0,ids.splice(start,1)[0]);
+    auftrag.current=null;setInfo("");
+    setEntwurf({ids,stand:bildStand(a),vorher:a.bilder.map(b=>({id:b.id,position:b.position,hauptbild:b.hauptbild})),revision:a.revision});
+  };
+  const speichern=async()=>{
+    if(blockiert||veraltet||!entwurf)return;
+    if(!auftrag.current)auftrag.current=crypto.randomUUID();
+    setSendet(true);setInfo("Reihenfolge wird übertragen …");
+    try {
+      const r=await api.bilderReihenfolge(a.id,{anfrage_id:auftrag.current,revision:entwurf.revision,reihenfolge:entwurf.ids,vorher:entwurf.vorher});
+      setInfo(r.meldung);
+      if(r.status==="wawi"){setEntwurf(null);auftrag.current=null;}
+    } catch(e) {setInfo(e.message);}
+    finally {setSendet(false);await aktualisiert();}
+  };
+  return <div className="min-w-0 flex-1">
+    <div className="flex items-start gap-3 overflow-x-auto pb-1">
+      {liste.map((original,n)=>{
+        const bild=entwurf&&!veraltet ? {...original,position:n+1,hauptbild:n===0} : original;
+        const job=[...auftraege].reverse().find(j=>j.artikel===a.id&&(j.neu_id===bild.id||j.bild_id===bild.id||j.reihenfolge?.includes(bild.id)));
+        return <div key={bild.id} className="shrink-0" draggable={!blockiert&&!veraltet&&liste.length>1} aria-label={`Bildposition ${n+1} verschieben`}
+          onDragStart={e=>{if(blockiert||veraltet){e.preventDefault();return;}drag.current=bild.id;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",bild.id);}}
+          onDragOver={e=>{if(drag.current&&!blockiert&&!veraltet){e.preventDefault();e.dataTransfer.dropEffect="move";}}}
+          onDrop={e=>{e.preventDefault();bewegen(drag.current,bild.id);drag.current=null;klickSperre.current=Date.now()+300;}}
+          onDragEnd={()=>{drag.current=null;klickSperre.current=Date.now()+300;}}
+          onClickCapture={e=>{if(Date.now()<klickSperre.current){e.preventDefault();e.stopPropagation();}}}>
+          <Thumbnail artikel={a} bild={bild} position={n} onBild={entwurf ? undefined : onBild} ungeprueft={ungeprueft}
+            auftrag={entwurf ? {status:"entwurf",meldung:"Reihenfolge noch nicht gespeichert"} : job}/>
+          {liste.length>1&&<button type="button" aria-label={`Bild ${n+1} verschieben: Pfeil links oder rechts`} title="Ziehen oder mit den Pfeiltasten verschieben" disabled={blockiert||!!veraltet}
+            onKeyDown={e=>{const ziel=e.key==="ArrowLeft"?n-1:e.key==="ArrowRight"?n+1:-1;if(ziel>=0&&ziel<liste.length){e.preventDefault();bewegen(bild.id,liste[ziel].id);}}}
+            style={{fontSize:11,color:"#6C6F5F",cursor:"grab"}}>↔</button>}
+        </div>;
+      })}
+      <button type="button" aria-label={`Bild zu ${a.sku} hinzufügen`} title="Bild hinzufügen" onClick={()=>onBild?.(a,null)} disabled={blockiert||!!entwurf} className="shrink-0" style={{...box,width:120,height:90,fontSize:32,color:"#2C5A18"}}>+</button>
+      {!a.bilder.length&&<span className="py-7" style={{color:"#6C6F5F"}}>Keine Shop-Bilder zugeordnet</span>}
+    </div>
+    {entwurf&&<div className="flex flex-wrap items-center gap-3 mt-2">
+      <button type="button" style={button} disabled={blockiert||!!veraltet} onClick={speichern}>Reihenfolge speichern</button>
+      <button type="button" disabled={sendet} onClick={()=>{setEntwurf(null);auftrag.current=null;setInfo("");}}>Verwerfen</button>
+      <span style={{fontSize:11}}>{veraltet?"Bildbestand wurde geändert. Bitte Entwurf verwerfen und neu sortieren.":"Noch nicht gespeichert · erstes Bild wird Hauptbild"}</span>
+    </div>}
+    {info&&<p role="status" className="mt-2" style={{fontSize:12}}>{info}</p>}
+  </div>;
+}
+
+export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildfehler, ungeprueft = [], onBild, auftraege = [], gesperrt=false, aktualisiert }) {
   const gruppen = gruppieren(artikel, ausgeblendete, suche, nurBildfehler);
   return <div aria-label="Shop-Artikel und Bilder">
     {nachKategorien(gruppen).map(abschnitt => <section key={abschnitt.kategorie?.id || "unbekannt"} className="mb-5">
@@ -101,11 +158,8 @@ export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildf
           {ungeprueft.some(u => u.id === a.id) && <p className="mt-1" style={{ color: "#9A4332", fontSize: "11px" }}>Details ungeprüft · bisheriger Bilderstand</p>}
           {a.ausgeblendet && <span className="flex items-center gap-1 mt-1" style={{ fontSize: "11px" }}><EyeOff size={12} /> Ausgeblendet</span>}
         </div>
-        <div className="flex items-start gap-3 overflow-x-auto min-w-0 flex-1 pb-1">
-          {a.bilder.map((bild, n) => <Thumbnail key={`${bild.id}-${bild.thumb}`} artikel={a} bild={bild} position={n} onBild={onBild} ungeprueft={ungeprueft.some(u=>u.id===a.id)} auftrag={[...auftraege].reverse().find(j=>j.artikel===a.id && (j.neu_id===bild.id || j.bild_id===bild.id))} />)}
-          <button type="button" aria-label={`Bild zu ${a.sku} hinzufügen`} title="Bild hinzufügen" onClick={()=>onBild?.(a,null)} disabled={gesperrt||a.ausgeblendet||ungeprueft.some(u=>u.id===a.id)||auftraege.some(j=>j.artikel===a.id&&["sendet","unklar"].includes(j.status))} className="shrink-0" style={{...box,width:120,height:90,fontSize:32,color:"#2C5A18"}}>+</button>
-          {!a.bilder.length && <span className="py-7" style={{ color: "#6C6F5F" }}>Keine Shop-Bilder zugeordnet</span>}
-        </div>
+        <BildReihe a={a} onBild={onBild} auftraege={auftraege} gesperrt={gesperrt} ungeprueft={ungeprueft.some(u=>u.id===a.id)} aktualisiert={aktualisiert}/>
+
       </div>)}
     </div>)}
     </section>)}
@@ -273,7 +327,7 @@ export function BilderView() {
     {auftragFehler&&<p role="alert">{auftragFehler}</p>}
     <BilderStatus daten={daten} fehler={fehler} />
     {!daten && !fehler && <p>Lade Bilderübersicht …</p>}
-    {daten && !daten.letzter_erfolg && !daten.artikel.length ? <p className="py-12 text-center" style={{ color: "#6C6F5F" }}>Mit „Aktualisieren“ lädst du die Shop-Artikel und ihre Bilder erstmals aus der Wawi.</p> : daten && <BilderListe onBild={(artikel,bild)=>setBildAuswahl({artikel,bild})} auftraege={daten.bildauftraege||[]} gesperrt={laeuft} ungeprueft={daten.ungeprueft || []} nurBildfehler={nurBildfehler} artikel={daten.artikel} ausgeblendete={ausgeblendete} suche={suche} onArtikel={id => { setDialogFehler(""); setAuswahl(id); }} />}
+    {daten && !daten.letzter_erfolg && !daten.artikel.length ? <p className="py-12 text-center" style={{ color: "#6C6F5F" }}>Mit „Aktualisieren“ lädst du die Shop-Artikel und ihre Bilder erstmals aus der Wawi.</p> : daten && <BilderListe aktualisiert={laden} onBild={(artikel,bild)=>setBildAuswahl({artikel,bild})} auftraege={daten.bildauftraege||[]} gesperrt={laeuft} ungeprueft={daten.ungeprueft || []} nurBildfehler={nurBildfehler} artikel={daten.artikel} ausgeblendete={ausgeblendete} suche={suche} onArtikel={id => { setDialogFehler(""); setAuswahl(id); }} />}
     {bildAuswahl&&<BildDialog artikel={bildAuswahl.artikel} bild={bildAuswahl.bild} schliessen={()=>setBildAuswahl(null)} aktualisiert={laden} gesperrt={laeuft||bildAuswahl.artikel.ausgeblendet||(daten?.ungeprueft||[]).some(u=>u.id===bildAuswahl.artikel.id)||(daten?.bildauftraege||[]).some(j=>j.artikel===bildAuswahl.artikel.id&&["sendet","unklar"].includes(j.status))}/>}
     {artikel && <ArtikelDialog artikel={artikel} speichern={speichern} schliessen={() => setAuswahl(null)} laeuft={speichert} fehler={dialogFehler} />}
   </section>;

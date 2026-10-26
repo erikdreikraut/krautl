@@ -38,7 +38,7 @@ def sichern(job, datei=None):
 
 
 def oeffentlich(job):
-    return {k: job.get(k) for k in ("id", "artikel", "bild_id", "neu_id", "status", "meldung", "erstellt", "position")}
+    return {k: job.get(k) for k in ("id", "artikel", "bild_id", "neu_id", "status", "meldung", "erstellt", "position", "art", "reihenfolge")}
 
 
 def datei_pruefen(raw):
@@ -130,7 +130,7 @@ async def uebertragen(c, artikel, bild_id, revision, anfrage_id, raw, nutzer):
     digest = hashlib.sha256(raw).hexdigest()
     previous = next((j for j in auftraege() if j["id"] == anfrage_id), None)
     if previous:
-        if (previous["artikel"], previous["bild_id"], previous["eingang_hash"]) != (artikel, bild_id, digest):
+        if previous.get("art") == "reihenfolge" or (previous["artikel"], previous["bild_id"], previous["eingang_hash"]) != (artikel, bild_id, digest):
             raise ValueError("Auftragskennung wurde bereits anders verwendet.")
         return oeffentlich(previous)
     a, stand = lokal(artikel, revision)
@@ -220,10 +220,11 @@ async def pruefen(c, job):
         job.update(status="unklar",meldung="Wawi-Zuordnung entspricht noch nicht dem Ziel. Keine automatische Wiederholung; Auftrag muss geprüft werden.")
         sichern(job)
         return oeffentlich(job)
-    source = next(b for g in d["images"]["saleschannelImages"] if g["saleschannelId"] == SHOP for b in g["images"] if b["blobIdentifier"] == job["neu_id"])
-    thumb = await bild_laden(c,job["neu_id"],source)
-    if hashlib.sha256(thumb).hexdigest() != job["thumb_hash"]:
-        raise ValueError("Bildinhalt wurde nicht bestätigt.")
+    if job.get("art") != "reihenfolge":
+        source = next(b for g in d["images"]["saleschannelImages"] if g["saleschannelId"] == SHOP for b in g["images"] if b["blobIdentifier"] == job["neu_id"])
+        thumb = await bild_laden(c,job["neu_id"],source)
+        if hashlib.sha256(thumb).hexdigest() != job["thumb_hash"]:
+            raise ValueError("Bildinhalt wurde nicht bestätigt.")
     a, _ = lokal(job["artikel"])
     if a["revision"] != job["revision"]:
         raise ValueError("Artikelrevision geändert; vor Übernahme prüfen.")
@@ -231,7 +232,7 @@ async def pruefen(c, job):
     result=[]
     for b in shop(job["ziel"]):
         bid=b["blobIdentifier"]
-        if bid == job["neu_id"]:
+        if bid == job.get("neu_id"):
             value={"id":bid,"thumb":store.thumb_speichern(thumb),"fehler":None,"version":None,"dateiname":job["dateiname"]}
         elif bid in old:
             value=dict(old[bid])
@@ -245,3 +246,53 @@ async def pruefen(c, job):
     job.update(status="wawi",meldung="In Wawi bestätigt. Veröffentlichung im Shop noch nicht geprüft.")
     sichern(job)
     return oeffentlich(job)
+
+
+def positionsstand(bilder):
+    return sorted((b["id"], b["position"], b["hauptbild"]) for b in bilder)
+
+
+async def umordnen(c, artikel, revision, anfrage_id, reihenfolge, vorher, nutzer):
+    request_hash = hashlib.sha256(json.dumps([artikel, revision, reihenfolge, vorher], sort_keys=True).encode()).hexdigest()
+    previous = next((j for j in auftraege() if j["id"] == anfrage_id), None)
+    if previous:
+        if previous.get("art") != "reihenfolge" or previous.get("eingang_hash") != request_hash:
+            raise ValueError("Auftragskennung wurde bereits anders verwendet.")
+        return oeffentlich(previous)
+    a, stand = lokal(artikel, revision)
+    if stand.get("api_ziel") != c.url:
+        raise ValueError("Wawi-Ziel passt nicht zum Bilderbestand.")
+    if any(j["status"] in {"sendet", "unklar"} for j in auftraege(artikel)):
+        raise ValueError("Ein Bildauftrag ist noch ungeklärt. Zuerst dessen Wawi-Stand prüfen.")
+    ids = [b["id"] for b in a["bilder"]]
+    if not ids or len(set(ids)) != len(ids) or len(set(reihenfolge)) != len(reihenfolge) or set(reihenfolge) != set(ids):
+        raise ValueError("Die Reihenfolge muss jedes vorhandene Shop-Bild genau einmal enthalten.")
+    if positionsstand(vorher) != positionsstand(a["bilder"]):
+        raise ValueError("Die angezeigte Reihenfolge ist veraltet. Bitte neu laden.")
+    before = bildblock(await detail_lesen(c, artikel, a["sku"]))
+    if positionsstand(vorher) != sorted((b["blobIdentifier"],b["sortNumber"],b["isMainImage"]) for b in shop(before)):
+        raise ValueError("Wawi-Bilder wurden geändert. Bitte zuerst aktualisieren.")
+    desired = copy.deepcopy(before)
+    shop(desired)[:] = [{"blobIdentifier":bid,"sortNumber":i+1,"isMainImage":i==0} for i,bid in enumerate(reihenfolge)]
+    if not store.freigegeben(artikel, revision):
+        raise ValueError("Artikel wurde inzwischen geändert.")
+    if fingerprint(bildblock(await detail_lesen(c,artikel,a["sku"]))) != fingerprint(before):
+        raise ValueError("Wawi-Bilder wurden während der Prüfung geändert.")
+    job={"id":anfrage_id,"artikel":artikel,"sku":a["sku"],"art":"reihenfolge","eingang_hash":request_hash,
+         "erstellt":store.jetzt(),"nutzer":nutzer,"api_ziel":c.url,"vorher":before,"ziel":desired,
+         "status":"sendet","meldung":"Neue Reihenfolge wird an Wawi übertragen.","revision":revision,"reihenfolge":reihenfolge}
+    sichern(job,b"")
+    try:
+        if fingerprint(before) != fingerprint(desired):
+            response=await c.http.patch(c.url+"/v2/items/"+artikel,json={"images":desired})
+            if response.status_code in {400,401,402,403,404,413,415,422}:
+                job.update(status="abgelehnt",meldung=f"Wawi hat die Reihenfolge abgelehnt (HTTP {response.status_code}).")
+                sichern(job)
+                return oeffentlich(job)
+            if response.status_code != 200:
+                raise JtlFehler(f"Reihenfolge: HTTP {response.status_code}.")
+        return await pruefen(c,job)
+    except (httpx.HTTPError,JtlFehler,ValueError,KeyError,TypeError):
+        job.update(status="unklar",meldung="Reihenfolge nicht vollständig bestätigt. Wawi-Stand prüfen; kein automatisches erneutes Schreiben.")
+        sichern(job)
+        return oeffentlich(job)

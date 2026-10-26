@@ -123,3 +123,45 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"],"unklar")
         self.assertFalse(any(m=="PATCH" for m,p in self.calls))
         self.assertEqual(self.detail["images"]["saleschannelImages"][1]["images"][0]["sortNumber"],9)
+
+
+    def order_fixture(self):
+        self.detail["images"]["saleschannelImages"][0]["images"].append(img(NEW,2,False))
+        a=store.lesen()["artikel"][0]
+        a["bilder"].append({**a["bilder"][0],"id":NEW,"position":2,"hauptbild":False})
+        store.zwischenstand(a,0,URL)
+        return [{"id":b["id"],"position":b["position"],"hauptbild":b["hauptbild"]} for b in a["bilder"]]
+
+    async def test_reorder_sets_first_main_preserves_channels_without_loading_images(self):
+        from app.bilder_upload import umordnen
+        before=self.order_fixture()
+        async with self.client() as c:
+            result=await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
+            self.assertEqual(result["status"],"wawi",result)
+            await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
+        self.assertEqual(self.detail["images"]["saleschannelImages"][0]["images"],[img(NEW),img(OLD,2,False)])
+        local=store.lesen()["artikel"][0]["bilder"]
+        self.assertEqual([(b["id"],b["hauptbild"]) for b in local],[(NEW,True),(OLD,False)])
+        self.assertEqual(sum(m=="PATCH" for m,p in self.calls),1)
+        self.assertFalse(any(m=="POST" or "image-data" in p for m,p in self.calls))
+
+    async def test_reorder_lost_response_is_reconciled_without_second_write(self):
+        from app.bilder_upload import umordnen
+        before=self.order_fixture();self.timeout=True
+        async with self.client() as c:
+            result=await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
+            self.assertEqual(result["status"],"unklar")
+            self.assertEqual((await pruefen(c,auftraege()[0]))["status"],"wawi")
+        self.assertEqual(sum(m=="PATCH" for m,p in self.calls),1)
+
+    async def test_reorder_rejects_missing_duplicate_foreign_and_stale_images(self):
+        from app.bilder_upload import umordnen
+        before=self.order_fixture()
+        async with self.client() as c:
+            for ids in ([OLD],[NEW,NEW],[OLD,JOB]):
+                with self.assertRaises(ValueError):await umordnen(c,A,0,JOB,ids,before,"micha")
+            stale=[dict(b) for b in before];stale[0]["position"]=4
+            with self.assertRaises(ValueError):await umordnen(c,A,0,JOB,[NEW,OLD],stale,"micha")
+            self.detail["images"]["saleschannelImages"][0]["images"][0]["sortNumber"]=3
+            with self.assertRaises(ValueError):await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
+        self.assertFalse(any(m!="GET" for m,p in self.calls))

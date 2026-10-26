@@ -6,7 +6,7 @@ import re
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, Field, StrictBool
+from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 from . import bilder_speicher as speicher
 from .bilder_abgleich import ausfuehren
@@ -192,5 +192,33 @@ async def bild_pruefen(anfrage_id: UUID):
         with speicher.Laufsperre():
             async with OnPremClient.aus_umgebung() as c:
                 return await pruefen(c, job)
+    except (speicher.Belegt, ValueError, JtlFehler) as exc:
+        raise HTTPException(409, str(exc)) from None
+
+
+class BildPosition(BaseModel):
+    id: UUID
+    position: StrictInt
+    hauptbild: StrictBool
+
+
+class BildReihenfolge(BaseModel):
+    revision: int = Field(ge=0)
+    anfrage_id: UUID
+    reihenfolge: list[UUID] = Field(min_length=1, max_length=100)
+    vorher: list[BildPosition] = Field(min_length=1, max_length=100)
+
+
+@router.post("/{artikel_id}/reihenfolge")
+async def reihenfolge_speichern(artikel_id: UUID, body: BildReihenfolge, request: Request):
+    from .bilder_upload import umordnen
+    from .jtl_onprem import OnPremClient
+    try:
+        with speicher.Laufsperre():
+            async with OnPremClient.aus_umgebung() as c:
+                return await umordnen(c, str(artikel_id), body.revision, str(body.anfrage_id),
+                    [str(b) for b in body.reihenfolge],
+                    [{"id":str(b.id),"position":b.position,"hauptbild":b.hauptbild} for b in body.vorher],
+                    request.state.benutzer["benutzername"])
     except (speicher.Belegt, ValueError, JtlFehler) as exc:
         raise HTTPException(409, str(exc)) from None
