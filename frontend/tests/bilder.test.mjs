@@ -278,3 +278,29 @@ test("Abgleichhinweise bleiben eingeklappt und Exportvorschauen zählen nicht al
   assert.match(summary,/1 Vorschauen fehlen/);
   assert.doesNotMatch(summary,/2 Vorschauen fehlen|API|Exportvorschau/);
 });
+
+
+test("Abgelehnte Reihenfolge stellt gespeicherten Stand wieder her und markiert Bilder nicht dauerhaft", async t=>{
+  const server=await createServer({server:{middlewareMode:true,hmr:false},appType:"custom"});t.after(()=>server.close());
+  const {BildReihe}=await server.ssrLoadModule("/src/BilderView.jsx");
+  const {api}=await server.ssrLoadModule("/src/api.js");
+  const old=api.bilderReihenfolge;
+  api.bilderReihenfolge=async()=>({status:"abgelehnt",meldung:"Wawi hat die Reihenfolge abgelehnt (HTTP 400)."});
+  t.after(()=>{api.bilderReihenfolge=old;});
+  const a={...rows[0],bilder:[{id:"a",position:1,hauptbild:true,thumb:"x"},{id:"b",position:2,hauptbild:false,thumb:"y"}]};
+  const jobs=[{artikel:a.id,art:"reihenfolge",status:"abgelehnt",reihenfolge:["b","a"]}];
+  const render=auftraege=>React.createElement(BildReihe,{a,auftraege});
+  let view;await act(async()=>{view=create(render(jobs));});t.after(()=>act(()=>view.unmount()));
+  const tags=()=>view.root.findAll(n=>n.type==="span"&&n.props.title).map(n=>n.children.join(""));
+  assert.deepEqual(tags(),["✓","✓"]);
+  await act(async()=>view.root.findByProps({"aria-label":"Bild 2 verschieben: Pfeil links oder rechts"}).props.onKeyDown({key:"ArrowLeft",preventDefault(){}}));
+  assert.deepEqual(tags(),["…","…"]);
+  await act(async()=>view.root.findAllByType("button").find(b=>b.children.includes("Reihenfolge speichern")).props.onClick());
+  assert.equal(view.root.findAllByType("img")[0].props.src.endsWith("/x"),true);
+  assert.deepEqual(tags(),["✓","✓"]);
+  assert.equal(view.root.findAllByType("button").some(b=>b.children.includes("Reihenfolge speichern")),false);
+  assert.match(JSON.stringify(view.toJSON()),/HTTP 400/);
+  await act(async()=>view.update(render([{...jobs[0],status:"unklar",meldung:"Ausgang ungeklärt"}])));
+  assert.deepEqual(tags(),["…","…"]);
+  assert.equal(view.root.findByProps({"aria-label":"Bild zu 10 hinzufügen"}).props.disabled,true);
+});

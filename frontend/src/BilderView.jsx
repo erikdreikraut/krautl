@@ -108,7 +108,7 @@ export function BildReihe({a, onBild, auftraege=[], gesperrt=false, ungeprueft=f
     try {
       const r=await api.bilderReihenfolge(a.id,{anfrage_id:auftrag.current,revision:entwurf.revision,reihenfolge:entwurf.ids,vorher:entwurf.vorher});
       setInfo(r.meldung);
-      if(r.status==="wawi"){setEntwurf(null);auftrag.current=null;}
+      if(["wawi","abgelehnt"].includes(r.status)){setEntwurf(null);auftrag.current=null;}
     } catch(e) {setInfo(e.message);}
     finally {setSendet(false);await aktualisiert();}
   };
@@ -116,7 +116,7 @@ export function BildReihe({a, onBild, auftraege=[], gesperrt=false, ungeprueft=f
     <div className="flex items-start gap-3 overflow-x-auto pb-1">
       {liste.map((original,n)=>{
         const bild=entwurf&&!veraltet ? {...original,position:n+1,hauptbild:n===0} : original;
-        const job=[...auftraege].reverse().find(j=>j.artikel===a.id&&(j.neu_id===bild.id||j.bild_id===bild.id||j.reihenfolge?.includes(bild.id)));
+        const job=[...auftraege].reverse().find(j=>!(j.art==="reihenfolge"&&j.status==="abgelehnt")&&j.artikel===a.id&&(j.neu_id===bild.id||j.bild_id===bild.id||j.reihenfolge?.includes(bild.id)));
         return <div key={bild.id} className="shrink-0" draggable={!blockiert&&!veraltet&&liste.length>1} aria-label={`Bildposition ${n+1} verschieben`}
           onDragStart={e=>{if(blockiert||veraltet){e.preventDefault();return;}drag.current=bild.id;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",bild.id);}}
           onDragOver={e=>{if(drag.current&&!blockiert&&!veraltet){e.preventDefault();e.dataTransfer.dropEffect="move";}}}
