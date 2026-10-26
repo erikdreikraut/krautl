@@ -39,6 +39,9 @@ function postForm(pfad, params) {
 }
 
 export const api = {
+  bilderGross: (artikel, bild) => dateiAnfrage(`/bilder/${encodeURIComponent(artikel)}/gross/${encodeURIComponent(bild)}`),
+  bilderDatei: (artikel, bild, revision, anfrage, file) => anfrage(`/bilder/${encodeURIComponent(artikel)}/datei?${new URLSearchParams({revision,anfrage_id:anfrage,...(bild ? {bild_id:bild} : {})})}`, {method:"POST",headers:{"Content-Type":"application/octet-stream"},body:file}),
+  bilderAuftragPruefen: id => anfrage(`/bilder/auftraege/${encodeURIComponent(id)}/pruefen`, {method:"POST"}),
   bilderExportvorschau: text => anfrage("/bilder/exportvorschau", {method:"POST", headers:{"Content-Type":"application/json"}, body:text}),
   bilder: () => anfrage("/bilder", { cache: "no-store" }),
   bilderAktualisieren: () => anfrage("/bilder/aktualisieren", { method: "POST" }),

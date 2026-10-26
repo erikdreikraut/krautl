@@ -1141,3 +1141,43 @@ Fehlende API-Unterstützung oder Leserechte werden als fehlende Kategoriezuordnu
 angezeigt und verhindern den Bilderabruf nicht; keine automatische Rechteänderung.
 
 Schemaquelle: https://developer.jtl-software.com/openapi/erp/2.1.json (23.10.2026).
+
+
+### Großansicht und bestätigte Bildänderungen (26.10.2026)
+
+Klick auf ein Thumbnail öffnet die Großansicht (maximal 1600×1200). Scheitert der
+Originalabruf, wird ausdrücklich nur die kleine gespeicherte Vorschau angezeigt.
+Das Plus am Zeilenende fügt ein Bild hinzu. JPG/PNG/WebP bis 20 MB/40 Megapixel
+werden nach Vorschau und Bestätigung verlustfrei als PNG mit ASCII-Dateinamen
+an die Wawi geschickt. Die aufbereitete Datei darf ebenfalls maximal 20 MB haben.
+
+Admin/Grafik dürfen diese Aktionen auslösen. Verwendet wird der bestehende
+FAQ-Zugang: v1 POST `/v1/items/{UUID}/images` mit `SalesChannelId=2-2-1`, anschließend
+v2 PATCH `/v2/items/{UUID}` ausschließlich mit dem vollständigen erhaltenen
+`images`-Block. Beim Austausch wird darin nur die alte Shop-Referenz ersetzt;
+andere Kanäle und die alte Bilddatei bleiben erhalten. Position/Hauptbild werden
+übernommen; zusätzliche Bilder kommen ans Ende. Kein DELETE und kein globaler
+Austausch einer gemeinsam genutzten Bilddatei. Keine stillen Rechteänderungen.
+Die installierte v1-Bildliste akzeptiert v2-Artikel-UUIDs (20810 am 26.10. bestätigt).
+Die Endpunkt-/Modellbeschreibung wurde aus der installierten Swagger API 2.0/v1
+geprüft; produktive Schreibabnahme steht noch aus. Bildschreibrechte können
+unabhängig vom FAQ-Schreibrecht fehlen (403).
+
+Aufträge, aufbereitete Dateien und Vorher-/Zielzuordnungen werden dauerhaft in
+`var/bilder/bilder.sqlite3` gespeichert. Dieselbe Auftrags-ID führt niemals zu
+einem zweiten Schreibversuch. Bei unklarem Ausgang sperrt der Artikel weitere
+Uploads; „Wawi-Stand prüfen“ liest ausschließlich. Nach unbestätigter Bildanlage
+oder abweichender Zuordnung ist manuelle Prüfung erforderlich; diese erste
+Version setzt mehrstufige, unterbrochene Vorgänge nicht automatisch fort.
+Abgleiche/Importe und Uploads verwenden dieselbe Prozess-Dateisperre. Vor dem
+Schreiben werden die Zuordnungen erneut gelesen, nachher vollständig verglichen
+und die neue Vorschau geprüft. Die API bietet hier keine belegte atomare
+Versionsbedingung: parallele externe Wawi-Bildbearbeitung während eines Uploads
+vermeiden; es gibt kein automatisches Zurückschreiben bei Konflikten.
+
+Status: grüner Haken = gespeicherter Wawi-Bildstand für den Shop, nicht live
+geprüfte Shop-Veröffentlichung; „…“ = laufend/ungeklärt; „W“ = von Krautl geschriebene
+Änderung nach Rücklesen in Wawi bestätigt. Die tatsächliche Veröffentlichung im
+öffentlichen Shop kann derzeit nicht automatisch nachgewiesen werden.
+
+Deployment: App und Frontend neu bauen; keine manuelle Datenmigration nötig.

@@ -31,13 +31,13 @@ def ident(wert):
         raise JtlFehler("Ungültige Artikel- oder Bild-ID in der Wawi-Antwort.") from None
 
 
-def vorschaubild(daten):
+def vorschaubild(daten, groesse=(240, 180)):
     try:
         with Image.open(BytesIO(daten)) as bild:
             if bild.width * bild.height > 40_000_000:
                 raise BildFehler("Ein Bild überschreitet 40 Megapixel.")
             bild = ImageOps.exif_transpose(bild)
-            bild.thumbnail((240, 180))
+            bild.thumbnail(groesse)
             rgba = bild.convert("RGBA")
             hintergrund = Image.new("RGB", rgba.size, "white")
             hintergrund.paste(rgba, mask=rgba.getchannel("A"))
@@ -78,7 +78,7 @@ def datei_url(client, bild_id, bild):
         raise JtlFehler("Unsichere oder unpassende Wawi-Bildadresse; Abruf abgebrochen.") from None
 
 
-async def bild_laden(client, bild_id, bild=None):
+async def bild_laden(client, bild_id, bild=None, groesse=(240, 180)):
     try:
         url = client.url + "/v2/items/image-data/" + ident(bild_id)
         # Only a missing modern endpoint permits the legacy file URL.
@@ -86,14 +86,14 @@ async def bild_laden(client, bild_id, bild=None):
             if response.status_code == 404 and bild is not None:
                 legacy = datei_url(client, bild_id, bild)
             else:
-                return await bildantwort(response)
+                return await bildantwort(response, groesse)
         async with client.http.stream("GET", legacy, follow_redirects=False) as response:
-            return await bildantwort(response)
+            return await bildantwort(response, groesse)
     except httpx.HTTPError:
         raise JtlFehler("Wawi-Bildabruf fehlgeschlagen (TLS/Netz/Zeitlimit).") from None
 
 
-async def bildantwort(response):
+async def bildantwort(response, groesse=(240, 180)):
     if response.status_code != 200:
         hinweis = ("Bildleserechte des bestehenden FAQ-Zugangs prüfen."
                    if response.status_code in (401, 403) else
@@ -119,7 +119,7 @@ async def bildantwort(response):
         daten = bytes(inhalt)
     if len(daten) > MAX_BYTES:
         raise BildFehler("Eine Bilddatei überschreitet 20 MB.")
-    return await asyncio.to_thread(vorschaubild, daten)
+    return await asyncio.to_thread(vorschaubild, daten, groesse)
 
 
 def einzelshop_bestaetigen(kanaele):

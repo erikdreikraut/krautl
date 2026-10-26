@@ -179,3 +179,48 @@ test("Shop-Kategorien folgen Shop-Reihenfolge, Familien bleiben trotz Suche zusa
   t.after(()=>act(()=>view.unmount()));
   assert.deepEqual(view.root.findAllByType("h3").map(h=>h.children[0]),["Zubehör","Arzneien"]);
 });
+
+
+test("Bilddialog sendet erst nach Bestätigung und behält bei Netzfehler dieselbe Auftrags-ID", async t=>{
+  const server=await createServer({server:{middlewareMode:true,hmr:false},appType:"custom"});
+  t.after(()=>server.close());
+  const {BildDialog}=await server.ssrLoadModule("/src/BildDialog.jsx");
+  const {api}=await server.ssrLoadModule("/src/api.js");
+  const oldSend=api.bilderDatei, oldGross=api.bilderGross;
+  const oldCreate=URL.createObjectURL, oldRevoke=URL.revokeObjectURL;
+  URL.createObjectURL=()=>"blob:test";URL.revokeObjectURL=()=>{};
+  const calls=[];
+  api.bilderGross=async()=>{throw new Error("400");};
+  api.bilderDatei=async(...args)=>{calls.push(args);if(calls.length===1)throw new Error("Verbindung verloren");return {id:"job",status:"wawi",meldung:"In Wawi bestätigt"};};
+  t.after(()=>{api.bilderDatei=oldSend;api.bilderGross=oldGross;URL.createObjectURL=oldCreate;URL.revokeObjectURL=oldRevoke;});
+  let view;
+  await act(async()=>{view=create(React.createElement(BildDialog,{artikel:rows[0],bild:{id:"old",thumb:"abc",position:1},aktualisiert:async()=>{},schliessen:()=>{}}),{createNodeMock:e=>e.type==="dialog"?{showModal(){}}:null});});
+  t.after(()=>act(()=>view.unmount()));
+  assert.match(JSON.stringify(view.toJSON()),/gespeicherte kleine Vorschau/);
+  const file={name:"früchte.png",size:100};
+  await act(async()=>view.root.findByType("input").props.onChange({target:{files:[file],value:"x"}}));
+  assert.equal(calls.length,0);
+  const confirm=()=>view.root.findAllByType("button").find(b=>b.children.includes("Bestätigen und an Wawi übertragen"));
+  await act(async()=>confirm().props.onClick());
+  await act(async()=>confirm().props.onClick());
+  assert.equal(calls.length,2);
+  assert.equal(calls[0][3],calls[1][3]);
+  assert.equal(calls[0][1],"old");
+  assert.equal(calls[0][4],file);
+  assert.match(JSON.stringify(view.toJSON()),/In Wawi bestätigt/);
+});
+
+test("Bildliste öffnet Thumbnail und Plus; Wawi-Erfolg wird nicht als Shop-Erfolg markiert",async t=>{
+  const server=await createServer({server:{middlewareMode:true,hmr:false},appType:"custom"});
+  t.after(()=>server.close());
+  const {BilderListe}=await server.ssrLoadModule("/src/BilderView.jsx");
+  let chosen,view;
+  await act(async()=>{view=create(React.createElement(BilderListe,{artikel:rows,onArtikel:()=>{},onBild:(a,b)=>chosen=[a,b],auftraege:[{artikel:"child",neu_id:"img",status:"wawi"}]}));});
+  t.after(()=>act(()=>view.unmount()));
+  const thumb=view.root.findByProps({"aria-label":"Bild 1 von 20 vergrößern"});
+  await act(async()=>thumb.props.onClick());
+  assert.equal(chosen[1].id,"img");
+  await act(async()=>view.root.findByProps({"aria-label":"Bild zu 20 hinzufügen"}).props.onClick());
+  assert.equal(chosen[1],null);
+  assert.ok(view.root.findByProps({"aria-label":"In Wawi bestätigt; Shop-Veröffentlichung ungeprüft"}));
+});

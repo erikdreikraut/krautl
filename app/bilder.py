@@ -25,7 +25,8 @@ aufgaben = set()
 @router.get("")
 def liste(response: Response):
     response.headers["Cache-Control"] = "no-store"
-    return speicher.zustand()
+    from .bilder_upload import auftraege, oeffentlich
+    return {**speicher.zustand(), "bildauftraege": [oeffentlich(j) for j in auftraege()]}
 
 
 class Sichtbarkeit(BaseModel):
@@ -135,3 +136,61 @@ async def beenden():
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@router.get("/{artikel_id}/gross/{bild_id}")
+async def grossbild(artikel_id: UUID, bild_id: UUID):
+    from .bilder_upload import lokal, detail_lesen
+    from .bilder_abgleich import bild_laden, SHOP
+    from .jtl_onprem import OnPremClient
+    try:
+        a, stand = lokal(str(artikel_id))
+        if not any(b["id"] == str(bild_id) for b in a["bilder"]):
+            raise ValueError("Bild nicht im Artikelbestand.")
+        async with OnPremClient.aus_umgebung() as c:
+            if stand.get("api_ziel") != c.url:
+                raise ValueError("Wawi-Ziel passt nicht zum Bilderbestand.")
+            d = await detail_lesen(c, str(artikel_id), a["sku"])
+            matches = [b for g in d.get("images", {}).get("saleschannelImages", []) if g.get("saleschannelId") == SHOP
+                       for b in g.get("images", []) if b.get("blobIdentifier") == str(bild_id)]
+            if len(matches) != 1:
+                raise ValueError("Bildzuordnung verändert. Bitte aktualisieren.")
+            data = await bild_laden(c, str(bild_id), matches[0], groesse=(1600, 1200))
+        return Response(data, media_type="image/jpeg", headers={"Cache-Control":"private, no-store", "X-Content-Type-Options":"nosniff"})
+    except (ValueError, JtlFehler) as exc:
+        raise HTTPException(409, str(exc)) from None
+
+
+@router.post("/{artikel_id}/datei")
+async def bild_datei(artikel_id: UUID, request: Request, anfrage_id: UUID, revision: int, bild_id: UUID | None = None):
+    from .bilder_upload import uebertragen
+    from .jtl_onprem import OnPremClient
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > 20 * 1024 * 1024:
+            raise HTTPException(413, "Bilddatei darf höchstens 20 MB groß sein.")
+    try:
+        with speicher.Laufsperre():
+            async with OnPremClient.aus_umgebung() as c:
+                return await uebertragen(c, str(artikel_id), str(bild_id) if bild_id else None, revision,
+                                         str(anfrage_id), bytes(raw), request.state.benutzer["benutzername"])
+    except (speicher.Belegt, ValueError, JtlFehler) as exc:
+        raise HTTPException(409, str(exc)) from None
+
+
+@router.post("/auftraege/{anfrage_id}/pruefen")
+async def bild_pruefen(anfrage_id: UUID):
+    from .bilder_upload import auftraege, pruefen, oeffentlich
+    from .jtl_onprem import OnPremClient
+    job = next((j for j in auftraege() if j["id"] == str(anfrage_id)), None)
+    if not job:
+        raise HTTPException(404, "Bildauftrag nicht gefunden.")
+    if job["status"] in {"wawi", "abgelehnt"}:
+        return oeffentlich(job)
+    try:
+        with speicher.Laufsperre():
+            async with OnPremClient.aus_umgebung() as c:
+                return await pruefen(c, job)
+    except (speicher.Belegt, ValueError, JtlFehler) as exc:
+        raise HTTPException(409, str(exc)) from None

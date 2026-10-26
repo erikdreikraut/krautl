@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Image, RefreshCw, Search, X, EyeOff } from "lucide-react";
+import { BildDialog } from "./BildDialog.jsx";
 import { api } from "./api.js";
 
 const ui = { fontFamily: "'IBM Plex Sans', sans-serif", fontSize: "13px" };
@@ -65,21 +66,26 @@ function ArtikelDialog({ artikel, speichern, schliessen, laeuft, fehler }) {
   </dialog>;
 }
 
-function Thumbnail({ artikel, bild, position }) {
+function Thumbnail({ artikel, bild, position, onBild, auftrag, ungeprueft }) {
   const [fehler, setFehler] = useState(false);
   const meldung = bild.fehler || (fehler || !bild.thumb ? "Vorschau nicht verfügbar" : "");
+  const status = auftrag ? (auftrag.status === "wawi" ? ["W", "In Wawi bestätigt; Shop-Veröffentlichung ungeprüft", "#286480"] : [auftrag.status === "abgelehnt" ? "!" : "…", auftrag.meldung, "#986c14"]) : ungeprueft || !bild.thumb ? ["?", "Bildstand nicht vollständig geprüft", "#986c14"] : ["✓", "Gespeicherter Wawi-Stand für den Shop; Veröffentlichung nicht live geprüft", "#2C7A25"];
   return <figure className="shrink-0" style={{ width: "120px" }}>
+    <button type="button" aria-label={`Bild ${bild.position ?? position+1} von ${artikel.sku} vergrößern`} onClick={()=>onBild?.(artikel,bild)} style={{position:"relative",display:"block"}}>
+
     {(fehler || !bild.thumb) ? <div role="img" aria-label={`Bildposition ${bild.position ?? position + 1}: ${meldung}`} title={meldung} className="flex items-center justify-center" style={{ ...box, height: "90px", fontSize: "11px", textAlign: "center"  , color: "#9A4332", padding: "6px" }}>Bild nicht verfügbar</div> : <img
       src={`/api/bilder/${encodeURIComponent(artikel.id)}/thumb/${bild.thumb}`} loading="lazy" decoding="async"
       width="120" height="90" alt={`${artikel.name} – Bild ${position + 1}`} onError={() => setFehler(true)}
       style={{ ...box, objectFit: "contain", width: "120px", height: "90px", background: "white" }} />}
+    <span title={status[1]} aria-label={status[1]} style={{position:"absolute",right:3,top:3,borderRadius:4,padding:"0 5px",background:status[2],color:"white",fontWeight:700,fontSize:12}}>{status[0]}</span>
+    </button>
     <figcaption className="mt-1 truncate" title={bild.dateiname} style={{ fontSize: "10px", color: "#6C6F5F" }}>{bild.position ?? position + 1}{bild.hauptbild ? " · Hauptbild" : ""}</figcaption>
     {bild.quelle === "ameise" && <p style={{ fontSize: "10px", color: "#6C6F5F" }}>Exportvorschau</p>}
     {bild.fehler && <details className="mt-1" style={{ fontSize: "11px", color: "#9A4332", overflowWrap: "anywhere" }}><summary style={{ cursor: "pointer" }}>Fehlerdetails</summary>{bild.fehler}</details>}
   </figure>;
 }
 
-export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildfehler, ungeprueft = [] }) {
+export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildfehler, ungeprueft = [], onBild, auftraege = [], gesperrt=false }) {
   const gruppen = gruppieren(artikel, ausgeblendete, suche, nurBildfehler);
   return <div aria-label="Shop-Artikel und Bilder">
     {nachKategorien(gruppen).map(abschnitt => <section key={abschnitt.kategorie?.id || "unbekannt"} className="mb-5">
@@ -96,7 +102,8 @@ export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildf
           {a.ausgeblendet && <span className="flex items-center gap-1 mt-1" style={{ fontSize: "11px" }}><EyeOff size={12} /> Ausgeblendet</span>}
         </div>
         <div className="flex items-start gap-3 overflow-x-auto min-w-0 flex-1 pb-1">
-          {a.bilder.map((bild, n) => <Thumbnail key={`${bild.id}-${bild.thumb}`} artikel={a} bild={bild} position={n} />)}
+          {a.bilder.map((bild, n) => <Thumbnail key={`${bild.id}-${bild.thumb}`} artikel={a} bild={bild} position={n} onBild={onBild} ungeprueft={ungeprueft.some(u=>u.id===a.id)} auftrag={[...auftraege].reverse().find(j=>j.artikel===a.id && (j.neu_id===bild.id || j.bild_id===bild.id))} />)}
+          <button type="button" aria-label={`Bild zu ${a.sku} hinzufügen`} title="Bild hinzufügen" onClick={()=>onBild?.(a,null)} disabled={gesperrt||a.ausgeblendet||ungeprueft.some(u=>u.id===a.id)||auftraege.some(j=>j.artikel===a.id&&["sendet","unklar"].includes(j.status))} className="shrink-0" style={{...box,width:120,height:90,fontSize:32,color:"#2C5A18"}}>+</button>
           {!a.bilder.length && <span className="py-7" style={{ color: "#6C6F5F" }}>Keine Shop-Bilder zugeordnet</span>}
         </div>
       </div>)}
@@ -181,6 +188,8 @@ export async function importiereVorschaudatei(text, senden, fortschritt = () => 
 
 export function BilderView() {
   const [daten, setDaten] = useState(null);
+  const [bildAuswahl,setBildAuswahl] = useState(null);
+  const [auftragFehler,setAuftragFehler] = useState("");
   const [fehler, setFehler] = useState("");
   const [suche, setSuche] = useState("");
   const [ausgeblendete, setAusgeblendete] = useState(false);
@@ -259,9 +268,13 @@ export function BilderView() {
         {importErgebnis.ausgelassen.map((a,i)=><li key={i}>{a.sku}: {a.grund}</li>)}
       </ul></details>}
     </details>
+    <p className="mb-3" style={{fontSize:11,color:"#6C6F5F"}}>✓ Gespeicherter Wawi-Stand · … Übertragung ungeklärt · W Änderung in Wawi bestätigt. Die Veröffentlichung im Shop ist noch nicht automatisch prüfbar.</p>
+    {(daten?.bildauftraege||[]).filter(j=>["sendet","unklar"].includes(j.status)).map(j=><div key={j.id} className="mb-2 p-2" style={box}><p>{daten?.artikel.find(a=>a.id===j.artikel)?.sku}: {j.meldung}</p><button onClick={async()=>{setAuftragFehler("");try{await api.bilderAuftragPruefen(j.id);await laden();}catch(e){setAuftragFehler(e.message);}}}>Wawi-Stand prüfen</button></div>)}
+    {auftragFehler&&<p role="alert">{auftragFehler}</p>}
     <BilderStatus daten={daten} fehler={fehler} />
     {!daten && !fehler && <p>Lade Bilderübersicht …</p>}
-    {daten && !daten.letzter_erfolg && !daten.artikel.length ? <p className="py-12 text-center" style={{ color: "#6C6F5F" }}>Mit „Aktualisieren“ lädst du die Shop-Artikel und ihre Bilder erstmals aus der Wawi.</p> : daten && <BilderListe ungeprueft={daten.ungeprueft || []} nurBildfehler={nurBildfehler} artikel={daten.artikel} ausgeblendete={ausgeblendete} suche={suche} onArtikel={id => { setDialogFehler(""); setAuswahl(id); }} />}
+    {daten && !daten.letzter_erfolg && !daten.artikel.length ? <p className="py-12 text-center" style={{ color: "#6C6F5F" }}>Mit „Aktualisieren“ lädst du die Shop-Artikel und ihre Bilder erstmals aus der Wawi.</p> : daten && <BilderListe onBild={(artikel,bild)=>setBildAuswahl({artikel,bild})} auftraege={daten.bildauftraege||[]} gesperrt={laeuft} ungeprueft={daten.ungeprueft || []} nurBildfehler={nurBildfehler} artikel={daten.artikel} ausgeblendete={ausgeblendete} suche={suche} onArtikel={id => { setDialogFehler(""); setAuswahl(id); }} />}
+    {bildAuswahl&&<BildDialog artikel={bildAuswahl.artikel} bild={bildAuswahl.bild} schliessen={()=>setBildAuswahl(null)} aktualisiert={laden} gesperrt={laeuft||bildAuswahl.artikel.ausgeblendet||(daten?.ungeprueft||[]).some(u=>u.id===bildAuswahl.artikel.id)||(daten?.bildauftraege||[]).some(j=>j.artikel===bildAuswahl.artikel.id&&["sendet","unklar"].includes(j.status))}/>}
     {artikel && <ArtikelDialog artikel={artikel} speichern={speichern} schliessen={() => setAuswahl(null)} laeuft={speichert} fehler={dialogFehler} />}
   </section>;
 }

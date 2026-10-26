@@ -1,0 +1,247 @@
+"""Explicit image writes: durable intent, no automatic replay of mutations."""
+import base64
+import copy
+import hashlib
+import json
+from io import BytesIO
+import httpx
+from PIL import Image, ImageOps
+from . import bilder_speicher as store
+from .bilder_abgleich import bild_laden, vorschaubild, ident
+from .jtl_client import JtlFehler
+
+SHOP = "2-2-1"
+
+
+def journal():
+    return store.datenbank()
+
+
+def tabelle(db):
+    db.execute("CREATE TABLE IF NOT EXISTS bildauftraege (id TEXT PRIMARY KEY, artikel TEXT NOT NULL, daten TEXT NOT NULL, datei BLOB NOT NULL)")
+
+
+def auftraege(artikel=None):
+    with journal() as db:
+        tabelle(db)
+        rows = db.execute("SELECT daten FROM bildauftraege" + (" WHERE artikel=?" if artikel else ""), (artikel,) if artikel else ()).fetchall()
+    return [json.loads(r[0]) for r in rows]
+
+
+def sichern(job, datei=None):
+    with journal() as db:
+        tabelle(db)
+        if datei is not None:
+            db.execute("INSERT INTO bildauftraege VALUES (?, ?, ?, ?)", (job["id"], job["artikel"], json.dumps(job), datei))
+        else:
+            db.execute("UPDATE bildauftraege SET daten=? WHERE id=?", (json.dumps(job), job["id"]))
+
+
+def oeffentlich(job):
+    return {k: job.get(k) for k in ("id", "artikel", "bild_id", "neu_id", "status", "meldung", "erstellt", "position")}
+
+
+def datei_pruefen(raw):
+    if not raw or len(raw) > 20 * 1024 * 1024:
+        raise ValueError("Bilddatei muss zwischen 1 Byte und 20 MB groß sein.")
+    try:
+        with Image.open(BytesIO(raw)) as im:
+            if im.format not in {"JPEG", "PNG", "WEBP"} or getattr(im, "n_frames", 1) != 1 or im.width * im.height > 40_000_000:
+                raise ValueError()
+            im = ImageOps.exif_transpose(im)
+            out = BytesIO()
+            # Lossless PNG, no unsafe filename or metadata forwarded to Wawi.
+            im.convert("RGBA" if "A" in im.getbands() else "RGB").save(out, "PNG")
+            data = out.getvalue()
+            if len(data) > 20 * 1024 * 1024:
+                raise ValueError()
+            return data
+    except (OSError, ValueError, Image.DecompressionBombError):
+        raise ValueError("Bitte ein einzelnes JPG-, PNG- oder WebP-Bild bis 40 Megapixel wählen; die aufbereitete Datei darf 20 MB nicht überschreiten.") from None
+
+
+def bildblock(detail):
+    block = detail.get("images")
+    if not isinstance(block, dict):
+        raise ValueError("Bildzuordnungen fehlen in der Wawi.")
+    specs = {"defaultImages":None, "platformImages":"platformId", "saleschannelImages":"saleschannelId", "ebayImages":"ebayAccountId"}
+    if set(block) - set(specs):
+        raise ValueError("Unbekannte Bildzuordnungen; keine Änderung ausgeführt.")
+    def image(b):
+        bid = ident(b.get("blobIdentifier"))
+        if type(b.get("sortNumber")) is not int or type(b.get("isMainImage")) is not bool:
+            raise ValueError("Uneindeutige Bildposition.")
+        return {"blobIdentifier":bid,"sortNumber":b["sortNumber"],"isMainImage":b["isMainImage"]}
+    result = {}
+    for field, groupkey in specs.items():
+        rows = block.get(field) or []
+        if not isinstance(rows, list):
+            raise ValueError("Ungültige Bildzuordnungen.")
+        if groupkey:
+            groups = []
+            seen = set()
+            for g in rows:
+                key = g.get(groupkey)
+                if not isinstance(key, (str, int)) or key in seen:
+                    raise ValueError("Uneindeutiger Bildkanal.")
+                seen.add(key)
+                groups.append({groupkey:key,"images":[image(b) for b in g.get("images", [])]})
+            result[field] = groups
+        else:
+            result[field] = [image(b) for b in rows]
+    return result
+
+
+def shop(block):
+    matches = [g for g in block["saleschannelImages"] if g["saleschannelId"] == SHOP]
+    if len(matches) > 1:
+        raise ValueError("Shop-Bildkanal ist nicht eindeutig.")
+    return matches[0]["images"] if matches else []
+
+
+def fingerprint(block):
+    def canonical(value):
+        if isinstance(value, dict):
+            return {k:canonical(v) for k,v in value.items()}
+        if isinstance(value, list):
+            return sorted((canonical(v) for v in value), key=lambda v:json.dumps(v,sort_keys=True))
+        return value
+    return json.dumps(canonical(block), sort_keys=True)
+
+
+async def detail_lesen(c, artikel, sku):
+    d = await c._request("GET", "/v2/items/" + artikel)
+    if d.get("id") != artikel or d.get("identifiers", {}).get("sku") != sku:
+        raise ValueError("Wawi-Artikel stimmt nicht mit der Auswahl überein.")
+    return d
+
+
+def lokal(artikel, revision=None):
+    data = store.lesen()
+    a = next((a for a in data["artikel"] if a["id"] == artikel), None)
+    if not a or a["ausgeblendet"] or (revision is not None and a["revision"] != revision):
+        raise ValueError("Artikel fehlt, ist ausgeblendet oder wurde geändert. Bitte neu laden.")
+    if any(u["id"] == artikel for u in data.get("ungeprueft", [])):
+        raise ValueError("Artikel ist ungeprüft. Zuerst aktualisieren.")
+    return a, data
+
+
+async def uebertragen(c, artikel, bild_id, revision, anfrage_id, raw, nutzer):
+    digest = hashlib.sha256(raw).hexdigest()
+    previous = next((j for j in auftraege() if j["id"] == anfrage_id), None)
+    if previous:
+        if (previous["artikel"], previous["bild_id"], previous["eingang_hash"]) != (artikel, bild_id, digest):
+            raise ValueError("Auftragskennung wurde bereits anders verwendet.")
+        return oeffentlich(previous)
+    a, stand = lokal(artikel, revision)
+    if stand.get("api_ziel") != c.url:
+        raise ValueError("Wawi-Ziel passt nicht zum Bilderbestand.")
+    if any(j["status"] in {"sendet", "unklar"} for j in auftraege(artikel)):
+        raise ValueError("Ein früherer Bildauftrag ist noch ungeklärt. Zuerst dessen Wawi-Stand prüfen.")
+    raw = datei_pruefen(raw)
+    d = await detail_lesen(c, artikel, a["sku"])
+    before = bildblock(d)
+    current = shop(before)
+    snapshot = sorted((b["id"],b["position"],b["hauptbild"]) for b in a["bilder"])
+    if snapshot != sorted((b["blobIdentifier"],b["sortNumber"],b["isMainImage"]) for b in current):
+        raise ValueError("Wawi-Bilder haben sich geändert. Bitte zuerst aktualisieren.")
+    target = next((b for b in current if b["blobIdentifier"] == bild_id), None)
+    if bild_id and target is None:
+        raise ValueError("Das gewählte Bild gehört nicht mehr zum Shop.")
+    # Verify v1 access before recording a mutation; actual write rights remain server enforced.
+    await c._request("GET", "/v1/items/" + artikel + "/images", expected_type=list)
+    job = {"id":anfrage_id,"artikel":artikel,"sku":a["sku"],"bild_id":bild_id,"eingang_hash":digest,
+           "erstellt":store.jetzt(),"nutzer":nutzer,"api_ziel":c.url,"vorher":before,
+           "dateiname":"krautl-" + anfrage_id + ".png", "status":"sendet", "phase":"upload",
+           "meldung":"Übertragung an Wawi läuft.", "revision":revision,
+           "thumb_hash":hashlib.sha256(vorschaubild(raw)).hexdigest()}
+    if not store.freigegeben(artikel, revision):
+        raise ValueError("Artikel wurde während der Prüfung geändert.")
+    sichern(job, raw)
+    try:
+        # A single POST, never retried, even after a timeout or lost response.
+        response = await c.http.post(c.url + "/v1/items/" + artikel + "/images", json={
+            "ImageData":base64.b64encode(raw).decode(),"Filename":job["dateiname"],"SalesChannelId":SHOP})
+        if response.status_code in {400, 401, 402, 403, 404, 413, 415, 422}:
+            job.update(status="abgelehnt", meldung=f"Wawi hat den Upload abgelehnt (HTTP {response.status_code}). Es wurde keine Bildzuordnung geändert. Bei HTTP 403 fehlen Bildschreibrechte des bestehenden Zugangs.")
+            sichern(job)
+            return oeffentlich(job)
+        if response.status_code != 201:
+            raise JtlFehler(f"Bildanlage: HTTP {response.status_code}. Ausgang muss geprüft werden.")
+        after = await detail_lesen(c, artikel, a["sku"])
+        block = bildblock(after)
+        oldids = {b["blobIdentifier"] for b in current}
+        added = [b for b in shop(block) if b["blobIdentifier"] not in oldids]
+        if len(added) != 1:
+            raise ValueError("Neue Wawi-Bildzuordnung ist nicht eindeutig.")
+        new = added[0]
+        without_new = copy.deepcopy(block)
+        shop(without_new).remove(new)
+        # An empty shop group may have been created by the POST.
+        if not any(g["saleschannelId"] == SHOP for g in before["saleschannelImages"]):
+            without_new["saleschannelImages"] = [g for g in without_new["saleschannelImages"] if g["saleschannelId"] != SHOP]
+        if fingerprint(without_new) != fingerprint(before):
+            raise ValueError("Wawi-Zuordnungen haben sich während der Bildanlage verändert.")
+        source = next(b for g in after["images"]["saleschannelImages"] if g["saleschannelId"] == SHOP for b in g["images"] if b["blobIdentifier"] == new["blobIdentifier"])
+        thumb = await bild_laden(c, new["blobIdentifier"], source)
+        if hashlib.sha256(thumb).hexdigest() != job["thumb_hash"]:
+            raise ValueError("Zurückgelesenes Bild stimmt nicht mit der gewählten Datei überein.")
+        desired = copy.deepcopy(block)
+        images = shop(desired)
+        for b in images:
+            if b["blobIdentifier"] == new["blobIdentifier"]:
+                b["sortNumber"] = target["sortNumber"] if target else max((b["sortNumber"] for b in current), default=0)+1
+                b["isMainImage"] = target["isMainImage"] if target else not current
+        images[:] = [b for b in images if not bild_id or b["blobIdentifier"] != bild_id]
+        images.sort(key=lambda b:(b["sortNumber"],b["blobIdentifier"]))
+        job.update(neu_id=new["blobIdentifier"], ziel=desired, position=next(b["sortNumber"] for b in images if b["blobIdentifier"] == new["blobIdentifier"]), phase="zuordnung")
+        sichern(job)
+        if not store.freigegeben(artikel, revision):
+            raise ValueError("Artikel wurde inzwischen ausgeblendet oder geändert; Bild angelegt, Zuordnung noch offen.")
+        if fingerprint(bildblock(await detail_lesen(c,artikel,a["sku"]))) != fingerprint(block):
+            raise ValueError("Bilder wurden zwischenzeitlich geändert; Zuordnung noch offen.")
+        # No binary replacement/deletion: retain every other channel's references.
+        if fingerprint(desired) != fingerprint(block):
+            response = await c.http.patch(c.url + "/v2/items/" + artikel, json={"images":desired})
+            if response.status_code != 200:
+                raise JtlFehler(f"Bildzuordnung: HTTP {response.status_code}. Ausgang muss geprüft werden.")
+        return await pruefen(c, job)
+    except (httpx.HTTPError, JtlFehler, ValueError, KeyError, TypeError) as exc:
+        job.update(status="unklar", meldung="Übertragung nicht vollständig bestätigt. Nicht erneut hochladen; Wawi-Stand prüfen. " + (str(exc) if isinstance(exc, (JtlFehler, ValueError)) else "Verbindung oder Antwort unklar."))
+        sichern(job)
+        return oeffentlich(job)
+
+
+async def pruefen(c, job):
+    if job["api_ziel"] != c.url:
+        raise ValueError("Wawi-Ziel passt nicht zum Auftrag.")
+    d = await detail_lesen(c,job["artikel"],job["sku"])
+    if not job.get("ziel") or fingerprint(bildblock(d)) != fingerprint(job["ziel"]):
+        job.update(status="unklar",meldung="Wawi-Zuordnung entspricht noch nicht dem Ziel. Keine automatische Wiederholung; Auftrag muss geprüft werden.")
+        sichern(job)
+        return oeffentlich(job)
+    source = next(b for g in d["images"]["saleschannelImages"] if g["saleschannelId"] == SHOP for b in g["images"] if b["blobIdentifier"] == job["neu_id"])
+    thumb = await bild_laden(c,job["neu_id"],source)
+    if hashlib.sha256(thumb).hexdigest() != job["thumb_hash"]:
+        raise ValueError("Bildinhalt wurde nicht bestätigt.")
+    a, _ = lokal(job["artikel"])
+    if a["revision"] != job["revision"]:
+        raise ValueError("Artikelrevision geändert; vor Übernahme prüfen.")
+    old = {b["id"]:b for b in a["bilder"]}
+    result=[]
+    for b in shop(job["ziel"]):
+        bid=b["blobIdentifier"]
+        if bid == job["neu_id"]:
+            value={"id":bid,"thumb":store.thumb_speichern(thumb),"fehler":None,"version":None,"dateiname":job["dateiname"]}
+        elif bid in old:
+            value=dict(old[bid])
+        else:
+            raise ValueError("Unbekanntes Bild beim Übernehmen.")
+        value.update(position=b["sortNumber"],hauptbild=b["isMainImage"])
+        result.append(value)
+    a["bilder"]=result
+    a["aktualisiert_am"]=store.jetzt()
+    store.zwischenstand(a,a["revision"],c.url)
+    job.update(status="wawi",meldung="In Wawi bestätigt. Veröffentlichung im Shop noch nicht geprüft.")
+    sichern(job)
+    return oeffentlich(job)
