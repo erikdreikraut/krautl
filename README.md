@@ -1265,3 +1265,31 @@ Auftragsjournal erhalten. Andere Kanalzuordnungen und Wawi-Standardbilder bleibe
 in der Prüfung erhalten. Ob die Wawi ausgelassene Kassenzuordnungen erhält oder
 entfernt, ist nicht zugesichert; diese sind ausdrücklich außerhalb des gewünschten
 Bildbestands. Keine pauschale Übernahme der Shop-Reihenfolge in andere Kanäle.
+
+
+### Einmaliger v1-Sortierversuch für einen ungeklärten Reihenfolgeauftrag
+
+Nach dem Ausschluss des POS-Kanals wurde der v2-Bild-PATCH nicht mehr mit 400
+abgelehnt, die Shop-Positionen blieben beim Rücklesen jedoch unverändert.
+`scripts/repariere_bildreihenfolge_v1.py SKU` erlaubt deshalb einen gezielten
+v1-PATCH **am echten Artikel**, ausschließlich für eine bereits beauftragte
+Vertauschung zweier benachbarter Nebenbilder. Hauptbildwechsel und andere Änderungen
+werden abgelehnt. Voraussetzungen: letzter Reihenfolgeauftrag ungeklärt, Artikel
+sichtbar mit gleicher Revision, vollständiger Wawi-Bildstand entspricht noch dem
+Auftrags-Ausgang, eindeutige v1-Shop-Bildkennungen an denselben Positionen.
+
+Das Skript verwendet die gemeinsame Laufsperre und protokolliert den einmaligen
+Versuch vor dem PATCH auf `/v1/items/{itemId}/images/{imageId}`. Der Body enthält
+nur `SalesChannelId=2-2-1` und `SortNumber`. Keine Bilddatei wird hochgeladen oder
+gelöscht. Nach der Antwort (auch bei Antwortverlust) erfolgt die vollständige
+bestehende Rückleseprüfung. Nur das bestätigte Ziel übernimmt Krautl. Wiederholte
+Aufrufe desselben Auftrags lesen ausschließlich nach und schreiben nie erneut.
+Der lokale Test simuliert die Positionsverschiebung; die tatsächliche Wirkung der
+installierten Wawi bleibt bis zum Live-Ergebnis offen.
+
+Nach Aktualisierung der Server-Arbeitskopie ohne Container-Neubau ausführbar:
+
+```bash
+cd /opt/app/krautl &&
+docker compose exec -T app python - 30501-002 < scripts/repariere_bildreihenfolge_v1.py
+```
