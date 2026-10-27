@@ -61,7 +61,7 @@ async def pruefen(client, job, ausgabe=print):
     ausgabe(f"Quelle (nur lesen): {job['sku']} | Diagnoseziel: {target}")
     ausgabe("PATCH nur auf dieses jeweils per GET als fehlend geprüfte Diagnoseziel.")
 
-    async def probe(label, body):
+    async def probe(label, body, vergleich_500=False):
         response = await client.http.get(endpoint)
         if not artikel_fehlt(response):
             raise ValueError(f"Abbruch vor PATCH: Diagnoseziel liefert HTTP {response.status_code} ohne bestätigten Fehlbestand (404 oder JSON null).")
@@ -70,18 +70,27 @@ async def pruefen(client, job, ausgabe=print):
         ausgabe(f"{label}: HTTP {status}")
         if status != 404:
             ausgabe(ablehnungsdetails(response))
-        if status not in (400, 404, 422):
+        bekannte_500 = False
+        if status == 500 and vergleich_500:
+            try:
+                error = response.json()
+                bekannte_500 = isinstance(error, dict) and error.get("Status") == 500 and error.get("Detail") == "Unknown Internal Error"
+            except ValueError:
+                pass
+        if status not in (400, 404, 422) and not bekannte_500:
             raise ValueError("Unerwartete Antwort; keine weiteren Requests. Kein automatischer Neuversuch.")
         return status
 
-    baseline = await probe("Kontrolle ohne Bilddaten", {})
-    if baseline != 404:
+    baseline = await probe("Kontrolle ohne Bilddaten", {}, vergleich_500=True)
+    if baseline not in (404, 500):
         raise ValueError("Kontrollrequest erreicht keine eindeutige Artikel-nicht-gefunden-Antwort; Diagnose beendet.")
+    if baseline == 500:
+        ausgabe("Kontrolle liefert den bekannten internen Fehler. Vergleich ist nur diagnostisch, kein Erfolgsnachweis.")
     results = []
     for label, body in faelle(block):
-        results.append((label, await probe(label, body)))
-    ausgabe("Fertig. 404 wie Kontrolle: keine Ablehnung wie beim bisherigen Bildrequest.")
-    ausgabe("400/422: betreffenden Teil gezielt untersuchen. 404 ist KEINE Schreibfreigabe für echte Artikel.")
+        results.append((label, await probe(label, body, vergleich_500=baseline == 500)))
+    ausgabe(f"Fertig. Kontrollstatus: {baseline}. 400/422: Validierungsantwort; 500: interner Fehler, kein Erfolg.")
+    ausgabe("Die Unterschiede grenzen verdächtige Felder ein. Kein Ergebnis ist eine Schreibfreigabe für echte Artikel.")
     return results
 
 

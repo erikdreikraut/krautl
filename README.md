@@ -1228,8 +1228,10 @@ API-Ziel und verwendet ausschließlich eine abgeleitete Diagnose-ID mit dem
 Artikel-Schlüssel 2147483647. **Vor jedem PATCH muss GET auf diese Diagnose-ID
 404 oder HTTP 200 mit dem JSON-Wert `null` liefern.** Letzteres wurde für die
 installierte Wawi 2.1.1 lesend bestätigt. Andere 200-Antworten bleiben gesperrt.
-Liefert der leere Kontroll-PATCH nicht 404, endet die
-Prüfung. Danach werden Gesamtblock, Bildbereiche und einzelne Kanalgruppen getrennt
+Liefert der leere Kontroll-PATCH weder 404 noch den beobachteten HTTP-500-Fehler
+`Unknown Internal Error`, endet die Prüfung. Beim beobachteten 500-Kontrollwert
+werden 400/422 und genau diese interne Fehlerantwort nur diagnostisch verglichen;
+500 gilt niemals als erfolgreiche Verarbeitung. Danach werden Gesamtblock, Bildbereiche und einzelne Kanalgruppen getrennt
 geprüft. Bestehende Artikel sind nie PATCH-Ziel; das Skript legt keine Artikel an
 und verändert weder Krautl-Bestand noch Auftragsjournal. Es handelt sich dennoch
 um API-PATCH-Requests auf eine nicht vorhandene ID, nicht um einen reinen Lesetest.

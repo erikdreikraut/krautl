@@ -39,8 +39,9 @@ class SchreibformatTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(req.method, "PATCH")
         self.assertEqual(self.calls[-2], ("GET", req.url.path))
         body = json.loads(req.content)
-        return httpx.Response(self.baseline if not body else self.probe_status,
-                              json={"Title": "validation details"})
+        status = self.baseline if not body else self.probe_status
+        return httpx.Response(status, json={"Title": "Unknown", "Status": 500, "Detail": "Unknown Internal Error"}
+                              if status == 500 else {"Title": "validation details"})
 
     async def run_probe(self):
         async with OnPremClient(URL, "secret", transport=httpx.MockTransport(self.transport)) as c:
@@ -146,5 +147,24 @@ class SchreibformatTest(unittest.IsolatedAsyncioTestCase):
         self.target_body = None
         self.baseline = 400
         with self.assertRaisesRegex(ValueError, "Kontrollrequest"):
+            await self.run_probe()
+        self.assertEqual(sum(m == "PATCH" for m, p in self.calls), 1)
+
+
+    async def test_observed_missing_item_internal_error_can_be_compared_without_retries(self):
+        self.target_get = 200
+        self.target_body = None
+        self.baseline = 500
+        self.probe_status = 500
+        results = await self.run_probe()
+        self.assertEqual(len(results), 7)
+        self.assertTrue(all(status == 500 for label, status in results))
+        self.assertEqual(sum(m == "PATCH" for m, p in self.calls), 8)
+        self.assertEqual(self.target_reads, 8)
+
+    async def test_500_control_does_not_relax_existing_item_guard(self):
+        self.baseline = 500
+        self.appear_after = 2
+        with self.assertRaisesRegex(ValueError, "Abbruch vor PATCH"):
             await self.run_probe()
         self.assertEqual(sum(m == "PATCH" for m, p in self.calls), 1)
