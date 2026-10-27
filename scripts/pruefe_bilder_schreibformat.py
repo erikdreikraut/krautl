@@ -11,12 +11,24 @@ from app.jtl_onprem import OnPremClient
 
 def pruefziel(source):
     # Keep JTL's entity-key prefix, use the largest positive Int32 as the item key.
-    # This is only a candidate: GET must return 404 immediately before EVERY PATCH.
+    # This is only a candidate: GET must confirm absence immediately before EVERY PATCH.
     value = UUID(source)
     target = str(UUID(hex=value.hex[:-8] + (2147483647).to_bytes(4, "little").hex()))
     if target == str(value):
         raise ValueError("Diagnoseziel entspricht dem Quellartikel; Abbruch.")
     return target
+
+
+def artikel_fehlt(response):
+    """Installed Wawi 2.1.1 returns HTTP 200 with literal JSON null for missing keys."""
+    if response.status_code == 404:
+        return True
+    if response.status_code != 200:
+        return False
+    try:
+        return response.json() is None
+    except ValueError:
+        return False
 
 
 def faelle(block):
@@ -51,8 +63,8 @@ async def pruefen(client, job, ausgabe=print):
 
     async def probe(label, body):
         response = await client.http.get(endpoint)
-        if response.status_code != 404:
-            raise ValueError(f"Abbruch vor PATCH: Diagnoseziel liefert HTTP {response.status_code} statt 404.")
+        if not artikel_fehlt(response):
+            raise ValueError(f"Abbruch vor PATCH: Diagnoseziel liefert HTTP {response.status_code} ohne bestätigten Fehlbestand (404 oder JSON null).")
         response = await client.http.patch(endpoint, json=body)
         status = response.status_code
         ausgabe(f"{label}: HTTP {status}")

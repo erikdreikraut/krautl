@@ -1226,7 +1226,9 @@ Bilder oder deren tatsächliche Veröffentlichung im öffentlichen Shop.
 Reihenfolgeauftrag aus dem lokalen Journal. Es liest den Quellartikel, prüft das
 API-Ziel und verwendet ausschließlich eine abgeleitete Diagnose-ID mit dem
 Artikel-Schlüssel 2147483647. **Vor jedem PATCH muss GET auf diese Diagnose-ID
-404 liefern.** Liefert der leere Kontroll-PATCH nicht ebenfalls 404, endet die
+404 oder HTTP 200 mit dem JSON-Wert `null` liefern.** Letzteres wurde für die
+installierte Wawi 2.1.1 lesend bestätigt. Andere 200-Antworten bleiben gesperrt.
+Liefert der leere Kontroll-PATCH nicht 404, endet die
 Prüfung. Danach werden Gesamtblock, Bildbereiche und einzelne Kanalgruppen getrennt
 geprüft. Bestehende Artikel sind nie PATCH-Ziel; das Skript legt keine Artikel an
 und verändert weder Krautl-Bestand noch Auftragsjournal. Es handelt sich dennoch

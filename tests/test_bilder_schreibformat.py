@@ -20,6 +20,7 @@ class SchreibformatTest(unittest.IsolatedAsyncioTestCase):
         self.job = {"artikel": SOURCE, "sku": "30501-002", "api_ziel": URL, "ziel": self.block}
         self.calls = []
         self.target_get = 404
+        self.target_body = {}
         self.baseline = 404
         self.probe_status = 400
         self.target_reads = 0
@@ -34,7 +35,7 @@ class SchreibformatTest(unittest.IsolatedAsyncioTestCase):
         if req.method == "GET":
             self.target_reads += 1
             status = 200 if self.appear_after and self.target_reads >= self.appear_after else self.target_get
-            return httpx.Response(status, json={})
+            return httpx.Response(status, text="null") if self.target_body is None else httpx.Response(status, json=self.target_body)
         self.assertEqual(req.method, "PATCH")
         self.assertEqual(self.calls[-2], ("GET", req.url.path))
         body = json.loads(req.content)
@@ -122,3 +123,28 @@ class SchreibformatTest(unittest.IsolatedAsyncioTestCase):
         async with OnPremClient(URL, "secret", transport=httpx.MockTransport(transport)) as c:
             await identitaeten_lesen(c, self.job, lambda *a: None)
         self.assertTrue(all(r.method == "GET" for r in requests))
+
+
+    async def test_installed_wawi_200_null_allows_guarded_probes(self):
+        self.target_get = 200
+        self.target_body = None
+        results = await self.run_probe()
+        self.assertEqual(len(results), 7)
+        self.assertEqual(sum(m == "PATCH" for m, p in self.calls), 8)
+
+    def test_absence_detection_is_strict(self):
+        from scripts.pruefe_bilder_schreibformat import artikel_fehlt
+        for body in ('{}', '[]', '"null"', 'false', '0', '', '<html>error</html>',
+                     '{"id": null}', '{"id": "existing"}'):
+            self.assertFalse(artikel_fehlt(httpx.Response(200, text=body)), body)
+        self.assertTrue(artikel_fehlt(httpx.Response(200, text='null')))
+        self.assertTrue(artikel_fehlt(httpx.Response(404)))
+        self.assertFalse(artikel_fehlt(httpx.Response(500, text='null')))
+
+    async def test_200_null_still_requires_missing_patch_control(self):
+        self.target_get = 200
+        self.target_body = None
+        self.baseline = 400
+        with self.assertRaisesRegex(ValueError, "Kontrollrequest"):
+            await self.run_probe()
+        self.assertEqual(sum(m == "PATCH" for m, p in self.calls), 1)
