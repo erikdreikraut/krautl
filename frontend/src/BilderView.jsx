@@ -77,7 +77,7 @@ function Thumbnail({ artikel, bild, position, onBild, auftrag, ungeprueft }) {
       src={`/api/bilder/${encodeURIComponent(artikel.id)}/thumb/${bild.thumb}`} loading="lazy" decoding="async"
       width="120" height="90" alt={`${artikel.name} – Bild ${position + 1}`} onError={() => setFehler(true)}
       style={{ ...box, objectFit: "contain", width: "120px", height: "90px", background: "white" }} />}
-    <span title={status[1]} aria-label={status[1]} style={{position:"absolute",right:3,top:3,borderRadius:4,padding:"0 5px",background:status[2],color:"white",fontWeight:700,fontSize:12}}>{status[0]}</span>
+    <span title={status[1]} aria-label={status[1]} style={{position:"absolute",right:3,bottom:3,borderRadius:3,width:14,height:14,display:"flex",alignItems:"center",justifyContent:"center",background:status[2],color:"white",fontWeight:700,fontSize:10,lineHeight:1}}>{status[0]}</span>
     </button>
     <figcaption className="mt-1 truncate" title={bild.dateiname} style={{ fontSize: "10px", color: "#6C6F5F" }}>{bild.position ?? position + 1}{bild.hauptbild ? " · Hauptbild" : ""}</figcaption>
     {bild.quelle === "ameise" && <p style={{ fontSize: "10px", color: "#6C6F5F" }}>Exportvorschau</p>}
