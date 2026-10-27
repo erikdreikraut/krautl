@@ -44,7 +44,7 @@ class ShopTest(unittest.IsolatedAsyncioTestCase):
         status={'signatur':shop.signatur(self.a,'api'),'status':'bestaetigt','zeit':time.time()}
         self.assertEqual(shop.aktuell(self.a,'api',status)['status'],'bestaetigt')
         self.assertEqual(shop.aktuell(self.a,'other',status)['status'],'wartet')
-        self.assertEqual(shop.aktuell(self.a,'api',{**status,'zeit':time.time()-21601})['status'],'wartet')
+        self.assertEqual(shop.aktuell(self.a,'api',{**status,'zeit':time.time()-86401})['status'],'wartet')
         self.a['bilder'][0]['position']=3
         self.assertEqual(shop.aktuell(self.a,'api',status)['status'],'wartet')
 
@@ -117,3 +117,39 @@ class ShopTest(unittest.IsolatedAsyncioTestCase):
         shop.speichern('a',{'signatur':shop.signatur(self.a,'api'),'status':'bestaetigt','zeit':time.time()})
         with patch('app.bilder_upload.auftraege',return_value=[]),patch.object(shop,'artikel_pruefen') as check:
             await shop.durchlauf();check.assert_not_called()
+
+    def test_staggered_schedule_and_new_change(self):
+        from datetime import datetime, timezone
+        start = 100000
+        job = {"id":"j1", "artikel":"a", "status":"wawi", "api_ziel":"api",
+               "erstellt":datetime.fromtimestamp(start,timezone.utc).isoformat()}
+        def plan(old, now, jobs=None):
+            return shop.pruefplan(self.a,'api',old,[job] if jobs is None else jobs,now)
+        due, old, active = plan({}, start)
+        self.assertEqual(due,start+300);self.assertTrue(active)
+        for elapsed, expected in [(300,600),(600,900),(900,1200),(1200,4800),(4800,8400)]:
+            old.update(zeit=start+elapsed,status='wartet')
+            due,old,active=plan(old,start+elapsed)
+            self.assertEqual(due,start+expected);self.assertTrue(active)
+        old.update(auftrag_erledigt=True,zeit=start+4800,status='bestaetigt')
+        self.assertEqual(plan(old,start+4800)[0],start+4800+86400)
+        old.update(status='wartet',zeit=start+4800+86400)
+        self.assertFalse(plan(old,old['zeit'])[2])  # External divergence never restarts fast polling.
+        job2={**job,'id':'j2','erstellt':datetime.fromtimestamp(start+90000,timezone.utc).isoformat()}
+        self.assertEqual(plan(old,start+90000,[job,job2])[0],start+90300)
+
+    def test_ordinary_errors_and_external_snapshot_changes_stay_daily(self):
+        old={'zeit':100000,'status':'wartet','signatur':'old-snapshot'}
+        self.assertEqual(shop.pruefplan(self.a,'api',old,[],100001)[0],186400)
+        self.assertEqual(shop.pruefplan(self.a,'api',{},[],100001)[0],100001)
+
+    async def test_confirmation_remembers_completed_change_after_later_failure(self):
+        def response(req):
+            if req.url.path=='/':return httpx.Response(200,text=page('child',[shop.ORIGIN+'/0.jpg',shop.ORIGIN+'/1.jpg']))
+            return httpx.Response(200,content=self.raw[int(req.url.path[1])])
+        async with httpx.AsyncClient(transport=httpx.MockTransport(response)) as c:
+            result=await shop.artikel_pruefen(c,self.a,self.data,{'auftrag':'j','auftrag_erledigt':False,'aenderung_zeit':1000})
+        self.assertTrue(result['auftrag_erledigt'])
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda req:httpx.Response(503))) as c:
+            failed=await shop.artikel_pruefen(c,self.a,self.data,result)
+        self.assertTrue(failed['auftrag_erledigt']);self.assertEqual(failed['status'],'wartet')

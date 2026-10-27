@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import time
+from datetime import datetime
 from html.parser import HTMLParser
 from io import BytesIO
 from urllib.parse import urlencode, urljoin, urlsplit
@@ -42,9 +43,41 @@ def aktuell(a, api_ziel, status):
     if not status or status.get("signatur") != signatur(a,api_ziel):
         return {"status":"wartet","meldung":"Shop-Veröffentlichung noch nicht geprüft"}
     result=dict(status)
-    if result.get("status")=="bestaetigt" and time.time()-result.get("zeit",0)>21600:
-        result.update(status="wartet",meldung="Shop-Bestätigung älter als sechs Stunden; erneute Prüfung steht an")
+    if result.get("status")=="bestaetigt" and time.time()-result.get("zeit",0)>86400:
+        result.update(status="wartet",meldung="Shop-Bestätigung älter als 24 Stunden; erneute Prüfung steht an")
     return result
+
+
+def zeitpunkt(value):
+    try:
+        return datetime.fromisoformat(value).timestamp()
+    except (TypeError, ValueError):
+        return 0
+
+
+def pruefplan(a, api_ziel, previous, jobs, now):
+    """Persist completion per change, so a later external mismatch stays daily."""
+    relevant = [j for j in jobs if j.get("artikel") == a["id"]
+                and j.get("status") == "wawi" and j.get("api_ziel") == api_ziel]
+    job = max(relevant, key=lambda j: zeitpunkt(j.get("erstellt")), default=None)
+    old = dict(previous)
+    if job:
+        ident = job["id"]
+        start = zeitpunkt(job.get("erstellt"))
+        if old.get("auftrag") != ident:
+            # Existing confirmations from before this scheduler also count.
+            done = (old.get("status") == "bestaetigt"
+                    and old.get("signatur") == signatur(a, api_ziel)
+                    and old.get("zeit", 0) >= start)
+            old.update(auftrag=ident, auftrag_erledigt=done, aenderung_zeit=start)
+            if not done:
+                return start + 300, old, True
+        if not old.get("auftrag_erledigt"):
+            last = max(start, old.get("zeit", 0))
+            due = min(last + 300, start + 1200) if last < start + 1200 else last + 3600
+            return due, old, True
+    # Initial inventory is checked once immediately, then daily even on failure.
+    return old.get("zeit", now - 86400) + 86400, old, False
 
 
 def sicher(url):
@@ -148,6 +181,7 @@ def vergleichen(local,remote):
 async def artikel_pruefen(c,a,data,previous):
     stamp=signatur(a,data.get("api_ziel"))
     result={"signatur":stamp,"zeit":time.time(),"geprueft_am":store.jetzt(),"status":"wartet"}
+    result.update({k: previous[k] for k in ("auftrag", "auftrag_erledigt", "aenderung_zeit") if k in previous})
     try:
         async with asyncio.timeout(60):
             url,urls=await seite(c,a,data["artikel"],previous.get("url"))
@@ -165,6 +199,10 @@ async def artikel_pruefen(c,a,data,previous):
                 u += ("&" if "?" in u else "?")+urlencode({"krautl_check":int(result["zeit"])})
                 raw,_=await laden(c,u,8_000_000);remote.append(raw)
             ok,msg=vergleichen(local,remote)
+            if ok and result.get("auftrag"):
+                result["auftrag_erledigt"] = True
+            if not ok and (not result.get("auftrag") or result.get("auftrag_erledigt")):
+                msg = "Shop weicht vom gespeicherten Wawi-Stand ab; Wawi-Bestand bitte aktualisieren"
             result.update(status="bestaetigt" if ok else "wartet",meldung=msg)
     except ValueError as exc:
         result["meldung"]=str(exc)
@@ -187,21 +225,19 @@ async def durchlauf():
     data=store.lesen();saved=staende();jobs=auftraege()
     blocked={j["artikel"] for j in jobs if j.get("status") in ("sendet","unklar")}
     blocked.update(x["id"] for x in data.get("ungeprueft",[]))
-    changed={j["artikel"] for j in jobs if j.get("status")=="wawi"}
     pending=[]
+    now = time.time()
     for a in data["artikel"]:
         if a["ausgeblendet"] or a["id"] in blocked or not a["bilder"]:continue
-        old=saved.get(a["id"],{})
-        same=old.get("signatur")==signatur(a,data.get("api_ziel"))
-        interval=21000 if old.get("status")=="bestaetigt" else 300
-        if same and time.time()-old.get("zeit",0)<interval:continue
-        pending.append(a)
-    pending.sort(key=lambda a:(a["id"] not in changed,saved.get(a["id"],{}).get("zeit",0)))
+        due, previous, changed = pruefplan(a, data.get("api_ziel"), saved.get(a["id"], {}), jobs, now)
+        if due <= now:
+            pending.append((not changed, due, a, previous))
+    pending.sort(key=lambda entry: entry[:2])
     async with httpx.AsyncClient(timeout=15,follow_redirects=False,trust_env=False,
                                  headers={"User-Agent":"Krautl Shopbild-Pruefung/1.0"}) as c:
-        for a in pending[:5]:
+        for _, _, a, previous in pending[:5]:
             # No Wawi lock during network IO: uploads and refreshes remain available.
-            await artikel_pruefen(c,a,data,saved.get(a["id"],{}))
+            await artikel_pruefen(c,a,data,previous)
 
 
 async def ueberwachen():

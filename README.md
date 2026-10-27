@@ -1180,13 +1180,27 @@ Status: „W“ = gespeicherter beziehungsweise durch Rücklesen bestätigter Wa
 öffentlichen JTL-Shop geprüft. Die kleinen Tags stehen rechts unten; Details und
 Prüfzeit stehen im Tooltip. Fehlende oder ungeprüfte Wawi-Vorschauen bleiben „?“.
 
-Die App prüft automatisch lesend `https://dreikraut.de`: bis zu fünf Artikel pro
-Durchlauf, anschließend 30 Sekunden Pause. Noch unbestätigte Artikel werden frühestens
-nach fünf Minuten erneut geprüft, bestätigte nach knapp sechs Stunden. Änderungen aus
-Krautl haben Vorrang. Bestätigungen sind an den exakten Bilderstand, die Positionen und
-das API-Ziel gebunden und verfallen nach sechs Stunden ohne erfolgreiche Nachprüfung.
+Die App prüft automatisch lesend `https://dreikraut.de`: bis zu fünf fällige Artikel
+pro Durchlauf, anschließend 30 Sekunden Pause. Nach einer in Krautl ausgelösten und
+in Wawi bestätigten Änderung erfolgen Prüfungen nach 5, 10, 15 und 20 Minuten ab
+Auftragserstellung; danach bei weiter ausstehender Veröffentlichung stündlich.
+Eine neue Änderung startet diese Staffelung neu. Nach erfolgreicher Shop-Bestätigung
+wechselt der Artikel zur täglichen Prüfung. Alle übrigen Artikel werden initial
+einmal und danach alle 24 Stunden geprüft, auch bei Fehlern oder Abweichungen.
+Die Taktung ist eine Fälligkeit; Warteschlange und Abrufdauer können sie verzögern.
+
+Erledigte Änderungen bleiben dauerhaft als bestätigt vermerkt, damit eine spätere
+externe Abweichung nicht erneut die schnelle Prüfung eines alten Auftrags aktiviert.
+Bestätigungen sind an den exakten Bilderstand, die Positionen und das API-Ziel
+gebunden und verfallen nach 24 Stunden ohne erfolgreiche Nachprüfung.
 Ausgeblendete Artikel, ungeprüfte Wawi-Artikel und unklare/laufende Aufträge werden
 übersprungen. Bei pausiertem Wawi-Shop-Abgleich bleibt „W“ bis zur Veröffentlichung.
+
+Direkte Änderungen in Wawi sind erst nach Veröffentlichung im Shop als Abweichung
+zum lokalen Krautl-Bestand erkennbar. Dieser Prüfer aktualisiert den Wawi-Snapshot
+nicht automatisch: dafür den Bilderbestand in Krautl mit „Aktualisieren“ erneut
+abrufen. Eine Shop-Abweichung beweist weder einen Wawi-Schreibfehler noch, dass die
+lokal gespeicherten Bild-IDs zum veröffentlichten Shopbild gehören.
 
 Die Zuordnung verwendet die exakte Artikelnummer auf der Shopseite; Varianten werden
 über tatsächlich gefundene Variantenverweise des Vaterartikels gesucht. Canonical-URLs
