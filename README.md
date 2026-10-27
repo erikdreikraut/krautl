@@ -1253,3 +1253,15 @@ lockern. Zunächst rein lesend die Antwortidentitäten vergleichen:
 Dieser Modus sendet ausschließlich GET für Quelle, bisheriges Diagnoseziel,
 numerischen Schlüssel und eine zufällige UUID. Er zeigt nur Antworttyp/Feldnamen,
 Artikel-ID, SKU und bereinigte Fehlerdetails, keine Bilder-URLs oder Zugangsdaten.
+
+
+Bildkanal-Korrektur (27.10.2026): Der getrennte Formatvergleich isolierte
+`saleschannelImages` / `9-7-8-0` (Kasse) als Auslöser des HTTP-400-Validierungsfehlers.
+Der Nutzer hat diesen Kanal als irrelevant ausgeschlossen und JTL-Shop (`2-2-1`)
+als Master-Bildkanal bestätigt. Der Schreibblock lässt deshalb ausschließlich
+`9-7-8-0` weg; die Bestätigungsprüfung ignoriert diese Zuordnung ebenfalls, falls
+Wawi sie weiterhin ausgibt. Das vollständige vorherige Bildabbild bleibt im
+Auftragsjournal erhalten. Andere Kanalzuordnungen und Wawi-Standardbilder bleiben
+in der Prüfung erhalten. Ob die Wawi ausgelassene Kassenzuordnungen erhält oder
+entfernt, ist nicht zugesichert; diese sind ausdrücklich außerhalb des gewünschten
+Bildbestands. Keine pauschale Übernahme der Shop-Reihenfolge in andere Kanäle.

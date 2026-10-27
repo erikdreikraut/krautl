@@ -67,3 +67,9 @@
 - Bildänderungen nur nach Dateiauswahl, Vorschau und ausdrücklicher Bestätigung. Neue Datei mit ASCII-Dateiname anlegen; beim Austausch ausschließlich Shop-Zuordnung ändern, gemeinsam genutzte Originaldateien nicht überschreiben/löschen. Dauerhaften Auftrag vor Schreibzugriff sichern; bei unklarem Ausgang nur rücklesen, nicht automatisch erneut schreiben. Wawi-Bestätigung und tatsächliche Shop-Veröffentlichung unterscheiden; ohne öffentlichen Nachweis keine Shop-Erfolgsbehauptung.
 
 - Bilderreihenfolge innerhalb einer Artikelzeile per Drag-and-drop ändern; erst „Reihenfolge speichern“ schreibt an Wawi. Das erste Bild wird automatisch einziges Hauptbild, Positionen fortlaufend ab 1. Andere Kanäle unverändert erhalten. Entwürfe beim Polling erhalten, bei geändertem Bildbestand Speichern sperren. Reihenfolgeaufträge ebenfalls dauerhaft sichern und bei unklarem Ausgang ausschließlich rücklesen.
+
+
+## Bilderverwaltung
+
+- JTL-Shop (`2-2-1`) ist der Masterkanal für Bilder. Die zwischenzeitliche Angabe JTL-Wawi wurde vom Nutzer ausdrücklich korrigiert.
+- Der Kassen-Bildkanal `9-7-8-0` ist für den Nutzer irrelevant und wird bei Bild-Schreibrequests sowie deren Bestätigungsprüfung ausgenommen. Wawi 2.1.1 liefert ihn lesend, lehnt ihn aber im Bild-PATCH bereits bei der Request-Verarbeitung ab. Andere Kanäle nicht pauschal entfernen; Wawi-Standardbilder nicht eigenmächtig zum Master machen.

@@ -278,3 +278,50 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fingerprint(original),fingerprint(collapsed))
         collapsed["saleschannelImages"][-1]["images"][0]["sortNumber"]=9
         self.assertNotEqual(fingerprint(original),fingerprint(collapsed))
+
+
+    async def test_reorder_omits_irrelevant_pos_and_confirms_shop_with_or_without_pos_readback(self):
+        import copy
+        from app.bilder_upload import umordnen
+        before=self.order_fixture()
+        pos={"saleschannelId":"9-7-8-0","images":[img(OLD)]}
+        self.detail["images"]["saleschannelImages"].append(copy.deepcopy(pos))
+        def validate(req):
+            if req.method=="PATCH":
+                body=json.loads(req.content)
+                self.assertNotIn("9-7-8-0",[g["saleschannelId"] for g in body["images"]["saleschannelImages"]])
+                response=self.transport(req)
+                # Server may still emit the irrelevant POS channel on reads.
+                self.detail["images"]["saleschannelImages"].append(copy.deepcopy(pos))
+                return response
+            return self.transport(req)
+        async with OnPremClient(URL,"test",transport=httpx.MockTransport(validate)) as c:
+            result=await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
+        self.assertEqual(result["status"],"wawi",result)
+        self.assertEqual(self.detail["images"]["defaultImages"],[img(OLD)])
+        self.assertEqual(self.detail["images"]["saleschannelImages"][0]["images"],[img(NEW),img(OLD,2,False)])
+        self.assertIn(pos,auftraege()[0]["vorher"]["saleschannelImages"])
+        self.assertEqual(sum(m=="PATCH" for m,p in self.calls),1)
+
+    async def test_replace_omits_pos_while_preserving_other_assignments(self):
+        self.detail["images"]["saleschannelImages"].append({"saleschannelId":"9-7-8-0","images":[img(OLD)]})
+        async with self.client() as c:
+            result=await uebertragen(c,A,OLD,0,JOB,self.raw,"erik")
+        self.assertEqual(result["status"],"wawi",result)
+        self.assertNotIn("9-7-8-0",[g["saleschannelId"] for g in self.detail["images"]["saleschannelImages"]])
+        self.assertEqual(self.detail["images"]["defaultImages"],[img(OLD)])
+        self.assertEqual(self.detail["images"]["saleschannelImages"][1]["images"],[img(OLD)])
+
+    def test_only_explicit_pos_channel_is_ignored_not_shop_or_other_channel_changes(self):
+        import copy
+        from app.bilder_upload import schreibblock, fingerprint
+        before=copy.deepcopy(self.detail["images"])
+        before["saleschannelImages"].append({"saleschannelId":"9-7-8-0","images":[img(OLD)]})
+        cleaned=schreibblock(before)
+        self.assertEqual(len(before["saleschannelImages"]),3)
+        self.assertEqual(len(cleaned["saleschannelImages"]),2)
+        self.assertEqual(fingerprint(before),fingerprint(cleaned))
+        for index in (0,1):
+            changed=copy.deepcopy(cleaned)
+            changed["saleschannelImages"][index]["images"][0]["sortNumber"]=7
+            self.assertNotEqual(fingerprint(before),fingerprint(changed))

@@ -12,6 +12,8 @@ from .bilder_abgleich import bild_laden, vorschaubild, ident
 from .jtl_client import JtlFehler
 
 SHOP = "2-2-1"
+# User excludes the POS image channel; installed Wawi rejects this readback ID on write.
+IGNORIERTE_BILDKANAELE = frozenset({"9-7-8-0"})
 
 
 def journal():
@@ -125,12 +127,14 @@ def shop(block):
 
 
 def schreibblock(block):
-    """Coalesce identical repeated channel groups, never differing assignments."""
+    """Prepare writable assignments; omit explicitly irrelevant POS channel."""
     result = copy.deepcopy(block)
     for field in ("platformImages", "saleschannelImages", "ebayImages"):
         seen = set()
         groups = []
         for group in result.get(field, []):
+            if field == "saleschannelImages" and group.get("saleschannelId") in IGNORIERTE_BILDKANAELE:
+                continue
             normalized = {**group, "images": sorted(
                 group["images"], key=lambda b: json.dumps(b, sort_keys=True))}
             key = json.dumps(normalized, sort_keys=True)
