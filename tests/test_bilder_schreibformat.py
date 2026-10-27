@@ -1,0 +1,99 @@
+import copy
+import json
+import unittest
+import httpx
+
+from app.jtl_onprem import OnPremClient
+from scripts.pruefe_bilder_schreibformat import pruefen, pruefziel, faelle
+
+SOURCE = "770f139d-18dd-405c-9f84-3221e3000000"
+BLOB = "43a705d0-621f-4955-b02f-d6d2887c89d5"
+URL = "https://wawi.test/api/eazybusiness"
+
+
+class SchreibformatTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        image = {"blobIdentifier": BLOB, "sortNumber": 1, "isMainImage": True}
+        self.block = {"defaultImages": [image], "platformImages": [], "ebayImages": [],
+                      "saleschannelImages": [{"saleschannelId": "2-2-1", "images": [image]},
+                                             {"saleschannelId": "1-1-0", "images": [image]}]}
+        self.job = {"artikel": SOURCE, "sku": "30501-002", "api_ziel": URL, "ziel": self.block}
+        self.calls = []
+        self.target_get = 404
+        self.baseline = 404
+        self.probe_status = 400
+        self.target_reads = 0
+        self.appear_after = None
+
+    def transport(self, req):
+        self.calls.append((req.method, req.url.path))
+        if req.url.path.endswith(SOURCE):
+            self.assertEqual(req.method, "GET", "Live source must never be written")
+            return httpx.Response(200, json={"id": SOURCE, "identifiers": {"sku": self.job["sku"]}})
+        self.assertTrue(req.url.path.endswith(pruefziel(SOURCE)))
+        if req.method == "GET":
+            self.target_reads += 1
+            status = 200 if self.appear_after and self.target_reads >= self.appear_after else self.target_get
+            return httpx.Response(status, json={})
+        self.assertEqual(req.method, "PATCH")
+        self.assertEqual(self.calls[-2], ("GET", req.url.path))
+        body = json.loads(req.content)
+        return httpx.Response(self.baseline if not body else self.probe_status,
+                              json={"Title": "validation details"})
+
+    async def run_probe(self):
+        async with OnPremClient(URL, "secret", transport=httpx.MockTransport(self.transport)) as c:
+            return await pruefen(c, self.job, lambda *a: None)
+
+    async def test_isolates_blocks_and_channels_without_touching_source_or_snapshot(self):
+        original = copy.deepcopy(self.job)
+        results = await self.run_probe()
+        self.assertEqual(len(results), 7)
+        self.assertTrue(all(status == 400 for label, status in results))
+        self.assertEqual(self.job, original)
+        self.assertEqual(sum(method == "PATCH" for method, path in self.calls), 8)
+
+    async def test_abort_on_any_non_404_target_before_patch(self):
+        for status in (200, 400, 401, 403, 500):
+            self.calls = []
+            self.target_get = status
+            with self.assertRaisesRegex(ValueError, "Abbruch vor PATCH"):
+                await self.run_probe()
+            self.assertFalse(any(m == "PATCH" for m, p in self.calls))
+
+    async def test_abort_when_target_appears_between_probes(self):
+        self.appear_after = 2
+        with self.assertRaisesRegex(ValueError, "Abbruch vor PATCH"):
+            await self.run_probe()
+        self.assertEqual(sum(m == "PATCH" for m, p in self.calls), 1)
+
+    async def test_baseline_must_reach_not_found(self):
+        self.baseline = 400
+        with self.assertRaisesRegex(ValueError, "Kontrollrequest"):
+            await self.run_probe()
+        self.assertEqual(sum(m == "PATCH" for m, p in self.calls), 1)
+
+    async def test_stop_on_unexpected_success_or_server_error(self):
+        for status in (200, 201, 401, 403, 500):
+            self.calls = []
+            self.probe_status = status
+            with self.assertRaisesRegex(ValueError, "Unerwartete Antwort"):
+                await self.run_probe()
+            self.assertEqual(sum(m == "PATCH" for m, p in self.calls), 2)
+
+    async def test_wrong_api_target_stops_without_network(self):
+        self.job["api_ziel"] = "https://other.test/api/eazybusiness"
+        with self.assertRaisesRegex(ValueError, "Wawi-Ziel"):
+            await self.run_probe()
+        self.assertEqual(self.calls, [])
+
+    def test_no_probe_can_use_source_as_target(self):
+        with self.assertRaises(ValueError):
+            pruefziel(pruefziel(SOURCE))
+
+    def test_individual_case_copies_do_not_modify_snapshot(self):
+        original = copy.deepcopy(self.block)
+        cases = list(faelle(self.block))
+        cases[0][1]["images"]["defaultImages"][0]["sortNumber"] = 99
+        self.assertEqual(self.block, original)
+        self.assertEqual(cases[1][1]["images"]["defaultImages"][0]["sortNumber"], 1)

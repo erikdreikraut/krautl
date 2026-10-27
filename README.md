@@ -1218,3 +1218,27 @@ lokalen Bestand, nennt fehlende Artikel, inzwischen nicht mehr aktive Artikel,
 Ausblendungen und offene Detailprüfungen. Kein Bilddownload, keine Änderung am
 Abgleichstatus. Artikelabdeckung beweist nicht die Vollständigkeit sämtlicher
 Bilder oder deren tatsächliche Veröffentlichung im öffentlichen Shop.
+
+
+### Bild-Schreibformat bei HTTP 400 eingrenzen
+
+`scripts/pruefe_bilder_schreibformat.py` untersucht den zuletzt abgelehnten
+Reihenfolgeauftrag aus dem lokalen Journal. Es liest den Quellartikel, prüft das
+API-Ziel und verwendet ausschließlich eine abgeleitete Diagnose-ID mit dem
+Artikel-Schlüssel 2147483647. **Vor jedem PATCH muss GET auf diese Diagnose-ID
+404 liefern.** Liefert der leere Kontroll-PATCH nicht ebenfalls 404, endet die
+Prüfung. Danach werden Gesamtblock, Bildbereiche und einzelne Kanalgruppen getrennt
+geprüft. Bestehende Artikel sind nie PATCH-Ziel; das Skript legt keine Artikel an
+und verändert weder Krautl-Bestand noch Auftragsjournal. Es handelt sich dennoch
+um API-PATCH-Requests auf eine nicht vorhandene ID, nicht um einen reinen Lesetest.
+Unerwartete Antworten und Verbindungsfehler beenden den Lauf ohne Wiederholung.
+Ein 404-Ergebnis ist nur ein Vergleich zum Kontrollrequest, kein Nachweis, dass
+der entsprechende Body an einem echten Artikel korrekt und nebenwirkungsfrei wäre.
+
+Nach HTTPS-Aktualisierung der Server-Arbeitskopie kann das Skript ohne Image-Neubau
+im bestehenden App-Container ausgeführt werden (benötigt dessen aktuellen Bildercode):
+
+```bash
+cd /opt/app/krautl &&
+docker compose exec -T app python - < scripts/pruefe_bilder_schreibformat.py
+```
