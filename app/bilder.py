@@ -1,4 +1,4 @@
-"""Bilderübersicht für Admin und Grafik; ausschließlich manuell ausgelöste Abrufe."""
+"""Bilderübersicht für Admin und Grafik; manuelle Wawi-Abrufe und lesende Shop-Prüfung."""
 import asyncio
 import base64
 import json
@@ -26,7 +26,12 @@ aufgaben = set()
 def liste(response: Response):
     response.headers["Cache-Control"] = "no-store"
     from .bilder_upload import auftraege, oeffentlich
-    return {**speicher.zustand(), "bildauftraege": [oeffentlich(j) for j in auftraege()]}
+    from .bilder_shop import staende, aktuell
+    data = speicher.zustand()
+    shop = staende()
+    data["artikel"] = [{**a, "shop_pruefung": aktuell(a, data.get("api_ziel"), shop.get(a["id"]))}
+                       for a in data["artikel"]]
+    return {**data, "bildauftraege": [oeffentlich(j) for j in auftraege()]}
 
 
 class Sichtbarkeit(BaseModel):

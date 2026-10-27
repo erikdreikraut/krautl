@@ -222,7 +222,7 @@ test("Bildliste öffnet Thumbnail und Plus; Wawi-Erfolg wird nicht als Shop-Erfo
   assert.equal(chosen[1].id,"img");
   await act(async()=>view.root.findByProps({"aria-label":"Bild zu 20 hinzufügen"}).props.onClick());
   assert.equal(chosen[1],null);
-  assert.ok(view.root.findByProps({"aria-label":"In Wawi bestätigt; Shop-Veröffentlichung ungeprüft"}));
+  assert.ok(view.root.findByProps({"aria-label":"Wawi-Stand · Shop-Veröffentlichung noch nicht geprüft"}));
 });
 
 
@@ -292,15 +292,29 @@ test("Abgelehnte Reihenfolge stellt gespeicherten Stand wieder her und markiert 
   const render=auftraege=>React.createElement(BildReihe,{a,auftraege});
   let view;await act(async()=>{view=create(render(jobs));});t.after(()=>act(()=>view.unmount()));
   const tags=()=>view.root.findAll(n=>n.type==="span"&&n.props.title).map(n=>n.children.join(""));
-  assert.deepEqual(tags(),["✓","✓"]);
+  assert.deepEqual(tags(),["W","W"]);
   await act(async()=>view.root.findByProps({"aria-label":"Bild 2 verschieben: Pfeil links oder rechts"}).props.onKeyDown({key:"ArrowLeft",preventDefault(){}}));
   assert.deepEqual(tags(),["…","…"]);
   await act(async()=>view.root.findAllByType("button").find(b=>b.children.includes("Reihenfolge speichern")).props.onClick());
   assert.equal(view.root.findAllByType("img")[0].props.src.endsWith("/x"),true);
-  assert.deepEqual(tags(),["✓","✓"]);
+  assert.deepEqual(tags(),["W","W"]);
   assert.equal(view.root.findAllByType("button").some(b=>b.children.includes("Reihenfolge speichern")),false);
   assert.match(JSON.stringify(view.toJSON()),/HTTP 400/);
   await act(async()=>view.update(render([{...jobs[0],status:"unklar",meldung:"Ausgang ungeklärt"}])));
   assert.deepEqual(tags(),["…","…"]);
   assert.equal(view.root.findByProps({"aria-label":"Bild zu 10 hinzufügen"}).props.disabled,true);
+});
+
+test("Grüner Haken verlangt Shop-Bestätigung; ein Entwurf hat Vorrang",async t=>{
+  const server=await createServer({server:{middlewareMode:true,hmr:false},appType:"custom"});t.after(()=>server.close());
+  const {BildReihe}=await server.ssrLoadModule("/src/BilderView.jsx");
+  const a={...rows[0],bilder:[{id:"a",position:1,hauptbild:true,thumb:"x"},{id:"b",position:2,hauptbild:false,thumb:"y"}],shop_pruefung:{status:"bestaetigt",geprueft_am:"2026-10-27T12:00:00Z"}};
+  let view;await act(async()=>{view=create(React.createElement(BildReihe,{a,auftraege:[{artikel:a.id,status:"wawi"}]}));});t.after(()=>act(()=>view.unmount()));
+  const tags=()=>view.root.findAll(n=>n.type==="span"&&n.props.title).map(n=>n.children.join(""));
+  assert.deepEqual(tags(),["✓","✓"]);
+  await act(async()=>view.root.findByProps({"aria-label":"Bild 2 verschieben: Pfeil links oder rechts"}).props.onKeyDown({key:"ArrowLeft",preventDefault(){}}));
+  assert.deepEqual(tags(),["…","…"]);
+  await act(async()=>view.root.findAllByType("button").find(b=>b.children.includes("Verwerfen")).props.onClick());
+  await act(async()=>view.update(React.createElement(BildReihe,{a:{...a,shop_pruefung:{status:"wartet",meldung:"Shop noch abweichend"}}})));
+  assert.deepEqual(tags(),["W","W"]);
 });

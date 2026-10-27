@@ -69,7 +69,12 @@ function ArtikelDialog({ artikel, speichern, schliessen, laeuft, fehler }) {
 function Thumbnail({ artikel, bild, position, onBild, auftrag, ungeprueft }) {
   const [fehler, setFehler] = useState(false);
   const meldung = bild.fehler || (fehler || !bild.thumb ? "Vorschau nicht verfügbar" : "");
-  const status = auftrag ? (auftrag.status === "wawi" ? ["W", "In Wawi bestätigt; Shop-Veröffentlichung ungeprüft", "#286480"] : [auftrag.status === "abgelehnt" ? "!" : "…", auftrag.meldung, "#986c14"]) : ungeprueft || !bild.thumb ? ["?", "Bildstand nicht vollständig geprüft", "#986c14"] : ["✓", "Gespeicherter Wawi-Stand für den Shop; Veröffentlichung nicht live geprüft", "#2C7A25"];
+  const shop = artikel.shop_pruefung;
+  const status = auftrag && auftrag.status !== "wawi"
+    ? [auftrag.status === "abgelehnt" ? "!" : "…", auftrag.meldung, "#986c14"]
+    : ungeprueft || !bild.thumb ? ["?", "Bildstand nicht vollständig geprüft", "#986c14"]
+    : shop?.status === "bestaetigt" ? ["✓", `Im Shop bestätigt · ${shop.geprueft_am ? new Date(shop.geprueft_am).toLocaleString("de-DE") : ""}`, "#2C7A25"]
+    : ["W", `Wawi-Stand · ${shop?.meldung || "Shop-Veröffentlichung noch nicht geprüft"}`, "#286480"];
   return <figure className="shrink-0" style={{ width: "120px" }}>
     <button type="button" aria-label={`Bild ${bild.position ?? position+1} von ${artikel.sku} vergrößern`} onClick={()=>onBild?.(artikel,bild)} style={{position:"relative",display:"block"}}>
 

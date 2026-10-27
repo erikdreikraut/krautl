@@ -369,12 +369,14 @@ async def on_startup():
     app.state.google_qa_task = asyncio.create_task(google_product_qa_feed.ueberwachen())
     app.state.gesendet_task = asyncio.create_task(versandkopien_ueberwachen(SessionLocal))
     app.state.whatsapp_task = asyncio.create_task(whatsapp_ueberwachen(SessionLocal))
+    from .bilder_shop import ueberwachen as shopbilder_ueberwachen
+    app.state.bilder_shop_task = asyncio.create_task(shopbilder_ueberwachen())
 
 
 @app.on_event("shutdown")
 async def google_qa_beenden():
     await bilder_beenden()
-    for name in ("google_qa_task", "gesendet_task", "whatsapp_task"):
+    for name in ("google_qa_task", "gesendet_task", "whatsapp_task", "bilder_shop_task"):
         task = getattr(app.state, name, None)
         if task:
             task.cancel()

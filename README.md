@@ -1175,10 +1175,32 @@ und die neue Vorschau geprüft. Die API bietet hier keine belegte atomare
 Versionsbedingung: parallele externe Wawi-Bildbearbeitung während eines Uploads
 vermeiden; es gibt kein automatisches Zurückschreiben bei Konflikten.
 
-Status: grüner Haken = gespeicherter Wawi-Bildstand für den Shop, nicht live
-geprüfte Shop-Veröffentlichung; „…“ = laufend/ungeklärt; „W“ = von Krautl geschriebene
-Änderung nach Rücklesen in Wawi bestätigt. Die tatsächliche Veröffentlichung im
-öffentlichen Shop kann derzeit nicht automatisch nachgewiesen werden.
+Status: „W“ = gespeicherter beziehungsweise durch Rücklesen bestätigter Wawi-Stand;
+„…“ = Entwurf/laufend/ungeklärt; grüner Haken = Bilder und Reihenfolge zuletzt im
+öffentlichen JTL-Shop geprüft. Die kleinen Tags stehen rechts unten; Details und
+Prüfzeit stehen im Tooltip. Fehlende oder ungeprüfte Wawi-Vorschauen bleiben „?“.
+
+Die App prüft automatisch lesend `https://dreikraut.de`: bis zu fünf Artikel pro
+Durchlauf, anschließend 30 Sekunden Pause. Noch unbestätigte Artikel werden frühestens
+nach fünf Minuten erneut geprüft, bestätigte nach knapp sechs Stunden. Änderungen aus
+Krautl haben Vorrang. Bestätigungen sind an den exakten Bilderstand, die Positionen und
+das API-Ziel gebunden und verfallen nach sechs Stunden ohne erfolgreiche Nachprüfung.
+Ausgeblendete Artikel, ungeprüfte Wawi-Artikel und unklare/laufende Aufträge werden
+übersprungen. Bei pausiertem Wawi-Shop-Abgleich bleibt „W“ bis zur Veröffentlichung.
+
+Die Zuordnung verwendet die exakte Artikelnummer auf der Shopseite; Varianten werden
+über tatsächlich gefundene Variantenverweise des Vaterartikels gesucht. Canonical-URLs
+allein reichen nicht. Verglichen wird nur die Hauptgalerie, inklusive Bildanzahl,
+Hauptbild und Reihenfolge. Die Bildprüfung gleicht normalisierte Inhalte mit engen
+Toleranzen und eindeutigem Abstand zu anderen Bildern ab. Sie ist ein konservativer
+visueller Vergleich, kein byteidentischer Nachweis: ähnliche Motive, veränderte Zuschnitte
+oder fehlende Vorschauen bleiben unbestätigt. Bilder werden mit frischem Cache-Schlüssel
+abgerufen. Netzwerk- und Zuordnungsfehler erzeugen niemals einen grünen Haken.
+
+Prüfergebnisse liegen in der automatisch angelegten Tabelle `shoppruefung` der
+Bilder-SQLite-Datei. Eine eigene Prozesssperre verhindert parallele Shop-Prüfläufe;
+öffentliche Abrufe blockieren keine Wawi-Bearbeitung. Es erfolgen keine Schreibzugriffe
+auf Wawi oder Shop und kein automatischer Wawi-Gesamtabgleich.
 
 Deployment: App und Frontend neu bauen; keine manuelle Datenmigration nötig.
 

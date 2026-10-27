@@ -181,9 +181,12 @@ class Belegt(Exception):
 
 class Laufsperre:
     """OS-Dateisperre über den gesamten Abruf, auch über mehrere Prozesse hinweg."""
+    def __init__(self, name="lauf.lock"):
+        self.name = name
+
     def __enter__(self):
         ordner().mkdir(parents=True, exist_ok=True)
-        self.file = (ordner() / "lauf.lock").open("a+b")
+        self.file = (ordner() / self.name).open("a+b")
         try:
             if os.name == "nt":
                 import msvcrt
