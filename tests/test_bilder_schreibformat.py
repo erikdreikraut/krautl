@@ -97,3 +97,28 @@ class SchreibformatTest(unittest.IsolatedAsyncioTestCase):
         cases[0][1]["images"]["defaultImages"][0]["sortNumber"] = 99
         self.assertEqual(self.block, original)
         self.assertEqual(cases[1][1]["images"]["defaultImages"][0]["sortNumber"], 1)
+
+
+    async def test_identity_diagnosis_only_gets_even_when_every_target_exists(self):
+        from scripts.pruefe_bilder_schreibformat import identitaeten_lesen
+        requests, output = [], []
+        def transport(req):
+            requests.append(req)
+            return httpx.Response(200, json={"id": SOURCE, "identifiers": {"sku": "30501"},
+                                             "images": {"url": "do-not-print"}})
+        async with OnPremClient(URL, "secret", transport=httpx.MockTransport(transport)) as c:
+            await identitaeten_lesen(c, self.job, output.append)
+        self.assertEqual(len(requests), 4)
+        self.assertTrue(all(r.method == "GET" for r in requests))
+        self.assertTrue(any('"sku": "30501"' in s for s in output))
+        self.assertFalse(any("do-not-print" in s for s in output))
+
+    async def test_identity_diagnosis_handles_null_and_non_json_without_mutation(self):
+        from scripts.pruefe_bilder_schreibformat import identitaeten_lesen
+        requests = []
+        def transport(req):
+            requests.append(req)
+            return httpx.Response(200, text="null" if len(requests) % 2 else "<html>private</html>")
+        async with OnPremClient(URL, "secret", transport=httpx.MockTransport(transport)) as c:
+            await identitaeten_lesen(c, self.job, lambda *a: None)
+        self.assertTrue(all(r.method == "GET" for r in requests))

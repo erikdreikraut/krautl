@@ -1242,3 +1242,10 @@ im bestehenden App-Container ausgeführt werden (benötigt dessen aktuellen Bild
 cd /opt/app/krautl &&
 docker compose exec -T app python - < scripts/pruefe_bilder_schreibformat.py
 ```
+
+Falls das vermeintlich fehlende Diagnoseziel HTTP 200 liefert, die Prüfung nicht
+lockern. Zunächst rein lesend die Antwortidentitäten vergleichen:
+`docker compose exec -T app python - --nur-lesen < scripts/pruefe_bilder_schreibformat.py`.
+Dieser Modus sendet ausschließlich GET für Quelle, bisheriges Diagnoseziel,
+numerischen Schlüssel und eine zufällige UUID. Er zeigt nur Antworttyp/Feldnamen,
+Artikel-ID, SKU und bereinigte Fehlerdetails, keine Bilder-URLs oder Zugangsdaten.

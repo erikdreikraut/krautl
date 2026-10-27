@@ -1,7 +1,9 @@
 """Isolate image request parsing against a verified nonexistent item, never a live one."""
 import asyncio
 import copy
-from uuid import UUID
+import argparse
+import json
+from uuid import UUID, uuid4
 
 from app.bilder_upload import auftraege, bildblock, schreibblock, ablehnungsdetails
 from app.jtl_onprem import OnPremClient
@@ -71,19 +73,49 @@ async def pruefen(client, job, ausgabe=print):
     return results
 
 
-async def main():
+async def identitaeten_lesen(client, job, ausgabe=print):
+    """Read-only comparison of source, synthetic UUID and numeric key handling."""
+    if job.get("api_ziel") != client.url:
+        raise ValueError("Wawi-Ziel passt nicht zum gespeicherten Auftrag.")
+    source = str(UUID(job["artikel"]))
+    candidates = [("Quellartikel", source), ("Bisheriges Diagnoseziel", pruefziel(source)),
+                  ("Numerischer Schlüssel", "2147483647"), ("Zufällige UUID", str(uuid4()))]
+    for label, key in candidates:
+        response = await client.http.get(client.url + "/v2/items/" + key)
+        ausgabe(f"{label}: {key} | HTTP {response.status_code}")
+        try:
+            body = response.json()
+        except ValueError:
+            ausgabe("Kein JSON; Inhalt wird nicht ausgegeben.")
+            continue
+        if isinstance(body, dict):
+            identifiers = body.get("identifiers")
+            summary = {"felder": list(body), "id": body.get("id"),
+                       "sku": identifiers.get("sku") if isinstance(identifiers, dict) else None}
+            ausgabe(json.dumps(summary, ensure_ascii=False))
+            if response.status_code != 200:
+                ausgabe(ablehnungsdetails(response))
+        else:
+            ausgabe("JSON-Typ: " + type(body).__name__)
+    ausgabe("Beendet: ausschließlich GET, keine PATCH-Requests und keine lokalen Änderungen.")
+
+
+async def main(nur_lesen=False):
     jobs = sorted((j for j in auftraege() if j.get("art") == "reihenfolge"
                    and j.get("status") == "abgelehnt" and j.get("diagnose") and j.get("ziel")),
                   key=lambda j: j.get("erstellt", ""))
     if not jobs:
         raise ValueError("Kein abgelehnter Reihenfolgeauftrag mit Diagnose vorhanden.")
     async with OnPremClient.aus_umgebung() as client:
-        await pruefen(client, jobs[-1])
+        await (identitaeten_lesen(client, jobs[-1]) if nur_lesen else pruefen(client, jobs[-1]))
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--nur-lesen", action="store_true", help="Nur GET-Antworten zur Artikel-ID prüfen")
+    args = parser.parse_args()
     try:
-        asyncio.run(main())
+        asyncio.run(main(args.nur_lesen))
     except Exception as exc:
         # Do not print exception text from HTTP clients (may include sensitive URLs).
         if isinstance(exc, ValueError):
