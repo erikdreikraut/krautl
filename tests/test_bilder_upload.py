@@ -8,7 +8,7 @@ from unittest.mock import patch
 import httpx
 from PIL import Image
 from app import bilder_speicher as store
-from app.bilder_upload import uebertragen, pruefen, auftraege, datei_pruefen, bildblock
+from app.bilder_upload import upload_neuanlage as uebertragen, pruefen, auftraege, datei_pruefen, bildblock
 from app.bilder_abgleich import vorschaubild
 from app.jtl_onprem import OnPremClient
 

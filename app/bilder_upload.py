@@ -193,6 +193,18 @@ def lokal(artikel, revision=None):
 
 
 async def uebertragen(c, artikel, bild_id, revision, anfrage_id, raw, nutzer):
+    if bild_id:
+        from .bilder_ersetzen import ersetzen
+        return await ersetzen(c, artikel, bild_id, revision, anfrage_id, raw, nutzer)
+    previous = next((j for j in auftraege() if j["id"] == anfrage_id), None)
+    a = next((a for a in store.lesen()["artikel"] if a["id"] == artikel), {})
+    if (previous and previous.get("art") == "hinzufuegen_v1") or a.get("bild_api") == "v1" or any(b.get("v1_id") for b in a.get("bilder", [])):
+        from .bilder_ersetzen import hinzufuegen
+        return await hinzufuegen(c, artikel, revision, anfrage_id, raw, nutzer)
+    return await upload_neuanlage(c, artikel, bild_id, revision, anfrage_id, raw, nutzer)
+
+
+async def upload_neuanlage(c, artikel, bild_id, revision, anfrage_id, raw, nutzer):
     digest = hashlib.sha256(raw).hexdigest()
     previous = next((j for j in auftraege() if j["id"] == anfrage_id), None)
     if previous:
@@ -279,6 +291,15 @@ async def uebertragen(c, artikel, bild_id, revision, anfrage_id, raw, nutzer):
 
 
 async def pruefen(c, job):
+    if job.get("art") == "hinzufuegen_v1":
+        from .bilder_ersetzen import hinzufuegen_pruefen
+        return await hinzufuegen_pruefen(c, job)
+    if job.get("art") == "reihenfolge_v1":
+        from .bilder_ersetzen import reihenfolge_pruefen
+        return await reihenfolge_pruefen(c, job)
+    if job.get("art") == "ersetzen_alle":
+        from .bilder_ersetzen import pruefen as v1_pruefen
+        return await v1_pruefen(c, job)
     if job["api_ziel"] != c.url:
         raise ValueError("Wawi-Ziel passt nicht zum Auftrag.")
     d = await detail_lesen(c,job["artikel"],job["sku"])
@@ -319,6 +340,15 @@ def positionsstand(bilder):
 
 
 async def umordnen(c, artikel, revision, anfrage_id, reihenfolge, vorher, nutzer):
+    previous = next((j for j in auftraege() if j["id"] == anfrage_id), None)
+    a = next((a for a in store.lesen()["artikel"] if a["id"] == artikel), {})
+    if (previous and previous.get("art") == "reihenfolge_v1") or a.get("bild_api") == "v1" or any(b.get("v1_id") for b in a.get("bilder", [])):
+        from .bilder_ersetzen import reihenfolge as v1_reihenfolge
+        return await v1_reihenfolge(c, artikel, revision, anfrage_id, reihenfolge, vorher, nutzer)
+    return await umordnen_v2(c, artikel, revision, anfrage_id, reihenfolge, vorher, nutzer)
+
+
+async def umordnen_v2(c, artikel, revision, anfrage_id, reihenfolge, vorher, nutzer):
     request_hash = hashlib.sha256(json.dumps([artikel, revision, reihenfolge, vorher], sort_keys=True).encode()).hexdigest()
     previous = next((j for j in auftraege() if j["id"] == anfrage_id), None)
     if previous:

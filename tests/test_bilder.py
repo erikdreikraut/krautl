@@ -496,3 +496,21 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
     async def test_interrupted_run_is_not_shown_as_running_forever(self):
         store.status_setzen(status="laeuft")
         self.assertEqual(store.zustand()["status"], "fehler")
+
+    async def test_v1_backed_article_refreshes_without_blob_identifier(self):
+        await self.run_sync()
+        data=store.lesen()['artikel'][0]
+        data['bilder'][0].update(v1_id=20,position=1,hauptbild=True)
+        store.zwischenstand(data,data['revision'],'https://wawi.test/api/eazybusiness',abgleich=False)
+        self.details[uid(1)]['images']['saleschannelImages'][1]['images']=[{'sortNumber':1,'isMainImage':True}]
+        old=self.transport
+        def response(req):
+            if '/v1/' in req.url.path:
+                if req.url.path.endswith('/images'):
+                    return httpx.Response(200,json=[{'ItemId':1,'ImageId':20,'SalesChannelId':'2-2-1','SortNumber':1}])
+                return httpx.Response(200,content=png())
+            return old(req)
+        with patch.object(self,'transport',side_effect=response):await self.run_sync()
+        data=store.lesen()['artikel'][0]
+        self.assertEqual(data['bilder'][0]['v1_id'],20)
+        self.assertTrue(data['bilder'][0]['thumb'])

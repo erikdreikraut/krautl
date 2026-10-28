@@ -279,12 +279,21 @@ async def abgleichen(client):
             continue
         if detail.get("salesChannels") is None and not einzelshop:
             einzelshop = await einzelshop_pruefen(client.url)
+        v1_bestand = None
+        if alt.get("bild_api") == "v1" or any(b.get("v1_id") for b in alt.get("bilder", [])):
+            from .bilder_ersetzen import bestand
+            import copy
+            v1_bestand = await bestand(client, alt, fehlertolerant=True)
+            detail = copy.deepcopy(detail)
+            detail.setdefault("images", {})["saleschannelImages"] = [{"saleschannelId": SHOP, "images": [
+                {"blobIdentifier": b["id"], "sortNumber": b["position"], "isMainImage": b["hauptbild"]}
+                for b in v1_bestand]}]
         bilder = shop_bilder(detail, row, einzelshop)
         if bilder is None:
             continue
         artikel_kategorien, kategorie_fehler = await kategorien.artikel(detail)
-        result = []
-        for bild in bilder:
+        result = v1_bestand if v1_bestand is not None else []
+        for bild in ([] if v1_bestand is not None else bilder):
             if not speicher.freigegeben(key, rev):
                 break
             bid = ident(bild["blobIdentifier"])
@@ -318,6 +327,8 @@ async def abgleichen(client):
             neuer_stand[key] = {"id": key, "sku": sku, "name": name, "parent_id": parent,
                                 "kategorien": artikel_kategorien, "kategorie_fehler": kategorie_fehler,
                                 "bilder": result, "aktualisiert_am": speicher.jetzt()}
+            if v1_bestand is not None:
+                neuer_stand[key]["bild_api"] = "v1"
             speicher.zwischenstand(neuer_stand[key], rev, client.url)
     speicher.uebernehmen(neuer_stand, vorher, client.url, list(ungeprueft.values()))
 

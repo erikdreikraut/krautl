@@ -156,6 +156,14 @@ async def grossbild(artikel_id: UUID, bild_id: UUID):
             if stand.get("api_ziel") != c.url:
                 raise ValueError("Wawi-Ziel passt nicht zum Bilderbestand.")
             d = await detail_lesen(c, str(artikel_id), a["sku"])
+            local_image = next(b for b in a["bilder"] if b["id"] == str(bild_id))
+            if local_image.get("v1_id"):
+                from .bilder_ersetzen import liste, bild
+                rows = await liste(c, str(artikel_id))
+                if not any(r["ImageId"] == local_image["v1_id"] and r["SalesChannelId"] == SHOP for r in rows):
+                    raise ValueError("Bild gehört nicht mehr zum Shop. Bitte aktualisieren.")
+                data = await bild(c, local_image["v1_id"], (1600, 1200))
+                return Response(data, media_type="image/jpeg", headers={"Cache-Control":"private, no-store"})
             matches = [b for g in d.get("images", {}).get("saleschannelImages", []) if g.get("saleschannelId") == SHOP
                        for b in g.get("images", []) if b.get("blobIdentifier") == str(bild_id)]
             if len(matches) != 1:

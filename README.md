@@ -1151,17 +1151,37 @@ Das Plus am Zeilenende fügt ein Bild hinzu. JPG/PNG/WebP bis 20 MB/40 Megapixel
 werden nach Vorschau und Bestätigung verlustfrei als PNG mit ASCII-Dateinamen
 an die Wawi geschickt. Die aufbereitete Datei darf ebenfalls maximal 20 MB haben.
 
-Admin/Grafik dürfen diese Aktionen auslösen. Verwendet wird der bestehende
-FAQ-Zugang: v1 POST `/v1/items/{UUID}/images` mit `SalesChannelId=2-2-1`, anschließend
-v2 PATCH `/v2/items/{UUID}` ausschließlich mit dem vollständigen erhaltenen
-`images`-Block. Beim Austausch wird darin nur die alte Shop-Referenz ersetzt;
-andere Kanäle und die alte Bilddatei bleiben erhalten. Position/Hauptbild werden
-übernommen; zusätzliche Bilder kommen ans Ende. Kein DELETE und kein globaler
-Austausch einer gemeinsam genutzten Bilddatei. Keine stillen Rechteänderungen.
-Die installierte v1-Bildliste akzeptiert v2-Artikel-UUIDs (20810 am 26.10. bestätigt).
-Die Endpunkt-/Modellbeschreibung wurde aus der installierten Swagger API 2.0/v1
-geprüft; produktive Schreibabnahme steht noch aus. Bildschreibrechte können
-unabhängig vom FAQ-Schreibrecht fehlen (403).
+Admin/Grafik dürfen diese Aktionen auslösen. Seit 28.10.2026 gilt auf ausdrücklichen
+Nutzerwunsch: „Bild austauschen“ ersetzt die vorhandene Bilddatei in allen bisherigen
+Kanälen. v1 PATCH `/v1/items/{Artikel-UUID}/images/{Bildnummer}` überträgt ImageData
+und Filename mit SalesChannelId=2-2-1, ohne SortNumber. Die gesamte v1-Kanal- und
+Positionsmenge einschließlich Kasse/eBay muss beim Rücklesen unverändert sein.
+Die dekodierten Vorschaupixel müssen exakt passen; HTTP-Erfolg allein genügt nicht.
+Die konkrete Semantik der installierten API wird beim produktiven Rücklesen geprüft;
+abweichende Zuordnungen stoppen den Vorgang ohne weiteren Schreibversuch.
+
+Vorher wird die Originaldatei in `bildsicherungen` gesichert. Neue Austauschaufträge
+legen kein Zusatzbild an. v1-geführte Artikel verwenden lokale UUIDs als UI-Schlüssel
+und zusätzlich die echte numerische `v1_id`; die lokalen Schlüssel werden niemals
+als Blobkennung an Wawi geschickt. Großansicht, Aktualisierung, weitere Austausche,
+Hinzufügen und Shop-Sortierung verwenden für diese Artikel v1. Die Shop-Sortierung
+bleibt ausdrücklich auf den Shop beschränkt. Jeder einzelne Sortierschritt wird
+vor Versand protokolliert und danach geprüft; unklare Schritte werden nicht wiederholt.
+
+Das Plus legt weiterhin ein zusätzliches Shopbild an. Der bisherige v2-Abschluss
+bleibt für noch nicht v1-geführte Artikel erhalten. Verwendet wird der bestehende
+FAQ-Zugang, ohne stille Rechteänderungen. Bildschreibrechte können unabhängig vom
+FAQ-Schreibrecht fehlen (403).
+
+Alten unterbrochenen Austausch vorbereiten (nur lesen):
+`docker compose exec -T app python -m scripts.repariere_bildaustausch_v1 1036`.
+Mit `--ausfuehren` wird die bereits gespeicherte Datei einmalig auf das ursprüngliche
+Bild übertragen. Erst nach bestätigtem Bildinhalt und unveränderten Zuordnungen darf
+die pixelgenau identifizierte Zusatzkopie entfernt werden. Sie muss ausschließlich
+in Shop/Standard verwendet werden und jeweils am Ende stehen. Der DELETE adressiert
+nur diese Zusatzkopie, nie das gemeinsam genutzte Original. Beide Schreibversuche
+werden vor Versand gesichert; Wiederholung des Befehls liest unklare Schritte nur
+zurück. Bei nachgewiesener Fertigstellung wird Krautls Bestand über v1 aktualisiert.
 
 Aufträge, aufbereitete Dateien und Vorher-/Zielzuordnungen werden dauerhaft in
 `var/bilder/bilder.sqlite3` gespeichert. Dieselbe Auftrags-ID führt niemals zu
@@ -1333,7 +1353,7 @@ docker compose exec -T app python - 30501-002 < scripts/repariere_bildreihenfolg
 ### Unterbrochener Bildaustausch: Zuordnung lesend untersuchen
 
 `python -m scripts.pruefe_bild_upload_zuordnung SKU` prüft den neuesten gespeicherten
-Uploadauftrag ohne Wawi-Schreibzugriffe: exakte dekodierte VorschaupixeI aller
+Uploadauftrag ohne Wawi-Schreibzugriffe: exakte dekodierte Vorschaupixel aller
 v1-Shopbilder vergleichen, deren Kanalzuordnungen anzeigen und bei fehlender
 v2-Blobkennung alternative Kennungen sowie UUIDs aus Dateipfaden ausgeben.
 Signierte URL-Parameter, Originaldateipfade und Bilddaten werden nicht ausgegeben.

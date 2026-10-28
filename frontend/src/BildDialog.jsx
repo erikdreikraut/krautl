@@ -55,7 +55,7 @@ export function BildDialog({artikel,bild,schliessen,aktualisiert,gesperrt=false}
       {vorschau&&<figure className="flex-1" style={{minWidth:240}}><figcaption>Neue Datei: {file.name}</figcaption><img src={vorschau} alt="Neue Bilddatei zur Bestätigung" style={{maxHeight:"55vh",maxWidth:"100%",objectFit:"contain",margin:"auto"}}/></figure>}
     </div>
     {!ergebnis&&<><label className="block my-3">{bild ? "Ersatzbild auswählen" : "Neues Bild auswählen"}<input className="block mt-2" aria-label="Neue Bilddatei" type="file" accept=".jpg,.jpeg,.png,.webp" onChange={waehlen} disabled={sendet||gesperrt}/></label>
-      <p className="text-sm mb-3">{bild ? "Ersetzt nur die Zuordnung dieses Bildes im JTL-Shop. Position und Hauptbild bleiben erhalten." : "Fügt das Bild am Ende der JTL-Shop-Bilder hinzu."} Andere Verkaufskanäle behalten ihre Bilder.</p>
+      <p className="text-sm mb-3">{bild ? "Ersetzt dieses Bild in allen bisherigen Kanälen. Kanalzuordnungen, Positionen und Hauptbild bleiben erhalten." : "Fügt das Bild am Ende der JTL-Shop-Bilder hinzu."}{!bild && " Andere Verkaufskanäle behalten ihre Bilder."}</p>
       {gesperrt&&<p>Änderungen sind während eines Abgleichs oder bei einem ungeklärten Bildauftrag gesperrt.</p>}
       <button onClick={bestaetigen} disabled={!file||sendet||gesperrt} style={{padding:"8px 12px",border:"1px solid #2C5A18",borderRadius:4,opacity:!file||sendet||gesperrt?0.5:1}}>{sendet ? "Übertragung läuft …" : "Bestätigen und an Wawi übertragen"}</button></>}
     {ergebnis&&<p role="status" className="mt-3">{ergebnis.meldung}</p>}
