@@ -1329,3 +1329,21 @@ Nach Aktualisierung der Server-Arbeitskopie ohne Container-Neubau ausführbar:
 cd /opt/app/krautl &&
 docker compose exec -T app python - 30501-002 < scripts/repariere_bildreihenfolge_v1.py
 ```
+
+### Unterbrochener Bildaustausch: Zuordnung lesend untersuchen
+
+`python -m scripts.pruefe_bild_upload_zuordnung SKU` prüft den neuesten gespeicherten
+Uploadauftrag ohne Wawi-Schreibzugriffe: exakte dekodierte VorschaupixeI aller
+v1-Shopbilder vergleichen, deren Kanalzuordnungen anzeigen und bei fehlender
+v2-Blobkennung alternative Kennungen sowie UUIDs aus Dateipfaden ausgeben.
+Signierte URL-Parameter, Originaldateipfade und Bilddaten werden nicht ausgegeben.
+UUIDs in Dateipfaden sind nur Diagnosehinweise, keine bestätigten Schreibkennungen.
+Bei fehlender v2-ID keine Kennung erfinden und das gemeinsam verwendete alte Bild
+nicht über den unbeschränkten v1-DELETE-Endpunkt entfernen.
+
+Ohne Neubau direkt im bestehenden App-Container ausführbar:
+
+```bash
+cd /opt/app/krautl &&
+docker compose exec -T app python - 1036 < scripts/pruefe_bild_upload_zuordnung.py
+```
