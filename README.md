@@ -1352,6 +1352,25 @@ docker compose exec -T app python - 30501-002 < scripts/repariere_bildreihenfolg
 
 ### Unterbrochener Bildaustausch: Zuordnung lesend untersuchen
 
+Live-Befund vom 28.10.2026: Der v1-PATCH mit `ImageData` und
+`SalesChannelId=2-2-1` hat beim Anchan-Auftrag nur die Shopzuordnung von Bild 2488
+auf 2729 ersetzt. Andere Kanäle behalten 2488; 2729 wurde zusätzlich im
+Standardkanal angelegt. Dieser Aufruf ist daher kein bestätigter Austausch über
+alle Kanäle. Ein HTTP 201 bestätigt nicht den gewünschten Gesamtzustand.
+
+`scripts/pruefe_bild_kanalzuordnung.py SKU --kanal KANAL` bereitet einen einzelnen
+Zuordnungstest ohne Bilddaten vor. Mit `--ausfuehren` wird genau ein PATCH mit
+der vorhandenen neuen Bildnummer, dem Zielkanal und der bisherigen Position
+protokolliert und gesendet. Vorher muss der Bestand exakt zum bekannten
+Shop-Austausch passen und das neue Bild pixelgleich sein. Wiederholungen lesen
+nur zurück; auch Antwortverlust löst keinen weiteren PATCH aus. Das vollständige
+Zuordnungsergebnis wird gegen das erwartete Ersetzen im einen Kanal geprüft.
+Standardkanal `1-1-1` und eBay-Zuordnungen mit zusätzlicher Kontokennung sind
+ausgeschlossen. Der Gesamtauftrag bleibt ungeklärt; keine automatische Löschung.
+Das tatsächliche Anlegen/Ersetzen einer Zuordnung durch diesen PATCH ist noch
+nicht live bestätigt. Das Skript kann nach Git-Aktualisierung per Python-stdin
+im bestehenden Container laufen; kein Build und keine Migration erforderlich.
+
 Nach einer manuellen Wawi-Korrektur kann `python -m scripts.setze_bildauftrag_zurueck SKU --entfernt BILDNUMMER`
 den Artikel gezielt in Krautl zurücksetzen. Das Skript prüft ausschließlich per GET,
 dass die angegebene v1-Bildnummer nicht mehr am Artikel zugeordnet ist, und liest
