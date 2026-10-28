@@ -1152,16 +1152,18 @@ werden nach Vorschau und Bestätigung verlustfrei als PNG mit ASCII-Dateinamen
 an die Wawi geschickt. Die aufbereitete Datei darf ebenfalls maximal 20 MB haben.
 
 Admin/Grafik dürfen diese Aktionen auslösen. Seit 28.10.2026 gilt auf ausdrücklichen
-Nutzerwunsch: „Bild austauschen“ ersetzt die vorhandene Bilddatei in allen bisherigen
-Kanälen. v1 PATCH `/v1/items/{Artikel-UUID}/images/{Bildnummer}` überträgt ImageData
+Nutzerwunsch: „Bild austauschen“ soll die vorhandene Bilddatei in allen bisherigen
+Kanälen ersetzen. Dieses Ziel ist noch nicht erreicht: Der bisherige v1 PATCH
+`/v1/items/{Artikel-UUID}/images/{Bildnummer}` überträgt ImageData
 und Filename mit SalesChannelId=2-2-1, ohne SortNumber. Die gesamte v1-Kanal- und
 Positionsmenge einschließlich Kasse/eBay muss beim Rücklesen unverändert sein.
 Die dekodierten Vorschaupixel müssen exakt passen; HTTP-Erfolg allein genügt nicht.
 Die konkrete Semantik der installierten API wird beim produktiven Rücklesen geprüft;
 abweichende Zuordnungen stoppen den Vorgang ohne weiteren Schreibversuch.
 
-Vorher wird die Originaldatei in `bildsicherungen` gesichert. Neue Austauschaufträge
-legen kein Zusatzbild an. v1-geführte Artikel verwenden lokale UUIDs als UI-Schlüssel
+Vorher wird die Originaldatei in `bildsicherungen` gesichert. Der Live-Befund zeigt,
+dass Wawi dabei eine andere Bildnummer im Shop zuordnet und im Standardbestand
+ein zusätzliches Bild führen kann. v1-geführte Artikel verwenden lokale UUIDs als UI-Schlüssel
 und zusätzlich die echte numerische `v1_id`; die lokalen Schlüssel werden niemals
 als Blobkennung an Wawi geschickt. Großansicht, Aktualisierung, weitere Austausche,
 Hinzufügen und Shop-Sortierung verwenden für diese Artikel v1. Die Shop-Sortierung
@@ -1351,6 +1353,54 @@ docker compose exec -T app python - 30501-002 < scripts/repariere_bildreihenfolg
 ```
 
 ### Unterbrochener Bildaustausch: Zuordnung lesend untersuchen
+
+Rechercheentscheidung 28.10.2026 (Konzept, noch keine Implementierung):
+
+- Ein vorhandenes Bild 2729 ohne Bilddaten per PATCH in den bislang nicht
+  zugeordneten Kanal 5-30-2 aufzunehmen, lieferte 404 und unveränderten Bestand.
+  Das widerlegt diesen konkreten Weg, nicht jeden kanalweisen Bildaustausch.
+  PATCH auf das dort tatsächlich vorhandene alte Bild 2488 mit neuen Bilddaten
+  wäre ein anderer Ablauf; die Wirkung und Wiederverwendung der Bildnummer sind
+  unbestätigt. Für vollständige Abdeckung fehlen außerdem eindeutige Plattform-
+  und Kontokennungen für die mehrfachen v1-Standardzeilen.
+- `zuordnungen()` bildet derzeit eine Menge. Gleiche v1-Zeilen verschwinden dabei.
+  Diese Darstellung ist kein vollständiger Nachweis aller Plattformzuordnungen.
+  Ein neuer Austauschplan benötigt echte Plattform-/Shop-/Kontokennungen und
+  Positionen; unbekannte Zuordnungen dürfen nicht stillschweigend entfallen.
+- Die native Wawi-Funktion „Ersetzen“ erhält laut JTL-Guide die Bildnummer.
+  Der bisherige REST-PATCH ist nach Live-Befund nicht gleichbedeutend damit.
+  Eine öffentlich dokumentierte gleichwertige Methode in JTLwawiExtern.dll wurde
+  in der geprüften Dokumentation nicht gefunden; interne DLL-/SQL-Methoden sind
+  deshalb keine bereits verfügbare Lösung.
+- Strukturelle Alternative: Ein lokaler Windows-Helfer holt eindeutige Aufträge
+  von Krautl per HTTPS, sichert den vollständigen Artikelbildbestand und bildet
+  eine Zielmatrix aus Plattform/Konto, Position und Bildinhalt. In dieser Matrix
+  wird nur das gewählte alte Bild durch den neuen Inhalt ersetzt. Andere Bilder,
+  nicht aktivierte Kanäle und Reihenfolgen bleiben erhalten. Der Shop bleibt
+  Auswahlkanal, seine gesamte Galerie wird nicht auf alle Kanäle kopiert.
+- Als dokumentierter Schreibadapter kommt JTL-Ameise „Artikelbilder pro Plattform"
+  mit gespeicherter Importvorlage infrage. Die CLI unterstützt Testmodus und Logs,
+  ihre Verfügbarkeit hängt von der Edition ab. Das ist ein Kandidat, keine
+  bestätigte Abnahme für Wawi 2.1.1 und alle angeschlossenen Kanäle. Zuerst auf
+  isolierter Datenbankkopie alle Ausgabewege, eBay-Konten, SCX und Kasse prüfen.
+  Die Löschoption des Imports kann alle Plattformzuordnungen des Artikels betreffen:
+  niemals eine einzelne neue Datei mit pauschalem Löschen kombinieren. Vor einem
+  eventuellen vollständigen Neuaufbau müssen alle Originale/Zuordnungen gesichert
+  und der Wiederherstellungsweg geprüft sein; konkurrierende Abgleiche ausschließen.
+- Ein möglicher Bestandsleser ist ein lokaler, versionsgeprüfter SQL-Lesezugang
+  oder ein eigener Ameise-Export. Die konkrete Abfrage ist noch zu ermitteln;
+  keine angenommenen Tabellen oder ungetesteten SQL-Schreibzugriffe verwenden.
+- Erfolg wird anhand der Zielinhalte und Zuordnungen bestätigt, nicht allein
+  anhand alter/neuer Bildnummern oder Prozess-Exitcode. Auftragsjournal und
+  Wiederanlauf lesen nach unklarem Ausgang zuerst zurück. Die UI muss beobachteten
+  Wawi-Stand, teilweise ausgeführten Austausch und Shopveröffentlichung trennen.
+  Ein fehlgeschlagener Kanal darf nicht den bereits beobachteten Shopbildwechsel
+  durch eine dauerhaft alte Vorschau verdecken.
+
+Quellen: [Wawi-Bilder](https://guide.jtl-software.com/jtl-wawi/artikel/artikelstammdaten-bilder/),
+[Ameise-Bildimport](https://guide.jtl-software.com/jtl-wawi/jtl-ameise/artikelbilder-importieren/),
+[Ameise-CLI](https://guide.jtl-software.com/jtl-wawi/jtl-ameise/cmd-line-version/),
+[eigene SQL-Leseexporte](https://guide.jtl-software.com/jtl-wawi/jtl-ameise/eigene-sqls-exportieren/).
 
 Live-Befund vom 28.10.2026: Der v1-PATCH mit `ImageData` und
 `SalesChannelId=2-2-1` hat beim Anchan-Auftrag nur die Shopzuordnung von Bild 2488
