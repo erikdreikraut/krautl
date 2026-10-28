@@ -37,6 +37,7 @@ export function BildDialog({artikel,bild,schliessen,aktualisiert,gesperrt=false}
     try {
       const result=await api.bilderDatei(artikel.id,bild?.id,artikel.revision,auftrag.current,file);
       setErgebnis(result);
+      if(result.status==="wawi")schliessen();
     } catch(e) {
       setFehler(e.message);
       // Keep request ID and file: an explicit retry can only retrieve this same intent.
@@ -44,7 +45,11 @@ export function BildDialog({artikel,bild,schliessen,aktualisiert,gesperrt=false}
   };
   const pruefen=async()=>{
     setSendet(true);setFehler("");
-    try {setErgebnis(await api.bilderAuftragPruefen(ergebnis.id));}
+    try {
+      const result=await api.bilderAuftragPruefen(ergebnis.id);
+      setErgebnis(result);
+      if(result.status==="wawi")schliessen();
+    }
     catch(e){setFehler(e.message);}
     finally{setSendet(false);await aktualisiert();}
   };
