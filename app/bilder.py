@@ -31,7 +31,7 @@ def liste(response: Response):
     shop = staende()
     data["artikel"] = [{**a, "shop_pruefung": aktuell(a, data.get("api_ziel"), shop.get(a["id"]))}
                        for a in data["artikel"]]
-    return {**data, "bildauftraege": [oeffentlich(j) for j in auftraege()]}
+    return {**data, "bildauftraege": [oeffentlich(j) for j in auftraege() if not j.get("ruecksetzung")]}
 
 
 class Sichtbarkeit(BaseModel):

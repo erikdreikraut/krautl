@@ -21,6 +21,8 @@ def bereinigungsziel(rows, duplicate):
 
 
 async def fortsetzen(c, job, execute=False):
+    if job.get("ruecksetzung"):
+        raise ValueError("Dieser alte Auftrag wurde manuell beendet und darf nicht fortgesetzt werden.")
     if job['api_ziel']!=c.url: raise ValueError('Wawi-Ziel passt nicht.')
     a,_=lokal(job['artikel'],job['revision'])
     detail=await detail_lesen(c,job['artikel'],job['sku'])

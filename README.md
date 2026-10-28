@@ -1352,6 +1352,17 @@ docker compose exec -T app python - 30501-002 < scripts/repariere_bildreihenfolg
 
 ### Unterbrochener Bildaustausch: Zuordnung lesend untersuchen
 
+Nach einer manuellen Wawi-Korrektur kann `python -m scripts.setze_bildauftrag_zurueck SKU --entfernt BILDNUMMER`
+den Artikel gezielt in Krautl zurücksetzen. Das Skript prüft ausschließlich per GET,
+dass die angegebene v1-Bildnummer nicht mehr am Artikel zugeordnet ist, und liest
+die aktuellen Shopbilder samt Vorschauen neu ein. Offene Aufträge werden mit
+Reset-Vermerk beendet; Journal und Originaldateien bleiben erhalten. Die lokale
+Revision steigt, alte Shopbestätigungen werden verworfen. Beendete Reset-Aufträge
+erscheinen nicht mehr als Bildstatus und dürfen nicht erneut repariert werden.
+Andere Artikel bleiben unverändert. Anschließend die Bilderseite neu laden und
+einen neuen Austausch beginnen. Dafür die App aktualisieren; keine manuelle
+Datenmigration und kein Frontend-Neubau erforderlich.
+
 `python -m scripts.pruefe_bild_upload_zuordnung SKU` prüft den neuesten gespeicherten
 Uploadauftrag ohne Wawi-Schreibzugriffe: exakte dekodierte Vorschaupixel aller
 v1-Shopbilder vergleichen, deren Kanalzuordnungen anzeigen und bei fehlender

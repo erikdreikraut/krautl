@@ -169,6 +169,7 @@ async def ersetzen(c, article, image_key, revision, request_id, raw, user):
 
 async def schreiben(c,job,raw):
     from .bilder_upload import sichern, oeffentlich, ablehnungsdetails
+    if job.get("ruecksetzung"): return oeffentlich(job)
     # Persisted BEFORE the single PATCH. Every later call only reads.
     if job.get('v1_schreibversuch'): return await pruefen(c,job)
     if zuordnungen(await liste(c,job['artikel']))!=job['v1_vorher'] or not store.freigegeben(job['artikel'],job['revision']):
