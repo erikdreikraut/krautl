@@ -93,12 +93,23 @@ async def bestand(c, a, rows=None, fehlertolerant=False):
 
 async def pruefen(c, job):
     from .bilder_upload import lokal, sichern, oeffentlich, bildinhalt_bestaetigt, detail_lesen
+    if job.get('ruecksetzung'): return oeffentlich(job)
     if c.url != job['api_ziel']: raise ValueError('Wawi-Ziel stimmt nicht mit dem Auftrag überein.')
     await detail_lesen(c,job['artikel'],job['sku'])
     rows=await liste(c,job['artikel'])
     expected=job['v1_vorher']
     if zuordnungen(rows)!=expected:
+        actual=zuordnungen(rows)
+        job['zuordnungsabweichung']={'fehlt':[r for r in expected if r not in actual],
+                                    'hinzu':[r for r in actual if r not in expected]}
+        # Preserve the mismatch even if the separate image download fails.
         job.update(status='unklar',meldung='Kanalzuordnungen oder Positionen weichen ab. Kein weiterer Schreibversuch.')
+        sichern(job)
+        if any(r['ImageId']==job['v1_id'] for r in rows):
+            confirmed=bildinhalt_bestaetigt(job,await bild(c,job['v1_id']))
+            job['bildinhalt_bestaetigt']=confirmed
+            if confirmed:
+                job['meldung']='Neuer Bildinhalt in Wawi bestätigt, aber Kanalzuordnungen oder Positionen weichen ab. Auftrag bleibt ungeklärt.'
         sichern(job);return oeffentlich(job)
     thumb=await bild(c,job['v1_id'])
     if not bildinhalt_bestaetigt(job,thumb):

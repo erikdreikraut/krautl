@@ -65,6 +65,11 @@ class ReplaceTest(unittest.IsolatedAsyncioTestCase):
         async with self.client() as c:
             result=await uebertragen(c,A,B,0,J,self.new,'user')
         self.assertEqual(result['status'],'unklar');self.assertNotIn('v1_id',store.lesen()['artikel'][0]['bilder'][0])
+        job=auftraege()[0]
+        self.assertTrue(job['bildinhalt_bestaetigt'])
+        self.assertIn('Neuer Bildinhalt',result['meldung'])
+        self.assertEqual(job['zuordnungsabweichung']['fehlt'],[[10,20,'9-7-8-0','',2]])
+        self.assertEqual(job['zuordnungsabweichung']['hinzu'],[[10,20,'9-7-8-0','',4]])
     async def test_ambiguous_position_never_writes(self):
         self.rows.append({**self.rows[0],'ImageId':21})
         async with self.client() as c:

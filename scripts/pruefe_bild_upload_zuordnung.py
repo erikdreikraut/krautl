@@ -12,6 +12,7 @@ from app import bilder_speicher as store
 from app.bilder_upload import auftraege
 from app.bilder_abgleich import bildantwort, vorschaubild
 from app.jtl_onprem import OnPremClient
+from app.bilder_ersetzen import zuordnungen
 
 
 def pixelgleich(left, right):
@@ -53,9 +54,19 @@ async def untersuchen(c, job, expected, emit=print):
                     emit(json.dumps({'bereich': field, 'kanal': {k: v for k, v in group.items() if k.endswith('Id')},
                                      **hinweise(image)}, ensure_ascii=False))
     rows = await c._request('GET', '/v1/items/' + job['artikel'] + '/images', expected_type=list)
-    candidates = {r.get('ImageId') for r in rows if r.get('SalesChannelId') == '2-2-1'}
+    actual = zuordnungen(rows)
+    before = job.get('v1_vorher')
+    if before is not None:
+        emit('Zuordnung: [Artikelnummer intern, Bildnummer, Kanal, Ebay-Konto, Position]')
+        emit(json.dumps({'auftrags_bild': job.get('v1_id'), 'schreibversuch': job.get('v1_schreibversuch'),
+                         'http_status': job.get('v1_http_status'),
+                         'fehlt': [r for r in before if r not in actual],
+                         'hinzu': [r for r in actual if r not in before]}, ensure_ascii=False))
+    # Include non-shop images: a channel-specific replacement may leave the old
+    # image in other channels or allocate a new image number only for the shop.
+    candidates = {r.get('ImageId') for r in rows}
     if not candidates or len(candidates) > 30 or any(type(i) is not int or i <= 0 for i in candidates):
-        raise ValueError('Keine begrenzte, eindeutige v1-Shop-Bildliste verfügbar.')
+        raise ValueError('Keine begrenzte, eindeutige v1-Bildliste verfügbar.')
     matches = []
     for image_id in sorted(candidates):
         async with c.http.stream('GET', c.url + '/v1/items/imagedata/' + str(image_id)) as response:
@@ -65,13 +76,15 @@ async def untersuchen(c, job, expected, emit=print):
         emit(json.dumps({'v1_bild': image_id, 'pixelgleich': equal,
                          'zuordnungen': [{'kanal': r.get('SalesChannelId'), 'position': r.get('SortNumber')}
                                          for r in rows if r.get('ImageId') == image_id]}, ensure_ascii=False))
+    if zuordnungen(await c._request('GET', '/v1/items/' + job['artikel'] + '/images', expected_type=list)) != actual:
+        raise ValueError('Bildzuordnungen während der Diagnose verändert; Ergebnisse nicht als stabil verwenden.')
     emit('Pixelgleiche v1-Bilder: ' + json.dumps(matches))
     emit('Nur gelesen. Keine Zuordnung geändert und kein Upload wiederholt.')
     return matches
 
 
 async def main(sku):
-    jobs = sorted((j for j in auftraege() if j.get('sku') == sku and j.get('thumb_hash')),
+    jobs = sorted((j for j in auftraege() if j.get('sku') == sku and j.get('thumb_hash') and not j.get('ruecksetzung')),
                   key=lambda j: j.get('erstellt', ''))
     if not jobs: raise ValueError('Kein Uploadauftrag gefunden.')
     job = jobs[-1]

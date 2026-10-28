@@ -23,9 +23,14 @@ class AuditTest(unittest.IsolatedAsyncioTestCase):
             if req.url.path.endswith('/items/a'):
                 return httpx.Response(200,json={'id':'a','identifiers':{'sku':'S'},'images':{'defaultImages':[{'blobIdentifier':None,'sortNumber':1}]}})
             if req.url.path.endswith('/images'):
-                return httpx.Response(200,json=[{'ImageId':i,'SalesChannelId':'2-2-1','SortNumber':i} for i in (1,2)])
+                return httpx.Response(200,json=[{'ItemId':10,'ImageId':i,'SalesChannelId':'2-2-1' if i==2 else 'amazon','SortNumber':1} for i in (1,2)])
             return httpx.Response(200,content=raw if req.url.path.endswith('/2') else image('blue'))
         async with OnPremClient('https://wawi.test/api/eazybusiness','test',transport=httpx.MockTransport(response)) as c:
-            matches=await untersuchen(c,{'api_ziel':c.url,'artikel':'a','sku':'S'},vorschaubild(raw),output.append)
-        self.assertEqual(matches,[2]);self.assertEqual(len(calls),4)
+            matches=await untersuchen(c,{'api_ziel':c.url,'artikel':'a','sku':'S','v1_id':1,
+                'v1_vorher':[[10,1,'2-2-1','',1],[10,1,'amazon','',1]]},vorschaubild(raw),output.append)
+        self.assertEqual(matches,[2]);self.assertEqual(len(calls),5)
+        diff=next(json.loads(line) for line in output if line.startswith('{') and 'auftrags_bild' in line)
+        self.assertEqual(diff['fehlt'],[[10,1,'2-2-1','',1]])
+        self.assertEqual(diff['hinzu'],[[10,2,'2-2-1','',1]])
+        self.assertTrue(any('"v1_bild": 1' in line and 'amazon' in line for line in output))
         self.assertTrue(pixelgleich(vorschaubild(raw),vorschaubild(raw)))

@@ -1365,12 +1365,17 @@ Datenmigration und kein Frontend-Neubau erforderlich.
 
 `python -m scripts.pruefe_bild_upload_zuordnung SKU` prüft den neuesten gespeicherten
 Uploadauftrag ohne Wawi-Schreibzugriffe: exakte dekodierte Vorschaupixel aller
-v1-Shopbilder vergleichen, deren Kanalzuordnungen anzeigen und bei fehlender
+v1-Artikelbilder (auch außerhalb des Shops) vergleichen, deren Kanalzuordnungen anzeigen und bei fehlender
 v2-Blobkennung alternative Kennungen sowie UUIDs aus Dateipfaden ausgeben.
 Signierte URL-Parameter, Originaldateipfade und Bilddaten werden nicht ausgegeben.
 UUIDs in Dateipfaden sind nur Diagnosehinweise, keine bestätigten Schreibkennungen.
 Bei fehlender v2-ID keine Kennung erfinden und das gemeinsam verwendete alte Bild
 nicht über den unbeschränkten v1-DELETE-Endpunkt entfernen.
+Bei v1-Austauschaufträgen werden zusätzlich fehlende und hinzugekommene Zuordnungen
+gegen den gespeicherten Ausgangsstand ausgegeben. Zurückgesetzte Aufträge werden
+übersprungen. Ein zweiter Abruf prüft, ob der Zuordnungsstand stabil blieb.
+Eine abweichende Kanalzuordnung bleibt ein ungeklärter Auftrag, auch wenn der neue
+Bildinhalt bereits bestätigt ist; diese beiden Befunde werden getrennt protokolliert.
 
 Ohne Neubau direkt im bestehenden App-Container ausführbar:
 
