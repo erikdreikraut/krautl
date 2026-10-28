@@ -325,3 +325,33 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
             changed=copy.deepcopy(cleaned)
             changed["saleschannelImages"][index]["images"][0]["sortNumber"]=7
             self.assertNotEqual(fingerprint(before),fingerprint(changed))
+
+    async def test_pixel_identical_different_encoding_is_accepted_on_upload_and_readback(self):
+        def recode(raw, *args):
+            jpeg = vorschaubild(raw, *args)
+            with Image.open(BytesIO(jpeg)) as im:
+                out = BytesIO()
+                im.save(out, "PNG")
+                return out.getvalue()
+        # Different bytes, but precisely the same decoded thumbnail pixels.
+        with patch("app.bilder_abgleich.vorschaubild", side_effect=recode):
+            async with self.client() as c:
+                result = await uebertragen(c,A,OLD,0,JOB,self.raw,"erik")
+        self.assertEqual(result["status"],"wawi",result)
+        self.assertEqual(sum(m=="POST" for m,p in self.calls),1)
+
+    async def test_pixel_comparison_rejects_changed_pixel_size_and_source_hash(self):
+        from app.bilder_upload import bildinhalt_bestaetigt
+        async with self.client() as c:
+            await uebertragen(c,A,OLD,0,JOB,self.raw,"erik")
+        job=auftraege()[0]
+        with Image.open(BytesIO(vorschaubild(self.raw))) as im:
+            original=im.convert("RGB")
+        def encode(im):
+            out=BytesIO();im.save(out,"PNG");return out.getvalue()
+        self.assertTrue(bildinhalt_bestaetigt(job,encode(original)))
+        changed=original.copy();changed.putpixel((0,0),(0,255,0))
+        self.assertFalse(bildinhalt_bestaetigt(job,encode(changed)))
+        self.assertFalse(bildinhalt_bestaetigt(job,encode(original.resize((1,1)))))
+        self.assertFalse(bildinhalt_bestaetigt({**job,"thumb_hash":"wrong"},encode(original)))
+        self.assertFalse(bildinhalt_bestaetigt(job,b"invalid"))

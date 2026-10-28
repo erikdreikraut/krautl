@@ -83,6 +83,26 @@ def datei_pruefen(raw):
         raise ValueError("Bitte ein einzelnes JPG-, PNG- oder WebP-Bild bis 40 Megapixel wählen; die aufbereitete Datei darf 20 MB nicht überschreiten.") from None
 
 
+def bildinhalt_bestaetigt(job, thumb):
+    """Compare decoded preview pixels, never relax to perceptual similarity."""
+    if hashlib.sha256(thumb).hexdigest() == job["thumb_hash"]:
+        return True
+    with journal() as db:
+        row = db.execute("SELECT datei FROM bildauftraege WHERE id=?", (job["id"],)).fetchone()
+    if not row or not row[0]:
+        return False
+    expected = vorschaubild(row[0])
+    if hashlib.sha256(expected).hexdigest() != job["thumb_hash"]:
+        return False
+    try:
+        with Image.open(BytesIO(expected)) as left, Image.open(BytesIO(thumb)) as right:
+            if left.size != right.size:
+                return False
+            return left.convert("RGBA").tobytes() == right.convert("RGBA").tobytes()
+    except (OSError, ValueError):
+        return False
+
+
 def bildblock(detail):
     block = detail.get("images")
     if not isinstance(block, dict):
@@ -230,7 +250,7 @@ async def uebertragen(c, artikel, bild_id, revision, anfrage_id, raw, nutzer):
             raise ValueError("Wawi-Zuordnungen haben sich während der Bildanlage verändert.")
         source = next(b for g in after["images"]["saleschannelImages"] if g["saleschannelId"] == SHOP for b in g["images"] if b["blobIdentifier"] == new["blobIdentifier"])
         thumb = await bild_laden(c, new["blobIdentifier"], source)
-        if hashlib.sha256(thumb).hexdigest() != job["thumb_hash"]:
+        if not bildinhalt_bestaetigt(job, thumb):
             raise ValueError("Zurückgelesenes Bild stimmt nicht mit der gewählten Datei überein.")
         desired = copy.deepcopy(block)
         images = shop(desired)
@@ -269,7 +289,7 @@ async def pruefen(c, job):
     if job.get("art") != "reihenfolge":
         source = next(b for g in d["images"]["saleschannelImages"] if g["saleschannelId"] == SHOP for b in g["images"] if b["blobIdentifier"] == job["neu_id"])
         thumb = await bild_laden(c,job["neu_id"],source)
-        if hashlib.sha256(thumb).hexdigest() != job["thumb_hash"]:
+        if not bildinhalt_bestaetigt(job, thumb):
             raise ValueError("Bildinhalt wurde nicht bestätigt.")
     a, _ = lokal(job["artikel"])
     if a["revision"] != job["revision"]:
