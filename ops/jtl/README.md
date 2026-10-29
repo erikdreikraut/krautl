@@ -544,3 +544,37 @@ prüfen: erfolgreiche API-Änderung belegt noch keine Aktualisierung im Onlinesh
   `GET/PATCH /v2/items/{itemId}`, `attributes.values[].attributeId`,
   `salesChannelValues[].salesChannelId`, `values[].languageIso/value`.
 - Lokale Werkel-Übergabe: `C:/Users/info/Documents/ChatGPT/Werkel/docs/krautl-jtl-anbindung.md`.
+# Native Bildersetzung aufzeichnen (29.10.2026)
+
+Für den vom Nutzer gewählten Artikel 1036 liegen zwei manuell in SSMS auszuführende
+Dateien vor: `bild1036_trace_start.sql` und `bild1036_trace_stop_lesen.sql`.
+Ziel: SQL Server 2019, Datenbank eazybusiness, Client K21153W5072, Wawi-PID 7768
+(aus Task-Manager und SQL-Verbindungen abgeglichen). PID unmittelbar vorher prüfen;
+sie kann nach einem Neustart anders sein. Das Startskript verweigert eine fehlende
+passende Verbindung und eine bereits bestehende Aufzeichnung.
+
+Vorher das alte Bild unter „Alle“ auswählen und exportieren. Anschließend Startskript,
+genau ein natives „Ersetzen“ mit einer anderen Datei, Artikel speichern, sofort
+Stoppskript ausführen (auch nach Abbruch). Währenddessen keine andere Arbeit in
+dieser Wawi. Der Filter gilt für Prozess/Host/Datenbank, nicht speziell für SKU 1036.
+Die Skripte verändern keine Artikeldaten; der manuelle Wawi-Austausch tut dies.
+
+Aufgezeichnet werden Modulabschlüsse und einzelne SQL-/Prozeduranweisungen,
+ohne zusätzliche vollständige RPC-Parameter-/SQL-Text-Aktion. Anweisungstexte
+können trotzdem Werte enthalten. Das Dateiziel nutzt das SQL-Logverzeichnis,
+einen eindeutigen Dateinamen und maximal zwei Rollover-Dateien à 20 MB.
+Keine automatische Aktivierung beim Serverstart. Sofortiges manuelles Stoppen
+ist erforderlich; es gibt keinen zeitgesteuerten Stopp.
+
+Das Stoppskript meldet verlorene Ereignisse/Puffer, stoppt zuerst und liest dann
+die erhaltenen XEL-Dateien. Die Textausgabe ist auf 4000 Zeichen je Anweisung
+begrenzt; Originaldateien für eine spätere Detailauswertung erhalten. Ergebnis
+als Datei exportieren. Erst nach Sicherung der Ausgabe die Event-Session mit
+dem auskommentierten DROP am Skriptende entfernen; die XEL-Dateien bleiben bestehen.
+Notfall-Stopp: `ALTER EVENT SESSION [Krautl_Bild1036] ON SERVER STATE=STOP;`.
+Fehlende Ereignisse sind kein Beweis, dass Wawi keine Datenbankänderung vorgenommen hat.
+
+Lokal geprüft, nicht gegen einen verfügbaren SQL Server ausgeführt. Keine
+Produktivaufzeichnung durch Codex gestartet. Kein Container-Deployment erforderlich.
+Grundlage: [Microsoft XE-Dateiziele](https://learn.microsoft.com/en-us/sql/relational-databases/extended-events/targets-for-extended-events-in-sql-server?view=sql-server-ver15).
+
