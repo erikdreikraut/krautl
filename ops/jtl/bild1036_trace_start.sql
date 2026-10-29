@@ -8,8 +8,8 @@ IF @db IS NULL THROW 50000, 'Datenbank eazybusiness fehlt.', 1;
 IF NOT EXISTS (SELECT 1 FROM sys.dm_exec_sessions WHERE host_process_id=@pid
  AND host_name=@host AND database_id=@db AND program_name LIKE N'%JTL-Wawi%')
  THROW 50000, 'Wawi-PID nicht mehr aktuell. Im Task-Manager prüfen und oben anpassen.', 1;
-IF EXISTS (SELECT 1 FROM sys.server_event_sessions WHERE name=N'Krautl_Bild1036')
- THROW 50000, 'Aufzeichnung existiert bereits. Erst mit Stoppskript auslesen.', 1;
+IF EXISTS (SELECT 1 FROM sys.dm_xe_sessions WHERE name=N'Krautl_Bild1036')
+ THROW 50000, 'Aufzeichnung läuft bereits. Erst mit Stoppskript sichern; kein Neustart ausgeführt.', 1;
 IF NOT EXISTS (SELECT 1 FROM sys.dm_xe_objects WHERE name=N'client_pid' AND object_type=N'pred_source')
  THROW 50000, 'XE-Filter client_pid nicht verfügbar. Nicht ungefiltert fortfahren.', 1;
 DECLARE @log nvarchar(4000)=CONVERT(nvarchar(4000),SERVERPROPERTY('ErrorLogFileName'));
@@ -28,7 +28,18 @@ DECLARE @sql nvarchar(max)=N'CREATE EVENT SESSION [Krautl_Bild1036] ON SERVER
  ADD TARGET package0.event_file(SET filename=N'''+REPLACE(@file,N'''',N'''''')+N''',max_file_size=(20),max_rollover_files=(2))
  WITH(MAX_MEMORY=4096 KB,EVENT_RETENTION_MODE=ALLOW_SINGLE_EVENT_LOSS,
  MAX_DISPATCH_LATENCY=1 SECONDS,TRACK_CAUSALITY=ON,STARTUP_STATE=OFF);';
-EXEC sys.sp_executesql @sql;
-ALTER EVENT SESSION [Krautl_Bild1036] ON SERVER STATE=START;
-SELECT N'Aufzeichnung läuft. Einen Austausch ausführen, speichern und sofort Stoppskript ausführen.' AS Hinweis,
- @pid AS Wawi_PID,@file AS Datei;
+BEGIN TRY
+ -- Nur eine gestoppte Definition entfernen. Vorhandene XEL-Dateien bleiben erhalten.
+ IF EXISTS (SELECT 1 FROM sys.server_event_sessions WHERE name=N'Krautl_Bild1036')
+  DROP EVENT SESSION [Krautl_Bild1036] ON SERVER;
+ EXEC sys.sp_executesql @sql;
+ ALTER EVENT SESSION [Krautl_Bild1036] ON SERVER STATE=START;
+ IF NOT EXISTS (SELECT 1 FROM sys.dm_xe_sessions WHERE name=N'Krautl_Bild1036')
+  THROW 50000, 'Aufzeichnung wurde nicht gestartet. Bild nicht ersetzen.', 1;
+ SELECT N'AUFZEICHNUNG LAEUFT - jetzt Austausch und Speichern, danach sofort Stoppskript.' AS Status,
+  SYSDATETIMEOFFSET() AS Kontrollzeit_mit_Zeitzone,
+  @pid AS Wawi_PID,@host AS Wawi_Rechner,@file AS Neue_Datei;
+END TRY
+BEGIN CATCH
+ THROW;
+END CATCH;

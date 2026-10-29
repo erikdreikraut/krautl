@@ -551,7 +551,15 @@ Dateien vor: `bild1036_trace_start.sql` und `bild1036_trace_stop_lesen.sql`.
 Ziel: SQL Server 2019, Datenbank eazybusiness, Client K21153W5072, Wawi-PID 7768
 (aus Task-Manager und SQL-Verbindungen abgeglichen). PID unmittelbar vorher prüfen;
 sie kann nach einem Neustart anders sein. Das Startskript verweigert eine fehlende
-passende Verbindung und eine bereits bestehende Aufzeichnung.
+passende Verbindung und eine bereits laufende Aufzeichnung. Eine gestoppte
+Definition wird beim nächsten Start entfernt und mit neuem Dateinamen angelegt;
+alte XEL-Dateien bleiben erhalten. Erst die Ergebniszeile `AUFZEICHNUNG LAEUFT`
+mit aktueller Kontrollzeit, PID und neuem Dateinamen gibt den manuellen Austausch
+frei. Das Stoppskript verweigert bei fehlender laufender Aufnahme die erneute
+Ausgabe alter Dateien. Hintergrund: Die erste Skriptfassung blockierte den
+Neustart bei stehengebliebener Definition, konnte aber alte Ergebnisse erneut
+ausgeben. Die CSV vom erfolglosen Erstversuch wurde so erneut ausgewertet;
+der später laut Nutzer erfolgreiche Austausch ist darin nicht enthalten.
 
 Vorher das alte Bild unter „Alle“ auswählen und exportieren. Anschließend Startskript,
 genau ein natives „Ersetzen“ mit einer anderen Datei, Artikel speichern, sofort
@@ -572,6 +580,8 @@ begrenzt; Originaldateien für eine spätere Detailauswertung erhalten. Ergebnis
 als Datei exportieren. Erst nach Sicherung der Ausgabe die Event-Session mit
 dem auskommentierten DROP am Skriptende entfernen; die XEL-Dateien bleiben bestehen.
 Notfall-Stopp: `ALTER EVENT SESSION [Krautl_Bild1036] ON SERVER STATE=STOP;`.
+Nach einem Notfall-Stopp alte XEL-Dateien direkt in SSMS öffnen; das normale
+Stoppskript gibt bewusst nur eine gerade gestoppte Aufnahme aus.
 Fehlende Ereignisse sind kein Beweis, dass Wawi keine Datenbankänderung vorgenommen hat.
 
 Lokal geprüft, nicht gegen einen verfügbaren SQL Server ausgeführt. Keine

@@ -1,6 +1,8 @@
 -- Stoppt zuerst die Aufzeichnung. Dateien bleiben auf dem SQL-Server erhalten.
 USE master;
 SET NOCOUNT ON;
+IF NOT EXISTS (SELECT 1 FROM sys.dm_xe_sessions WHERE name=N'Krautl_Bild1036')
+ THROW 50000, 'Keine laufende Aufzeichnung. Es werden keine alten Ergebnisse ausgegeben. Startmeldung prüfen.', 1;
 SELECT dropped_event_count,dropped_buffer_count
 FROM sys.dm_xe_sessions WHERE name=N'Krautl_Bild1036';
 IF EXISTS(SELECT 1 FROM sys.dm_xe_sessions WHERE name=N'Krautl_Bild1036')
