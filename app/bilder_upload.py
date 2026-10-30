@@ -291,6 +291,9 @@ async def upload_neuanlage(c, artikel, bild_id, revision, anfrage_id, raw, nutze
 
 
 async def pruefen(c, job):
+    if job.get('bruecke'):
+        from .bilder_bruecke import bestaetigen
+        return await bestaetigen(c, job)
     if job.get("art") == "hinzufuegen_v1":
         from .bilder_ersetzen import hinzufuegen_pruefen
         return await hinzufuegen_pruefen(c, job)

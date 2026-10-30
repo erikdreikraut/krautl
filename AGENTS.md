@@ -71,5 +71,7 @@
 
 ## Bilderverwaltung
 
+- Seit 30.10.2026 ist eine automatische lokale Wawi-Brücke beauftragt: Grafik bedient ausschließlich Krautl. Der optionale Bilddienst darf beim Austausch neue Bilddaten nativ importieren und anschließend die bisherigen Zuordnungs-IDs mit ihren Kanal-/Kontokennungen und Positionen erhalten; keine dauerhaft zusätzliche Bildposition. Details und noch ausstehende Live-Abnahme in `bridge/README.md`. Keine Wiederholung unklarer Schreibversuche, keine Löschung gemeinsam genutzter Originale. Die frühere Vorgabe „kein zusätzlicher Upload“ untersagte versehentliche Zusatzbilder und ist kein Verbot des jetzt beauftragten, protokollierten Import-/Austauschwegs.
+
 - JTL-Shop (`2-2-1`) ist der Masterkanal für Bilder. Die zwischenzeitliche Angabe JTL-Wawi wurde vom Nutzer ausdrücklich korrigiert.
 - Der Kassen-Bildkanal `9-7-8-0` ist für den Nutzer irrelevant und wird bei Bild-Schreibrequests sowie deren Bestätigungsprüfung ausgenommen. Wawi 2.1.1 liefert ihn lesend, lehnt ihn aber im Bild-PATCH bereits bei der Request-Verarbeitung ab. Andere Kanäle nicht pauschal entfernen; Wawi-Standardbilder nicht eigenmächtig zum Master machen.

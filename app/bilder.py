@@ -28,10 +28,21 @@ def liste(response: Response):
     from .bilder_upload import auftraege, oeffentlich
     from .bilder_shop import staende, aktuell
     data = speicher.zustand()
+    from .bilder_bruecke import aktiv, bereit
+    all_jobs = [j for j in auftraege() if not j.get('ruecksetzung')]
+    jobs = [oeffentlich(j) for j in all_jobs]
+    if aktiv():
+        try:
+            bereit()
+        except ValueError:
+            bridge_ids = {j['id'] for j in all_jobs if j.get('bruecke')}
+            for job in jobs:
+                if job['id'] in bridge_ids and job['status'] == 'sendet':
+                    job['meldung'] = 'Bilddienst derzeit nicht erreichbar. Auftrag bleibt gespeichert; bitte nicht erneut hochladen.'
     shop = staende()
     data["artikel"] = [{**a, "shop_pruefung": aktuell(a, data.get("api_ziel"), shop.get(a["id"]))}
                        for a in data["artikel"]]
-    return {**data, "bildauftraege": [oeffentlich(j) for j in auftraege() if not j.get("ruecksetzung")]}
+    return {**data, "bildauftraege": jobs}
 
 
 class Sichtbarkeit(BaseModel):
@@ -41,6 +52,9 @@ class Sichtbarkeit(BaseModel):
 
 @router.put("/{artikel_id}/ausblenden")
 def ausblenden(artikel_id: UUID, body: Sichtbarkeit, request: Request):
+    from .bilder_bruecke import laufend
+    if laufend(str(artikel_id)):
+        raise HTTPException(409, 'Bitte zuerst den laufenden Bildaustausch abwarten.')
     try:
         speicher.ausblenden(str(artikel_id), body.ausgeblendet, body.revision, request.state.benutzer["benutzername"])
     except KeyError:
@@ -118,6 +132,9 @@ async def aktualisieren():
     except speicher.Belegt as exc:
         raise HTTPException(409, str(exc)) from None
     try:
+        from .bilder_bruecke import laufend
+        if laufend():
+            raise HTTPException(409, 'Bitte zuerst den laufenden Bildaustausch abwarten.')
         speicher.status_setzen(status="laeuft", gestartet_am=speicher.jetzt(), fehler=None, fortschritt="Artikelkatalog wird geladen …")
         task = asyncio.create_task(lauf(sperre))
         aufgaben.add(task)

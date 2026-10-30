@@ -1325,6 +1325,15 @@ entfernt, ist nicht zugesichert; diese sind ausdrücklich außerhalb des gewüns
 Bildbestands. Keine pauschale Übernahme der Shop-Reihenfolge in andere Kanäle.
 
 
+### Automatischer Bilddienst (optional)
+
+Der neue optionale Windows-Bilddienst für automatische Austauschaufträge aus
+Krautl ist in [bridge/README.md](bridge/README.md) beschrieben. Er benötigt eine
+einmalige Einrichtung und SQL-/Wawi-Abnahme; der Grafiker arbeitet danach nur
+in Krautl. Standardmäßig bleibt die Brücke deaktiviert. Lokale Tests ersetzen
+keine produktive Abnahme. Hinzufügen, Reihenfolge und Shopprüfung verwenden
+weiterhin die bestehenden Abläufe.
+
 ### Einmaliger v1-Sortierversuch für einen ungeklärten Reihenfolgeauftrag
 
 Nach dem Ausschluss des POS-Kanals wurde der v2-Bild-PATCH nicht mehr mit 400

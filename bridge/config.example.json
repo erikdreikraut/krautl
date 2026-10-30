@@ -1,0 +1,12 @@
+{
+  "krautl_url": "https://krautl.erikschweitzer.de",
+  "worker_id": "GENERATE-A-STABLE-UUID",
+  "bridge_token": "",
+  "wawi_url": "https://WAWI-HOST:PORT/api/eazybusiness",
+  "wawi_key": "EXISTING-KRAUTL-WAWI-KEY",
+  "wawi_ca": "",
+  "sql_connection": "DRIVER={ODBC Driver 18 for SQL Server};SERVER=SERVER\\INSTANCE;DATABASE=eazybusiness;Trusted_Connection=yes;Encrypt=yes;TrustServerCertificate=no",
+  "journal_dir": "C:/ProgramData/Krautl-Bilddienst/journal",
+  "allowed_skus": ["1036"],
+  "enable_writes": false
+}

@@ -63,6 +63,8 @@ from .inkasso import router as inkasso_router
 app.include_router(inkasso_router)
 from .bilder import router as bilder_router, beenden as bilder_beenden
 app.include_router(bilder_router)
+from .bilder_bruecke import router as bilder_bruecke_router
+app.include_router(bilder_bruecke_router)
 app.include_router(gesendet_router)
 from .faq_import import router as faq_import_router
 app.include_router(faq_import_router)
@@ -229,6 +231,10 @@ class VorschlagUebernahme(BaseModel):
 
 @app.middleware("http")
 async def anmeldung_erfordern(request: Request, call_next):
+    from .bilder_bruecke import PATHS
+    if request.method == 'POST' and request.url.path in PATHS:
+        # These two machine routes enforce their own dedicated bearer credential.
+        return await call_next(request)
     if (request.url.path == "/whatsapp/webhook" and request.method in {"GET", "POST"}) or request.url.path in {"/health", "/auth/login"} or (
         request.url.path == FEED_PFAD and request.method in {"GET", "HEAD"}
     ):

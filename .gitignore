@@ -4,6 +4,8 @@ __pycache__/
 *.pyc
 test_*.db
 .venv/
+bridge/config.json
+bridge/.venv/
 var/feeds/
 var/jtl-test/
 var/jtl-sync/

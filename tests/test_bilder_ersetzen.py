@@ -23,6 +23,23 @@ def picture(color):
     buf=BytesIO();Image.new('RGB',(50,60),color).save(buf,'PNG');return buf.getvalue()
 
 class ReplaceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_bridge_queues_without_api_write_and_confirms_new_id_independently(self):
+        from app.bilder_bruecke import bestaetigen
+        with patch.dict(os.environ, {'BILDER_BRUECKE_AKTIV':'1','BILDER_BRUECKE_SKUS':'X'}), patch('app.bilder_bruecke.bereit'):
+            async with self.client() as c:
+                result=await uebertragen(c,A,B,0,J,self.new,'user')
+                self.assertEqual(result['status'],'sendet')
+                self.assertTrue(all(method=='GET' for method in self.calls))
+                job=auftraege()[0]
+                self.assertTrue(job['bruecke'])
+                job.update(bruecke_bestaetigt=True,bruecke_bild=21)
+                for row in self.rows:
+                    if row['SalesChannelId']!='9-7-8-0':row['ImageId']=21
+                self.actual=self.new
+                result=await bestaetigen(c,job)
+                self.assertEqual(result['status'],'wawi')
+                self.assertEqual(store.lesen()['artikel'][0]['bilder'][0]['v1_id'],21)
+
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.env=patch.dict(os.environ,{'BILDER_DIR':self.tmp.name});self.env.start()
         self.old=picture('red');self.new=picture('blue');self.actual=self.old;self.calls=[];self.timeout=False;self.change=False

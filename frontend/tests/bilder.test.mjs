@@ -210,6 +210,28 @@ test("Bilddialog sendet erst nach Bestätigung und behält bei Netzfehler diesel
   assert.match(JSON.stringify(view.toJSON()),/In Wawi bestätigt/);
 });
 
+test("Bilddialog schließt bei späterer Brückenbestätigung ohne zweiten Upload",async t=>{
+  const server=await createServer({server:{middlewareMode:true,hmr:false},appType:"custom"});
+  t.after(()=>server.close());
+  const {BildDialog}=await server.ssrLoadModule("/src/BildDialog.jsx");
+  const {api}=await server.ssrLoadModule("/src/api.js");
+  const old=api.bilderDatei, oldCreate=URL.createObjectURL, oldRevoke=URL.revokeObjectURL;
+  URL.createObjectURL=()=>"blob:test";URL.revokeObjectURL=()=>{};
+  let id, sent=0, closed=0, view;
+  api.bilderDatei=async(a,b,r,j)=>{id=j;sent++;return {id:j,status:"sendet",meldung:"Wartet"};};
+  t.after(()=>{api.bilderDatei=old;URL.createObjectURL=oldCreate;URL.revokeObjectURL=oldRevoke;});
+  const close=()=>closed++;
+  const render=jobs=>React.createElement(BildDialog,{artikel:rows[0],aktualisiert:async()=>{},schliessen:close,auftraege:jobs});
+  await act(async()=>{view=create(render([]),{createNodeMock:e=>e.type==="dialog"?{showModal(){}}:null});});
+  t.after(()=>act(()=>view.unmount()));
+  await act(async()=>view.root.findByType("input").props.onChange({target:{files:[{name:"neu.png",size:10}],value:""}}));
+  await act(async()=>view.root.findAllByType("button").find(b=>b.children.includes("Bestätigen und an Wawi übertragen")).props.onClick());
+  await act(async()=>view.update(render([{id,status:"unklar",meldung:"Prüfung"}])));
+  assert.equal(closed,0);
+  await act(async()=>view.update(render([{id,status:"wawi",meldung:"Bestätigt"}])));
+  assert.equal(closed,1);assert.equal(sent,1);
+});
+
 test("Bildliste öffnet Thumbnail und Plus; Wawi-Erfolg wird nicht als Shop-Erfolg markiert",async t=>{
   const server=await createServer({server:{middlewareMode:true,hmr:false},appType:"custom"});
   t.after(()=>server.close());

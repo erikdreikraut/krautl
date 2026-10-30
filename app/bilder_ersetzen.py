@@ -134,6 +134,7 @@ async def pruefen(c, job):
 
 
 async def ersetzen(c, article, image_key, revision, request_id, raw, user):
+    from .bilder_bruecke import aktiv, bereit, artikel_erlaubt
     from .bilder_upload import auftraege, lokal, datei_pruefen, detail_lesen, sichern, oeffentlich
     digest=hashlib.sha256(raw).hexdigest()
     previous=next((j for j in auftraege() if j['id']==request_id),None)
@@ -141,7 +142,11 @@ async def ersetzen(c, article, image_key, revision, request_id, raw, user):
         if (previous.get('artikel'),previous.get('bild_id'),previous.get('eingang_hash'))!=(article,image_key,digest):
             raise ValueError('Auftragskennung wurde bereits anders verwendet.')
         return oeffentlich(previous)
+    if aktiv():
+        bereit()
     a, data=lokal(article,revision)
+    if aktiv():
+        artikel_erlaubt(a['sku'])
     if data.get('api_ziel')!=c.url: raise ValueError('Wawi-Ziel passt nicht zum Bestand.')
     if any(j['status'] in ('sendet','unklar') for j in auftraege(article)):
         raise ValueError('Ein früherer Bildauftrag ist noch ungeklärt. Zuerst dessen Wawi-Stand prüfen.')
@@ -174,7 +179,11 @@ async def ersetzen(c, article, image_key, revision, request_id, raw, user):
          'thumb_hash':hashlib.sha256(vorschaubild(raw)).hexdigest(),'status':'sendet',
          'phase':'ersetzen','meldung':'Bestehendes Bild wird für alle bisherigen Kanäle ersetzt.'}
     await sichern_original(c,request_id,image,before)
+    if aktiv():
+        job.update(bruecke=True, meldung='Bildauftrag wartet auf den Bilddienst.')
     sichern(job,raw)
+    if job.get('bruecke'):
+        return oeffentlich(job)
     return await schreiben(c,job,raw)
 
 

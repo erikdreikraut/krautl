@@ -329,7 +329,7 @@ export function BilderView() {
     <BilderStatus daten={daten} fehler={fehler} />
     {!daten && !fehler && <p>Lade Bilderübersicht …</p>}
     {daten && !daten.letzter_erfolg && !daten.artikel.length ? <p className="py-12 text-center" style={{ color: "#6C6F5F" }}>Mit „Aktualisieren“ lädst du die Shop-Artikel und ihre Bilder erstmals aus der Wawi.</p> : daten && <BilderListe aktualisiert={laden} onBild={(artikel,bild)=>setBildAuswahl({artikel,bild})} auftraege={daten.bildauftraege||[]} gesperrt={laeuft} ungeprueft={daten.ungeprueft || []} nurBildfehler={nurBildfehler} artikel={daten.artikel} ausgeblendete={ausgeblendete} suche={suche} onArtikel={id => { setDialogFehler(""); setAuswahl(id); }} />}
-    {bildAuswahl&&<BildDialog artikel={bildAuswahl.artikel} bild={bildAuswahl.bild} schliessen={()=>setBildAuswahl(null)} aktualisiert={laden} gesperrt={laeuft||bildAuswahl.artikel.ausgeblendet||(daten?.ungeprueft||[]).some(u=>u.id===bildAuswahl.artikel.id)||(daten?.bildauftraege||[]).some(j=>j.artikel===bildAuswahl.artikel.id&&["sendet","unklar"].includes(j.status))}/>}
+    {bildAuswahl&&<BildDialog auftraege={daten?.bildauftraege||[]} artikel={bildAuswahl.artikel} bild={bildAuswahl.bild} schliessen={()=>setBildAuswahl(null)} aktualisiert={laden} gesperrt={laeuft||bildAuswahl.artikel.ausgeblendet||(daten?.ungeprueft||[]).some(u=>u.id===bildAuswahl.artikel.id)||(daten?.bildauftraege||[]).some(j=>j.artikel===bildAuswahl.artikel.id&&["sendet","unklar"].includes(j.status))}/>}
     {artikel && <ArtikelDialog artikel={artikel} speichern={speichern} schliessen={() => setAuswahl(null)} laeuft={speichert} fehler={dialogFehler} />}
   </section>;
 }

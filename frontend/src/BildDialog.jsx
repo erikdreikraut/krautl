@@ -2,12 +2,18 @@ import {useEffect,useRef,useState} from "react";
 import {X} from "lucide-react";
 import {api} from "./api.js";
 
-export function BildDialog({artikel,bild,schliessen,aktualisiert,gesperrt=false}) {
+export function BildDialog({artikel,bild,schliessen,aktualisiert,gesperrt=false,auftraege=[]}) {
   const ref=useRef(null);
   const [gross,setGross]=useState(null), [hinweis,setHinweis]=useState("");
   const [file,setFile]=useState(null), [vorschau,setVorschau]=useState(null);
   const [sendet,setSendet]=useState(false), [ergebnis,setErgebnis]=useState(null), [fehler,setFehler]=useState("");
   const auftrag=useRef(null);
+  useEffect(()=>{
+    const aktuell=auftraege.find(j=>j.id===auftrag.current);
+    if(!aktuell)return;
+    setErgebnis(aktuell);
+    if(aktuell.status==="wawi")schliessen();
+  },[auftraege,schliessen]);
   const fallback=bild?.thumb ? `/api/bilder/${encodeURIComponent(artikel.id)}/thumb/${bild.thumb}` : null;
   useEffect(()=>{ref.current?.showModal();},[]);
   useEffect(()=>{
