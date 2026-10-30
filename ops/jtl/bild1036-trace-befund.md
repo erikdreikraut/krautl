@@ -48,3 +48,50 @@ Triggerdefinitionen vollstaendig exportieren; gekuerzte SSMS-Zellen reichen
 nicht zur Implementierung. Anschliessend Transaktionsgrenzen, Hash-/Vorschau-
 Erzeugung und Wiederaufnahme nach Antwortverlust festlegen und isoliert testen.
 Der Krautl-Austausch ist durch diese Analyse noch nicht repariert.
+
+## Struktur-XML vom 30.10.2026
+
+Der bereitgestellte XML-Export ist syntaktisch vollstaendig: 40 Zuordnungen,
+5 Bildmetadatensaetze, 34 Spalten, 4 aktivierte Trigger, 5 Fremdschluessel,
+29 Indexspalten. SEO fehlt als Abschnitt; die XML-Abfrage laesst leere
+Unterergebnisse weg. Das ist mit null SEO-Zeilen vereinbar, kein Hinweis auf
+abgeschnittene Trigger. Alle vier Definitionen enden mit END CATCH.
+
+Artikel 40: Bild 2488 bleibt in drei Zuordnungen (Plattform 8, Shops 11/13/14).
+Bild 2729 bleibt im Standard auf Position 4 und im Shop 1/Plattform 2 auf
+Position 1. Bild 2731 hat elf Zuordnungen, darunter die zwei eBay-Konten
+mit unterschiedlichen Positionen 1 und 2. Ein globales Ersetzen nur anhand
+der Position 1 wuerde daher fachlich falsche Ergebnisse produzieren.
+Warum die drei alten Zuordnungen erhalten blieben, ist nicht nachgewiesen;
+der native MERGE filterte unter anderem auf aktive Shops.
+
+### Trigger und Konsequenzen fuer die Implementierung
+
+- tgr_tBild_INSUP reagiert auf cHash/cQuelle. Allein bBild zu aendern reicht
+  nicht. Bei geaendertem Hash setzt er Uploadmarkierungen an referenzierenden
+  Tabellen und schreibt Queue-Eintraege. Ein solcher globaler Eingriff koennte
+  auch andere Artikel, Kategorien oder Merkmale treffen.
+- tgr_tArtikelbildPlattform_INSUP erkennt kBild/nNr-Aenderungen und setzt nInet
+  fuer vorhandene Artikel-Shop-Zuordnungen. SCX- und POS-Tracking sind enthalten.
+- Kritische Ausnahme: spUpdateEbayBilderLaufendGeplant wird nur im UPDATE(nNr)-
+  Zweig aufgerufen, wenn Plattform/Position tatsaechlich geaendert wurden und
+  die eBay-Positionsbedingung gilt. Ein kBild-Wechsel bei gleicher Position
+  erfuellt diese Bedingung nicht; auch SET nNr=nNr hilft nicht. Daher keine
+  Zusage, ein simples Zuordnungs-UPDATE aktualisiere automatisch eBay-Angebote.
+- Fremdschluessel von SEO und FulfillmentNetwork.tProductPictureRef verweisen
+  auf die Zuordnungs-ID, mit DELETE CASCADE. Bestehende Zuordnungszeilen erhalten;
+  DELETE/INSERT wuerde weitere Daten verlieren koennen. Auch das Loeschen eines
+  Bilddatensatzes kann Zuordnungen kaskadierend entfernen.
+- tBild besitzt neben Binaerdaten und Hash auch iBlobIdentifier, nState, cUrl,
+  cMetadata und Rowversion; dbo.tBildBlobIdentifier referenziert kBild. Eine
+  handgebaute Bildanlage ohne Kenntnis dieser Semantik ist nicht freigegeben.
+
+Belastbarer Entwurf: nativen Bildimport fuer neue Bilddaten nutzen; vor jedem
+Schreiben exakte Zuordnungs-IDs, Plattform/Shop/Konto/Position und Rowversion
+sichern. Austausch auf den beauftragten Artikel und die bestaetigten alten
+Bildzuordnungen begrenzen, Zuordnungs-IDs und abhaengige Texte erhalten.
+Bildinhalt, Zuordnungen und Veroeffentlichung getrennt bestaetigen. Die bereits
+auseinandergelaufenen Anchan-Bilder nicht automatisch als eine gemeinsame alte
+Bildidentitaet interpretieren. Fuer eBay ist die separate native Aktualisierung
+noch zu klaeren; SQL-Trigger allein belegen keine vollstaendige Auslieferung.
+Noch keine produktive Schreibimplementierung und kein Live-Erfolgsnachweis.
