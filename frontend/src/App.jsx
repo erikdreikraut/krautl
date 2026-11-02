@@ -5,6 +5,7 @@ import {
   LogOut, ShieldCheck, Trash2, UserRound, Eye, ArrowLeft, Lock, StickyNote, Image,
 } from "lucide-react";
 import { api } from "./api.js";
+import { pruefhinweise } from "./pruefhinweise.js";
 import { useWhatsAppEingang, WhatsAppChatPanel, WhatsAppArchiv } from "./WhatsAppView.jsx";
 import logo from "./assets/krautl-logo.png";
 import { WissensdatenbankViewNeu } from "./WissensdatenbankView.jsx";
@@ -1527,7 +1528,7 @@ function EntwurfPanel({
     try {
       const ergebnis = await api.entwurfFreigeben(entwurf.id, text, anhaenge);
       if (ergebnis.status === "pruefung_noetig") {
-        setProbleme(ergebnis.probleme ?? ["Die Antwort benötigt noch eine Prüfung."]);
+        setProbleme(pruefhinweise(ergebnis.probleme ?? ["Die Antwort benötigt noch eine Prüfung."]));
         setNaechsterOhnePruefung(Boolean(ergebnis.naechster_versuch_ohne_pruefung));
       } else {
         setVersanderfolg({
@@ -1605,7 +1606,7 @@ function EntwurfPanel({
           <div style={{ ...fontUI, fontSize: "12.5px", fontWeight: 600, color: tokens.ink }}>
             Vor dem Versand bitte noch bearbeiten:
           </div>
-          <ul className="mt-1 pl-5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted, listStyle: "disc" }}>
+          <ul className="mt-2 pl-5 space-y-2" style={{ ...fontUI, fontSize: "12.5px", lineHeight: 1.5, color: tokens.ink, listStyle: "disc" }}>
             {probleme.map((problem, index) => <li key={index}>{problem}</li>)}
           </ul>
         </div>

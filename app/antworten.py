@@ -286,6 +286,14 @@ Für betriebliche Handlungen gilt eine verbindliche Freigabelogik:
   Ordnung“ stehen. Lege zeitlich mehrdeutige Formulierungen zugunsten der
   menschlichen Freigabe aus, statt daraus einen Widerspruch zu konstruieren.
 
+Formuliere jeden gefundenen Fehler als eigenen Eintrag in probleme.
+Die beschreibung ist ein kurzer, direkt nutzbarer Hinweis ohne interne Typcodes
+oder JSON: zum Beispiel "Tippfehler: Versandkosten statt Versankosten im zweiten
+Absatz" oder "Offene Frage: Kann der Kunde die gewuenschte Menge bestellen?".
+Nenne Fehlerstelle und konkrete Korrektur, soweit bekannt. Keine langen
+Begruendungen oder Wiederholungen der gesamten Kundenmail. Das Feld probleme
+muss eine echte Liste sein, kein als Zeichenkette kodiertes JSON.
+
 Dein Schwerpunkt liegt auf:
 - inhaltlicher Konsistenz: Widerspricht sich die Antwort selbst, oder
   widerspricht eine Produkt- oder Preisaussage eindeutig dreikraut-eigenen
