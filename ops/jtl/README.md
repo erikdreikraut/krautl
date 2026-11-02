@@ -4,6 +4,30 @@ Stand: 09.10.2026. Eigene interne Krautl-App; Werkel bleibt unverändert.
 
 ## Dauerabgleich: HTTPS, alle fünf Minuten, nur Änderungen
 
+### Diagnose 02.11.2026: Sperre 20562-10
+
+Der laufende FAQ-Dienst meldet einen unklaren Versuch fuer `20562-10` und damit
+`unhealthy`; Elestios abschliessende Gesamtpruefung meldet deshalb Deployment Failed.
+Das Ruecklesen zeigt als einzige Zielabweichung einen fehlenden leeren Wert:
+`29708817-225b-4208-9a57-5ff59a000000`, Kanal `1-1-0`, Sprache `de`.
+`scripts/freigabe_jtl_20562_10.py` ist auf genau diesen Wert und das Journal
+`versuch-a839f97822d64033b704bae9c1ec4511.json` begrenzt. Standard: Vorschau.
+Mit `--anwenden` wird nach erneutem exaktem Live-Vergleich ein Audit gespeichert
+und nur dieser offene Auftrag lokal abgeschlossen. Keine Wawi-Schreibzugriffe,
+Originaljournal erhalten, keine allgemeine Ausnahme fuer leere Attribute.
+Vorher Dienst stoppen; Skript per stdin in einmaligem Compose-Container ausfuehren:
+
+```bash
+cd /opt/app/krautl &&
+docker compose stop jtl-sync &&
+docker compose --profile jtl-sync run --rm -T --no-deps jtl-sync python - --anwenden < scripts/freigabe_jtl_20562_10.py &&
+docker compose start jtl-sync
+```
+
+Ein Neustart des bestehenden Dienstes nimmt regulaere FAQ-Schreibvorgaenge wieder
+auf. Nach dem ersten Lauf Logs und Containerstatus pruefen; keine bereits erfolgte
+Freigabe oder gesundes Deployment aus dem lokalen Test ableiten.
+
 ### Betriebsnachtrag: einmalige Freigabe 20015
 
 HTTPS mit IP-SAN `81.90.38.170`, vertrautem Zertifikat und Firewall-Regel für
