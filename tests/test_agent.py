@@ -154,6 +154,52 @@ class KlassifizierungsPromptTest(unittest.TestCase):
         self.assertEqual("SHOPAPOTHEKE_BESTELLUNG", ergebnis["klassifikation_id"])
         self.assertTrue(ergebnis["aktion_erforderlich"])
 
+    def test_shopapotheke_kundennachricht_hat_vorrang_vor_bestelldaten(self):
+        katalog = [{"klassifikation_id": k} for k in (
+            "SHOPAPOTHEKE_BESTELLUNG", "SHOPAPOTHEKE_WICHTIG")]
+        for betreff in (
+            "Sie haben eine Nachricht zur Bestellung COM-259577661-2-A erhalten",
+            "Neue Kundennachricht zu COM-259577661-2-A",
+            "New message from a customer: COM-259577661-2-A",
+        ):
+            for modellklasse in ("SHOPAPOTHEKE_BESTELLUNG", "SHOPAPOTHEKE_WICHTIG"):
+                with self.subTest(betreff=betreff, modellklasse=modellklasse):
+                    ergebnis = marktplatz_zuordnung_absichern(
+                        {"klassifikation_id": modellklasse, "aktion_erforderlich": False},
+                        {"absender_adresse": "noreply@shop-apotheke.com",
+                         "betreff": betreff,
+                         "text_auszug": "Bestellnummer COM-259577661-2-A; Lieferadresse Berlin; "
+                             "https://shop-apotheke.mirakl.net/mmp/shop/order/123 "
+                             "Bisheriger Verlauf: Neue Bestellung COM-259577661-2-A"}, katalog)
+                    self.assertEqual("SHOPAPOTHEKE_WICHTIG", ergebnis["klassifikation_id"])
+                    self.assertTrue(ergebnis["aktion_erforderlich"])
+
+    def test_shopapotheke_bestellreferenz_allein_genuegt_nicht(self):
+        ergebnis = marktplatz_zuordnung_absichern(
+            {"klassifikation_id": "SHOPAPOTHEKE_BESTELLUNG"},
+            {"absender_adresse": "noreply@shop-apotheke.com", "betreff": "Rueckfrage",
+             "text_auszug": "Bestellnummer COM-123; Lieferadresse Berlin"},
+            [{"klassifikation_id": k} for k in (
+                "SHOPAPOTHEKE_BESTELLUNG", "SHOPAPOTHEKE_WICHTIG")])
+        self.assertEqual("SHOPAPOTHEKE_WICHTIG", ergebnis["klassifikation_id"])
+
+    def test_shopapotheke_wichtig_aus_katalog_wird_nicht_ueberschrieben(self):
+        ergebnis = marktplatz_zuordnung_absichern(
+            {"klassifikation_id": "SHOPAPOTHEKE_WICHTIG"},
+            {"absender_adresse": "noreply@shop-apotheke.com",
+             "betreff": "Neue Bestellung COM-123 - dringendes Problem"},
+            [{"klassifikation_id": k} for k in (
+                "SHOPAPOTHEKE_BESTELLUNG", "SHOPAPOTHEKE_WICHTIG")])
+        self.assertEqual("SHOPAPOTHEKE_WICHTIG", ergebnis["klassifikation_id"])
+
+    def test_shopapotheke_nachricht_ohne_wichtig_kategorie_bleibt_ungeklaert(self):
+        ergebnis = marktplatz_zuordnung_absichern(
+            {"klassifikation_id": "SHOPAPOTHEKE_BESTELLUNG"},
+            {"absender_adresse": "noreply@shop-apotheke.com",
+             "betreff": "Sie haben eine Nachricht zur Bestellung COM-123 erhalten"},
+            [{"klassifikation_id": "SHOPAPOTHEKE_BESTELLUNG"}])
+        self.assertEqual("UNGEKLAERT", ergebnis["klassifikation_id"])
+
     def test_shopapotheke_meldung_kann_nicht_amazon_bleiben(self):
         mail = {
             "absender_name": "SHOP APOTHEKE",

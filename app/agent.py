@@ -68,6 +68,11 @@ dürfen niemals einer Amazon-Klassifikation zugeordnet werden.
 Konkrete neue Shop-Apotheke-Bestellungen mit einer Bestellnummer im Muster
 COM-... sowie Angaben zu Kunde, Artikeln, Mengen, Lieferadresse oder Versandfrist
 gehören in SHOPAPOTHEKE_BESTELLUNG, sofern diese ID im Katalog vorhanden ist.
+Eine Bestellnummer, Lieferadresse oder ein Bestelllink allein ist kein Nachweis
+einer neuen Bestellung. Benachrichtigungen wie "Sie haben eine Nachricht zur
+Bestellung ... erhalten", Kundenfragen und Antworten zu bestehenden Bestellungen
+gehören in SHOPAPOTHEKE_WICHTIG. Diese Abgrenzung hat auch bei mitgesendeten
+Bestelldaten Vorrang. Berücksichtige die aktuellen Kategorienbeschreibungen.
 Wichtige Richtlinien-, Compliance-, Konto-, Listing- oder Plattformmeldungen
 von Shop Apotheke/Redcare gehören in SHOPAPOTHEKE_WICHTIG, sofern diese ID im
 Katalog vorhanden ist. Bei verifizierten Absenderdomains von Shop Apotheke,
@@ -246,12 +251,33 @@ def marktplatz_zuordnung_absichern(
     ):
         return ergebnis
 
-    ist_bestellung = "com-" in text and any(marker in text for marker in (
-        "bestellnummer", "zu versendende bestellung", "lieferadresse",
-        "/mmp/shop/order/",
+    # Existing-order references are not new-order announcements.
+    inhalt = " ".join(str(mail.get(feld, "")) for feld in (
+        "betreff", "text_auszug"
+    )).casefold()
+    kundennachricht = bool(re.search(
+        r"nachricht\s+(?:zur|zu Ihrer|zu einer)\s+bestellung"
+        r"|neue\w*\s+(?:kunden)?nachricht"
+        r"|nachricht\s+(?:von|vom)\s+(?:einem?\s+|dem\s+|der\s+|ihre[nmr]?\s+)?kund"
+        r"|new\s+(?:customer\s+)?message|message\s+from\s+(?:a\s+|the\s+)?(?:customer|buyer)"
+        r"|nouveau\s+message|nouvelle\s+question",
+        inhalt, re.IGNORECASE,
     ))
+    ist_bestellung = bool(re.search(r"\bcom-[a-z0-9]+(?:-[a-z0-9]+)*\b", inhalt)) and any(
+        marker in inhalt for marker in (
+            "zu versendende bestellung", "neue bestellung", "neuen bestellung",
+            "new order", "nouvelle commande",
+        )
+    ) and not kundennachricht and aktuelle_id != "SHOPAPOTHEKE_WICHTIG"
     abgesichert = dict(ergebnis)
-    if ist_bestellung and "SHOPAPOTHEKE_BESTELLUNG" in katalog_ids:
+    if kundennachricht and (ist_vertrauenswuerdiger_absender or aktuelle_id in (
+        "SHOPAPOTHEKE_BESTELLUNG", "SHOPAPOTHEKE_WICHTIG"
+    )):
+        abgesichert["klassifikation_id"] = (
+            "SHOPAPOTHEKE_WICHTIG" if "SHOPAPOTHEKE_WICHTIG" in katalog_ids else "UNGEKLAERT"
+        )
+        abgesichert["aktion_erforderlich"] = True
+    elif ist_bestellung and "SHOPAPOTHEKE_BESTELLUNG" in katalog_ids:
         abgesichert["klassifikation_id"] = "SHOPAPOTHEKE_BESTELLUNG"
         abgesichert["aktion_erforderlich"] = True
     elif ist_vertrauenswuerdiger_absender or aktuelle_id.startswith("AMAZON_"):
