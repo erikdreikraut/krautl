@@ -149,3 +149,43 @@ verwenden, um einen unklaren Schreibauftrag erneut auszufuehren.
 Ruecknahme: Windows-Aufgabe stoppen und Brueckenaktivierung deaktivieren.
 Auftraege/Originalsicherungen und SQL-Quittungen behalten. Angefangene Auftraege
 werden nicht automatisch durch den alten API-Pfad wiederholt.
+
+
+## Vereinfachte Einrichtung ueber Administrator-Download (03.11.2026)
+
+Vom Nutzer ausdruecklich freigegeben: GET `/api/admin/bilddienst-paket` liefert
+nach normaler Krautl-Sitzungspruefung ausschliesslich Administratoren ein ZIP mit
+vorhandenem Wawi-API-Key, eigenem Brueckentoken, stabiler Worker-ID und optional
+CA-Zertifikat. Kein oeffentlicher Link mit Zugangstoken, kein Cache, keine
+Ausgabe der Zugangsdaten in Logs. Das ZIP darf nicht geteilt werden.
+
+Serverseitig muessen `BILDER_BRUECKE_TOKEN` (mindestens 32 Zeichen) und
+`BILDER_BRUECKE_WORKER_ID` (dauerhafte UUID) vorbereitet sein. Bestehende Werte
+nicht rotieren. Der Download aktiviert weder `BILDER_BRUECKE_AKTIV` noch Windows-
+Schreibzugriffe. Config: `enable_writes=false`, `allowed_skus=["1036"]`.
+
+Die SQL-Strukturpruefung und Anlage der eigenen Quittungstabelle wurden auf dem
+Wawi-Server am 03.11. durch die Nutzer-Ausgabe erfolgreich bestaetigt. Dort ist
+ODBC Driver 17 vorhanden; die lokale Verbindung verwendet Shared Memory
+`lpc:.\JTLWAWI` und integrierte Anmeldung. Sie oeffnet keinen SQL-Netzwerkzugang.
+
+Das Paket enthaelt `einrichten.py` aus `bridge/install_package.py`. Es installiert
+nur nach C:/Krautl-Bilddienst, setzt zuerst restriktive NTFS-Rechte fuer aktuellen
+Benutzer, SYSTEM und Administratoren, ueberschreibt keine vorhandene config.json
+und laesst Journale unberuehrt. Nach erfolgreicher Installation wird die eigene
+ZIP-Kopie in Downloads entfernt. Anschliessend liest `bridge.check_connection`
+SQL-Struktur, Wawi-Artikel 1036 und Krautl-Health; kein Poll, kein Dienststart,
+keine Bildaenderung. Ein erfolgreicher Test belegt noch keine Bruecken-Schreibabnahme.
+
+Bereitstellung nach Ende einer laufenden Elestio-Pipeline, nur wenn der Container
+nicht bereits den neuen Stand und die vorbereiteten Umgebungswerte enthaelt:
+
+```bash
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git pull --ff-only origin main &&
+docker compose build app &&
+docker compose up -d --no-deps --force-recreate app
+```
+
+Keine Datenbankmigration und kein Frontend-Neubau fuer diesen Endpunkt erforderlich.

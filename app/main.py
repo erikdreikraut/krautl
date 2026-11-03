@@ -65,6 +65,8 @@ from .bilder import router as bilder_router, beenden as bilder_beenden
 app.include_router(bilder_router)
 from .bilder_bruecke import router as bilder_bruecke_router
 app.include_router(bilder_bruecke_router)
+from .bilder_einrichtung import router as bilder_einrichtung_router
+app.include_router(bilder_einrichtung_router)
 app.include_router(gesendet_router)
 from .faq_import import router as faq_import_router
 app.include_router(faq_import_router)

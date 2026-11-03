@@ -9,3 +9,6 @@ var
 ops/handoffs
 frontend/node_modules
 frontend/dist
+
+bridge/config.json
+bridge/.venv
