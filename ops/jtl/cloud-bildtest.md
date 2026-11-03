@@ -176,3 +176,54 @@ Lesende Nachprüfung ohne Build:
 cd /opt/app/krautl &&
 docker compose exec -T app python - --pruefen < scripts/teste_bilder_cloud_v1.py
 ```
+
+## Cloud-v1-Dateiaustausch am 03.11.2026: HTTP 403
+
+Der Nutzer bestaetigte erneut pausierte Abgleiche. Der isolierte Test
+`scripts/teste_bilder_cloud_inhalt.py` sicherte alle vier aktuellen Bilddateien
+und die vollstaendigen v1-Zuordnungen vor dem einzigen Schreibversuch.
+Als temporaere Testdatei wurde das bereits vorhandene Produktfoto 2731 verwendet;
+Ziel war das erste Shopbild 2729. Keine neue Bildposition, kein DELETE, kein SQL.
+
+- PATCH des bestehenden Bildes 2729 mit SalesChannelId=2-2-1, ImageData und
+  temporaerem Filename: HTTP 403. Der Antworttext wurde nicht gesichert;
+  die genaue Ursache (Berechtigung, Gateway oder andere Ablehnung) ist offen.
+- Cloud-Ruecklesen: ORIGINAL. Alle vier Dateien stimmen bytegenau mit ihren
+  Sicherungen ueberein, alle 30 beruecksichtigten Bildzeilen samt Metadaten und
+  Duplikatanzahl sind unveraendert. POS 9-7-8-0 wie vereinbart ausgenommen.
+- Unabhaengiges Ruecklesen ueber die direkte Wawi-API bestaetigt denselben
+  vollstaendigen Originalstand. Keine Ruecksetzung erforderlich oder ausgefuehrt.
+- Der Versuch ist dauerhaft verbraucht; kein erneutes PATCH durch Loeschen
+  oder Umbenennen des Journals. Der alte unklare Oktober-Auftrag bleibt unveraendert.
+
+Nachweise: `/opt/app/krautl/var/bilder/cloud-v1-inhalt-1036/` mit plan.json,
+vier Dateien `*.original`, ausfuehren.intent.json, ausfuehren.result.json,
+ausfuehren.bestand.json und direkt-nachpruefung.json.
+
+25 lokale Tests bestanden, davon sechs fuer den Inhaltstest (Wiederherstellung,
+Timeout nach Wirkung, keine Wirkung trotz HTTP-Erfolg, Fremdaenderungen,
+Sicherungsintegritaet, Tenant und Planalter). Der Inhaltstest wurde direkt per
+stdin im laufenden App-Container ausgefuehrt. Kein Deployment erforderlich.
+
+Ergebnisgrenze: Cloud-v1-Reihenfolge ist schreibend abgenommen, Dateiaustausch
+weiterhin nicht. HTTP 403 allein belegt weder eine grundsaetzliche Unfaehigkeit
+der Cloud-API noch eine bestimmte fehlende Berechtigung. Die Testdatei war zudem
+bereits unter einer anderen Bild-ID vorhanden; ein Test mit einer neuen Datei
+ist damit ebenfalls nicht abgenommen. Keine automatische Rechteerweiterung.
+
+Nur lesende Nachpruefung:
+
+```bash
+cd /opt/app/krautl &&
+docker compose exec -T app python - pruefen < scripts/teste_bilder_cloud_inhalt.py
+```
+
+Der Commit enthaelt nur isolierte Testwerkzeuge und Dokumentation, keine
+Aenderung des laufenden Dienstes; kein Build und keine Migration erforderlich.
+Zum Aktualisieren der Server-Arbeitskopie nach Ende einer laufenden Pipeline:
+
+```bash
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git pull --ff-only origin main
+```
