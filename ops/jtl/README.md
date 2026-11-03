@@ -695,3 +695,18 @@ Mount `./var/inkasso-zugang:/app/var/inkasso-zugang:ro`. Fehlte dieser Mount,
 meldete der neue Filter einen fehlenden Inkasso-Zugang. Keine Neuregistrierung:
 Nach Aktualisierung der Compose-Datei den Dienst mit `--force-recreate` neu
 erstellen. Für diese reine Mount-Korrektur ist kein Image-Build erforderlich.
+
+
+### 03.11.2026: verbleibender Salbei-Artikel 20562-50
+
+Der Nutzer hat den fachlich benötigten Grundpreis in der Wawi aktiviert.
+Danach lieferte GET /v2/items/770f139d-18dd-405c-9f84-3221ad010000 wieder HTTP 200.
+Der nächste FAQ-Lauf übertrug die FAQ, blieb aber bei der Rückprüfung stehen:
+Journal `versuch-e5d12565163f484dbb94931cdd4e30a2.json`. Ausschließlich der vorher
+und im Soll leere Wert `29708817-225b-4208-9a57-5ff51a010000 / 1-1-0 / de`
+fehlte im Ist; alle anderen Signaturwerte einschließlich beider FAQ-Ziele stimmen.
+Diese konkrete Kombination ist zusätzlich erlaubt (Audit-Regelversion 2), nur
+bei exakt leerem String vorher und im Soll. Keine Ausnahme für NULL, Leerzeichen,
+befüllte Werte, andere Kanäle/Sprachen oder weitere Abweichungen. Originaljournal
+bleibt erhalten, Bestätigung erfolgt ausschließlich per Rücklesen mit Audit.
+Kein erneuter PATCH des offenen Auftrags und keine SQL-Datenänderung durch Krautl.

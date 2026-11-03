@@ -13,7 +13,7 @@ from app.jtl_client import JtlFehler
 from app.jtl_faq_test import signatur, zielattribute
 from app.jtl_onprem import OnPremClient
 from app.jtl_sync_engine import (Speicher, abgleichen, zielplan, LEERES_ALTATTRIBUT,
-    LEERER_KANALWERT, bekannte_leerwertabweichungen)
+    LEERER_KANALWERT, LEERER_KANALWERT_SALBEI, bekannte_leerwertabweichungen)
 from app.jtl_sync_service import quellen_bauen, INTERVALL
 
 
@@ -232,6 +232,39 @@ class SyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bekannte_leerwertabweichungen(vorher, soll, ist), [LEERER_KANALWERT])
         ist["values"][0]["salesChannelValues"][0]["values"] = []
         self.assertEqual(bekannte_leerwertabweichungen(vorher, soll, ist), [])
+
+    async def test_salbei_leerwert_ruecklesen_ohne_neuen_patch(self):
+        ident, kanal, sprache = LEERER_KANALWERT_SALBEI
+        self.bestand["p"]["values"].append({"attributeId": ident,
+            "salesChannelValues": [{"salesChannelId": kanal,
+                "values": [{"languageIso": sprache, "value": ""}]}]})
+        original = self.client.schreiben.side_effect
+        async def bereinigt(item, attrs):
+            await original(item, attrs)
+            for a in self.bestand[item]["values"]:
+                if a["attributeId"] == ident:
+                    a["salesChannelValues"][0]["values"] = []
+            raise JtlFehler("Antwort verloren")
+        self.client.schreiben.side_effect = bereinigt
+        await abgleichen(self.client, self.store, {"VATER": "FAQ"})
+        self.client.schreiben.side_effect = original
+        result = await abgleichen(self.client, self.store, {"VATER": "FAQ"})
+        self.assertFalse(result["fehler"])
+        self.assertEqual([c.args[0] for c in self.client.schreiben.call_args_list], ["p", "c", "d"])
+        self.assertIsNone(self.store.state["ziele"]["p"]["offen"])
+        self.assertTrue(self.store.state["ziele"]["p"]["leerwert_nachweis"])
+
+    def test_salbei_keine_ausnahme_fuer_inhalte_oder_andere_kanaele(self):
+        ident, _, _ = LEERER_KANALWERT_SALBEI
+        for kanal, sprache, value in [("1-1-0", "de", "Inhalt"),
+                ("1-1-0", "de", None), ("1-1-0", "de", " "),
+                ("2-2-1", "de", ""), ("1-1-0", "en", "")]:
+            vorher = {"values": [{"attributeId": ident, "salesChannelValues": [
+                {"salesChannelId": kanal, "values": [{"languageIso": sprache, "value": value}]}]}]}
+            soll = zielattribute(vorher, "FAQ")
+            ist = copy.deepcopy(soll)
+            ist["values"][0]["salesChannelValues"][0]["values"] = []
+            self.assertEqual(bekannte_leerwertabweichungen(vorher, soll, ist), [])
 
     async def test_fehlende_sku_stoppt_vor_schreiben(self):
         with self.assertRaises(JtlFehler):

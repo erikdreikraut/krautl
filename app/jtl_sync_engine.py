@@ -72,10 +72,11 @@ def zielplan(quellen, katalog):
     return result
 
 
-# Only the two concrete empty-value shapes observed in this installation.
+# Only concrete empty-value shapes observed in this installation.
 # Never normalize all empty attributes, FAQ values, whitespace or null values.
 LEERES_ALTATTRIBUT = "29708817-225b-4208-9a57-5ff5f0000000"
 LEERER_KANALWERT = ("29708817-225b-4208-9a57-5ff59a000000", "1-1-0", "de")
+LEERER_KANALWERT_SALBEI = ("29708817-225b-4208-9a57-5ff51a010000", "1-1-0", "de")
 
 
 def bekannte_leerwertabweichungen(vorher, erwartet, aktuell):
@@ -86,10 +87,10 @@ def bekannte_leerwertabweichungen(vorher, erwartet, aktuell):
             for stand in (alt, soll))
             and not any(k[0] == LEERES_ALTATTRIBUT for k in ist)):
         erlaubt.update(leer)
-    if (LEERER_KANALWERT in alt and alt[LEERER_KANALWERT] == ""
-            and LEERER_KANALWERT in soll and soll[LEERER_KANALWERT] == ""
-            and LEERER_KANALWERT not in ist):
-        erlaubt.add(LEERER_KANALWERT)
+    for key in (LEERER_KANALWERT, LEERER_KANALWERT_SALBEI):
+        if (key in alt and alt[key] == "" and key in soll and soll[key] == ""
+                and key not in ist):
+            erlaubt.add(key)
     abweichungen = {k for k in set(soll) | set(ist)
                    if k not in soll or k not in ist or soll[k] != ist[k]}
     if not abweichungen or not abweichungen <= erlaubt:
@@ -110,7 +111,7 @@ def ruecklesestand_bestaetigen(speicher, ident, ziel, journal, ist):
         raise JtlFehler("Unklarer Schreibversuch; Journal manuell prüfen, keine Wiederholung.")
     # Durable audit precedes clearing the pending flag. No API write or replay.
     ziel["leerwert_nachweis"] = speicher.sichern({
-        "art": "bekannte_leerwertabweichung", "regelversion": 1,
+        "art": "bekannte_leerwertabweichung", "regelversion": 2,
         "ursprungsjournal": ziel["offen"], "id": ident, "sku": ziel["sku"],
         "revision": revision, "abweichungen": abweichungen, "lesestand": ist,
     })
