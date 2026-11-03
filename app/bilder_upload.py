@@ -344,11 +344,14 @@ def positionsstand(bilder):
 
 async def umordnen(c, artikel, revision, anfrage_id, reihenfolge, vorher, nutzer):
     previous = next((j for j in auftraege() if j["id"] == anfrage_id), None)
+    if previous and previous.get("art") == "reihenfolge":
+        # Historical requests keep their journal identity; never reroute/replay.
+        return await umordnen_v2(c, artikel, revision, anfrage_id, reihenfolge, vorher, nutzer)
     a = next((a for a in store.lesen()["artikel"] if a["id"] == artikel), {})
-    if (previous and previous.get("art") == "reihenfolge_v1") or a.get("bild_api") == "v1" or any(b.get("v1_id") for b in a.get("bilder", [])):
-        from .bilder_ersetzen import reihenfolge as v1_reihenfolge
-        return await v1_reihenfolge(c, artikel, revision, anfrage_id, reihenfolge, vorher, nutzer)
-    return await umordnen_v2(c, artikel, revision, anfrage_id, reihenfolge, vorher, nutzer)
+    from .bilder_ersetzen import reihenfolge as v1_reihenfolge, sortierung_v1_vorbereiten
+    if not previous and not all(b.get("v1_id") for b in a.get("bilder", [])):
+        await sortierung_v1_vorbereiten(c, artikel, revision, reihenfolge, vorher)
+    return await v1_reihenfolge(c, artikel, revision, anfrage_id, reihenfolge, vorher, nutzer)
 
 
 async def umordnen_v2(c, artikel, revision, anfrage_id, reihenfolge, vorher, nutzer):

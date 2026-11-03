@@ -207,6 +207,45 @@ async def schreiben(c,job,raw):
         job.update(status='unklar',meldung='Austausch noch nicht bestätigt. Nur Wawi-Stand prüfen; nicht erneut senden.')
         sichern(job);return oeffentlich(job)
 
+async def sortierung_v1_vorbereiten(c, article, revision, order, before):
+    """Resolve legacy display IDs through matching live positions AND image pixels."""
+    from .bilder_upload import lokal, auftraege, positionsstand, detail_lesen, bildblock, fingerprint, shop
+    a, data = lokal(article, revision)
+    if data.get('api_ziel') != c.url:
+        raise ValueError('Wawi-Ziel passt nicht zum Bestand.')
+    if any(j['status'] in ('sendet', 'unklar') for j in auftraege(article)):
+        raise ValueError('Ein Bildauftrag ist noch ungeklärt. Zuerst dessen Wawi-Stand prüfen.')
+    ids = [b['id'] for b in a['bilder']]
+    if not ids or len(set(order)) != len(order) or set(order) != set(ids) or positionsstand(before) != positionsstand(a['bilder']):
+        raise ValueError('Bildbestand wurde verändert.')
+    detail = await detail_lesen(c, article, a['sku'])
+    block = bildblock(detail)
+    if positionsstand(before) != sorted((b['blobIdentifier'], b['sortNumber'], b['isMainImage']) for b in shop(block)):
+        raise ValueError('Wawi-Reihenfolge wurde verändert.')
+    rows = await liste(c, article)
+    initial = zuordnungen(rows)
+    pairs = [(r['SortNumber'], r['ImageId']) for r in rows if r['SalesChannelId'] == SHOP]
+    if len(pairs) != len(ids) or len({p for p, _ in pairs}) != len(ids) or len({i for _, i in pairs}) != len(ids):
+        raise ValueError('v1-Shopbilder sind nicht eindeutig.')
+    mapping = dict(pairs)
+    result = copy.deepcopy(a)
+    for b in result['bilder']:
+        image_id = mapping.get(b['position'])
+        if image_id is None:
+            raise ValueError('v1-Shopposition fehlt.')
+        source = next(v for g in detail['images']['saleschannelImages'] if g['saleschannelId'] == SHOP
+                      for v in g['images'] if v['blobIdentifier'] == b['id'])
+        if not pixelgleich(await bild(c, image_id), await bild_laden(c, b['id'], source)):
+            raise ValueError('v1- und v2-Bildinhalt stimmen nicht überein. Bitte Bilder aktualisieren.')
+        b['v1_id'] = image_id
+    if zuordnungen(await liste(c, article)) != initial or fingerprint(bildblock(await detail_lesen(c, article, a['sku']))) != fingerprint(block):
+        raise ValueError('Bildbestand während der Vorbereitung verändert.')
+    if not store.freigegeben(article, revision):
+        raise ValueError('Artikelrevision verändert.')
+    result['bild_api'] = 'v1'
+    store.zwischenstand(result, revision, c.url, abgleich=False)
+
+
 async def reihenfolge(c, article, revision, request_id, order, before, user):
     from .bilder_upload import auftraege, lokal, sichern, oeffentlich, positionsstand, detail_lesen
     digest=hashlib.sha256(json.dumps([article,revision,order,before],sort_keys=True).encode()).hexdigest()

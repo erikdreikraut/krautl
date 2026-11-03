@@ -133,7 +133,7 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
         return [{"id":b["id"],"position":b["position"],"hauptbild":b["hauptbild"]} for b in a["bilder"]]
 
     async def test_reorder_sets_first_main_preserves_channels_without_loading_images(self):
-        from app.bilder_upload import umordnen
+        from app.bilder_upload import umordnen_v2 as umordnen
         before=self.order_fixture()
         async with self.client() as c:
             result=await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
@@ -146,7 +146,7 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(any(m=="POST" or "image-data" in p for m,p in self.calls))
 
     async def test_reorder_lost_response_is_reconciled_without_second_write(self):
-        from app.bilder_upload import umordnen
+        from app.bilder_upload import umordnen_v2 as umordnen
         before=self.order_fixture();self.timeout=True
         async with self.client() as c:
             result=await umordnen(c,A,0,JOB,[NEW,OLD],before,"micha")
@@ -155,7 +155,7 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sum(m=="PATCH" for m,p in self.calls),1)
 
     async def test_reorder_rejects_missing_duplicate_foreign_and_stale_images(self):
-        from app.bilder_upload import umordnen
+        from app.bilder_upload import umordnen_v2 as umordnen
         before=self.order_fixture()
         async with self.client() as c:
             for ids in ([OLD],[NEW,NEW],[OLD,JOB]):
@@ -168,7 +168,7 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
 
 
     async def test_single_change_preserves_global_sync_status(self):
-        from app.bilder_upload import umordnen
+        from app.bilder_upload import umordnen_v2 as umordnen
         before=self.order_fixture()
         store.status_setzen(status="ok",teilstand=False,letzter_erfolg="2026-10-26T09:00:00Z",fehler=None)
         original={k:store.lesen().get(k) for k in ("status","teilstand","letzter_erfolg","fehler")}
@@ -192,7 +192,7 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_reorder_preserves_repeated_non_shop_groups_exactly(self):
         import copy
-        from app.bilder_upload import umordnen
+        from app.bilder_upload import umordnen_v2 as umordnen
         before=self.order_fixture()
         block=self.detail["images"]
         block["saleschannelImages"].extend([
@@ -214,7 +214,7 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_reorder_duplicate_shop_blocks_before_any_write(self):
         import copy
-        from app.bilder_upload import umordnen
+        from app.bilder_upload import umordnen_v2 as umordnen
         before=self.order_fixture()
         self.detail["images"]["saleschannelImages"].append(
             copy.deepcopy(self.detail["images"]["saleschannelImages"][0]))
@@ -226,7 +226,7 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
 
 
     async def test_rejected_order_keeps_private_validation_details_without_replay(self):
-        from app.bilder_upload import umordnen, oeffentlich
+        from app.bilder_upload import umordnen_v2 as umordnen, oeffentlich
         before=self.order_fixture()
         def reject(req):
             if req.method == "PATCH":
@@ -251,7 +251,7 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_reorder_coalesces_identical_wawi_channel_duplicates_on_wire(self):
         import copy
-        from app.bilder_upload import umordnen, fingerprint
+        from app.bilder_upload import umordnen_v2 as umordnen, fingerprint
         before=self.order_fixture()
         group={"saleschannelId":"1-1-0","images":[img(OLD),img(NEW,2,False)]}
         duplicate=copy.deepcopy(group)
@@ -282,7 +282,7 @@ class BildUploadTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_reorder_omits_irrelevant_pos_and_confirms_shop_with_or_without_pos_readback(self):
         import copy
-        from app.bilder_upload import umordnen
+        from app.bilder_upload import umordnen_v2 as umordnen
         before=self.order_fixture()
         pos={"saleschannelId":"9-7-8-0","images":[img(OLD)]}
         self.detail["images"]["saleschannelImages"].append(copy.deepcopy(pos))

@@ -264,3 +264,23 @@ ist durch diesen Lauf nicht getestet. Dauerbetrieb bleibt ausgeschaltet.
 Noch offen: alten Krautl-Auftrag und veraltete Vorschau nachvollziehbar klaeren,
 Auftragszustellung/Ergebnisrueckmeldung ueber Krautl abnehmen und die tatsaechliche
 Shop-Veroeffentlichung separat kontrollieren. Abgleiche waren beim Test pausiert.
+
+### Krautl-Sortierung nach v1 umgestellt (03.11.2026)
+
+Artikel 30501-002 hatte noch einen v2-Snapshot. Sein neuer v2-Sortierauftrag
+56fba0bc-d35b-4648-8df5-8c2d14ece198 wurde von Wawi angenommen, blieb jedoch ohne
+Wirkung. Nach Ruecklesung des unveraenderten Ausgangsstands wurde der bereits
+bestaetigte Nebenbildertausch einmalig mit dem vorhandenen journalgesicherten
+v1-Reparaturskript vollendet: Shop 2453/2454/2455 auf Position 1/2/3, HTTP 201,
+unabhaengiger Vergleich aller anderen v1-Kanalzeilen unveraendert. Auftrag ist
+nun Wawi-bestaetigt; keine Behauptung einer Shop-Veroeffentlichung. Audit:
+`var/bilder/reihenfolge-30501-002-20261103/vorher.json` und `nachher.json`.
+
+Neue Sortierauftraege laufen immer ueber v1. Alte lokale Bildkennungen werden
+vorher anhand unveraenderter v2-Positionen und pixelgleicher v1-/v2-Vorschauen
+zugeordnet; unbekannte oder geaenderte Inhalte stoppen ohne Schreibversuch.
+Offene Auftraege bleiben gesperrt; vorhandene v2-Auftragskennungen werden nicht
+umgeleitet oder erneut gesendet. Die bisherigen v2-Tests pruefen weiterhin
+explizit die historische Funktion, neue Tests den Umstieg. Bereitstellung wie
+oben: App bauen/recreate, keine Migration und kein Frontend-Build; zuerst die
+Elestio-Pipeline pruefen. Der Windows-Bilddienst ist fuer Sortieren nicht noetig.

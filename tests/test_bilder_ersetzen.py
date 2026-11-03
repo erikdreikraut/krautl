@@ -186,3 +186,41 @@ class V1FollowupTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result['status'],'wawi',result)
         self.assertEqual([b['v1_id'] for b in store.lesen()['artikel'][0]['bilder']],[21,20])
         self.assertEqual([(r['SalesChannelId'],r['SortNumber']) for r in self.rows if r['SalesChannelId']!='2-2-1'],[('amazon',3),('9-7-8-0',2)])
+
+
+class LegacyOrderMigrationTest(unittest.IsolatedAsyncioTestCase):
+    setUp = ReplaceTest.setUp
+    tearDown = ReplaceTest.tearDown
+    client = ReplaceTest.client
+    response = ReplaceTest.response
+
+    async def test_legacy_sort_routes_to_v1_after_pixel_validation(self):
+        from app.bilder_upload import umordnen
+        before = [{'id':B,'position':1,'hauptbild':True}]
+        with patch('app.bilder_ersetzen.bild_laden', return_value=vorschaubild(self.old)):
+            async with self.client() as c:
+                result = await umordnen(c,A,0,J,[B],before,'erik')
+                self.assertEqual(result['status'],'wawi')
+                self.assertEqual(auftraege()[0]['art'],'reihenfolge_v1')
+                again = await umordnen(c,A,0,J,[B],before,'erik')
+                self.assertEqual(again['status'],'wawi')
+        self.assertNotIn('PATCH',self.calls)
+        self.assertEqual(store.lesen()['artikel'][0]['bild_api'],'v1')
+
+    async def test_pixel_mismatch_never_publishes_mapping_or_writes(self):
+        from app.bilder_upload import umordnen
+        with patch('app.bilder_ersetzen.bild_laden', return_value=vorschaubild(self.new)):
+            async with self.client() as c:
+                with self.assertRaisesRegex(ValueError,'Bildinhalt'):
+                    await umordnen(c,A,0,J,[B],[{'id':B,'position':1,'hauptbild':True}],'erik')
+        self.assertNotIn('PATCH',self.calls)
+        self.assertEqual(auftraege(),[])
+        self.assertNotIn('v1_id',store.lesen()['artikel'][0]['bilder'][0])
+
+    async def test_uncertain_old_job_blocks_new_request_before_api_write(self):
+        from app.bilder_upload import umordnen, sichern
+        sichern({'id':J,'artikel':A,'status':'unklar'},b'')
+        async with self.client() as c:
+            with self.assertRaisesRegex(ValueError,'ungeklärt'):
+                await umordnen(c,A,0,'new',[B],[{'id':B,'position':1,'hauptbild':True}],'erik')
+        self.assertEqual(self.calls,[])
