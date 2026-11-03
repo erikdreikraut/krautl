@@ -84,7 +84,6 @@ function Thumbnail({ artikel, bild, position, onBild, auftrag, ungeprueft }) {
       style={{ ...box, objectFit: "contain", width: "120px", height: "90px", background: "white" }} />}
     <span title={status[1]} aria-label={status[1]} style={{position:"absolute",right:3,bottom:3,borderRadius:3,width:14,height:14,display:"flex",alignItems:"center",justifyContent:"center",background:status[2],color:"white",fontWeight:700,fontSize:10,lineHeight:1}}>{status[0]}</span>
     </button>
-    <figcaption className="mt-1 truncate" title={bild.dateiname} style={{ fontSize: "10px", color: "#6C6F5F" }}>{bild.position ?? position + 1}{bild.hauptbild ? " · Hauptbild" : ""}</figcaption>
     {bild.quelle === "ameise" && <p style={{ fontSize: "10px", color: "#6C6F5F" }}>Exportvorschau</p>}
     {bild.fehler && <details className="mt-1" style={{ fontSize: "11px", color: "#9A4332", overflowWrap: "anywhere" }}><summary style={{ cursor: "pointer" }}>Fehlerdetails</summary>{bild.fehler}</details>}
   </figure>;
@@ -112,7 +111,7 @@ export function BildReihe({a, onBild, auftraege=[], gesperrt=false, ungeprueft=f
     setSendet(true);setInfo("Reihenfolge wird übertragen …");
     try {
       const r=await api.bilderReihenfolge(a.id,{anfrage_id:auftrag.current,revision:entwurf.revision,reihenfolge:entwurf.ids,vorher:entwurf.vorher});
-      setInfo(r.meldung);
+      setInfo(r.status === "wawi" ? "" : r.meldung);
       if(["wawi","abgelehnt"].includes(r.status)){setEntwurf(null);auftrag.current=null;}
     } catch(e) {setInfo(e.message);}
     finally {setSendet(false);await aktualisiert();}
