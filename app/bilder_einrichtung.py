@@ -14,6 +14,16 @@ router = APIRouter()
 ROOT = Path(__file__).resolve().parent.parent
 
 
+@router.get('/admin/bilddienst-test')
+def test_download(request: Request):
+    user = getattr(request.state, 'benutzer', None)
+    if not user or not ist_admin(user):
+        raise HTTPException(403, 'Nur fuer Administratoren')
+    return Response((ROOT/'bridge/acceptance.py').read_bytes(), media_type='text/plain', headers={
+        'Content-Disposition': 'attachment; filename="Krautl-Bildtest.py"',
+        'Cache-Control': 'no-store, private', 'X-Content-Type-Options': 'nosniff'})
+
+
 def paket():
     token = os.getenv('BILDER_BRUECKE_TOKEN', '')
     key = os.getenv('JTL_LOCAL_API_KEY', '')

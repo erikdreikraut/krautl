@@ -189,3 +189,48 @@ docker compose up -d --no-deps --force-recreate app
 ```
 
 Keine Datenbankmigration und kein Frontend-Neubau fuer diesen Endpunkt erforderlich.
+
+## Isolierte Schreibabnahme fuer Artikel 1036
+
+Einrichtung einschliesslich Wawi-Lesen und Krautl-Erreichbarkeit wurde vom Nutzer
+am 03.11.2026 erfolgreich bestaetigt. Dauerbetrieb und Schreibfreigabe bleiben aus.
+Der alte offene Krautl-Auftrag fuer Bild 2488 wird nicht erneut ausgefuehrt;
+die lokale Vorschau ist ebenfalls noch veraltet. Beides vor der spaeteren
+Freigabe der Bedienoberflaeche separat abgleichen und nachvollziehbar klaeren.
+
+GET `/api/admin/bilddienst-test` liefert nur angemeldeten Administratoren
+`Krautl-Bildtest.py` (Quelle `bridge/acceptance.py`), ohne Zugangsdaten. Auf dem
+Wawi-Server nach Downloads speichern und in PowerShell ausfuehren:
+
+```powershell
+Set-Location C:\Krautl-Bilddienst
+& .\.venv\Scripts\python.exe "$env:USERPROFILE\Downloads\Krautl-Bildtest.py" --ausfuehren
+```
+
+Nur bei weiterhin pausierten Abgleichen und unberuehrtem Artikel 1036 ausfuehren.
+Das Skript verwendet die vorhandene Konfiguration, verlangt `enable_writes=false`
+und `allowed_skus=["1036"]`, startet keinen Dienst und pollt keine Auftraege.
+Es sperrt parallel laufende Worker ueber deren regulaere Dateisperre. Artikel,
+Shoppositionen und alle vier Originaldateien werden gegen den zuvor unabhaengig
+gelesenen Stand geprueft. Originaldateien, SQL-Zuordnungen, SEO und API-Zuordnungen
+werden im geschuetzten Installationsordner in `bildtest-1036.sqlite3` gesichert.
+
+Ein verkleinertes vorhandenes Produktfoto mit einmaliger kleiner Farbmarkierung
+ist nur die technische Testdatei. Der Austausch verwendet `run_job` aus dem
+installierten Bilddienst. Nach bestaetigtem Austausch setzt eine gesondert
+protokollierte SQL-Transaktion dieselben Zuordnungs-IDs auf die Original-Bild-ID
+zurueck; sie laedt das Original nicht nochmals hoch. Originaldateien werden
+nicht geloescht. Der neue Test-Bilddatensatz bleibt danach ohne Artikelzuordnung
+erhalten. API-Aliase werden im unabhaengigen Vergleich mit ihrer Anzahl geprueft.
+
+Bei unklarem Ausgang oder Abweichung stoppen; keine blinde Wiederholung,
+Abgleiche pausiert lassen. Ein vorhandenes Journal verhindert einen neuen Lauf.
+Bei erneutem Aufruf wird hoechstens der Originalbestand lesend geprueft;
+angefangene Schreibschritte werden nicht automatisch wiederholt oder fortgesetzt.
+Eine Fehlermeldung nach dem Import kann daher eine zusaetzliche Testzuordnung
+zur manuellen Diagnose hinterlassen. Journal und SQL-Quittungen aufbewahren.
+
+Die Live-Schreibabnahme steht noch aus. Ein Erfolg prueft die lokale Import-/
+Austausch-/Ruecknahmelogik; weder Krautl-Auftragszustellung noch Shop-Veroeffentlichung
+sind damit abgenommen. Bereitstellung des Download-Endpunkts: dieselben oben
+angegebenen App-Build-/Recreate-Befehle, keine Migration und kein Frontend-Build.

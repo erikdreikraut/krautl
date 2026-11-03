@@ -56,6 +56,17 @@ class SetupTest(unittest.TestCase):
             self.assertIn('bridge/check_connection.py',z.namelist())
         self.assertNotIn('test-api-key',str(r.headers))
 
+    def test_test_download_is_admin_only_and_has_no_configuration(self):
+        for user in [None,'gursewak','micha','erik']:
+            self.client.cookies.clear()
+            if user:self.client.cookies.set(COOKIE_NAME,sitzung_erstellen(user))
+            r=self.client.get('/admin/bilddienst-test')
+            self.assertEqual(r.status_code,200 if user=='erik' else 403)
+            self.assertNotIn('test-api-key',r.text)
+            self.assertNotIn('test-bridge-token-',r.text)
+        self.assertIn('no-store',r.headers['cache-control'])
+        self.assertIn('Krautl-Bildtest.py',r.headers['content-disposition'])
+
     def test_missing_settings_and_invalid_tls_fail_without_secret_output(self):
         self.client.cookies.set(COOKIE_NAME,sitzung_erstellen('erik'))
         for settings in [{'BILDER_BRUECKE_TOKEN':''},{'JTL_LOCAL_URL':'http://wawi.test/api/eazybusiness'},
