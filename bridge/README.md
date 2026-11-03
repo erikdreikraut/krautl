@@ -305,3 +305,31 @@ docker compose up -d --no-deps --force-recreate app frontend
 ```
 
 Keine Migration erforderlich.
+
+
+### Bildanlage: v1-Bestaetigung (03.11.2026)
+
+Neue Uploads verwenden jetzt auch bei alten oder leeren Krautl-Bestaenden die
+v1-Pruefung. Vorher wird der alte Bestand lesend ueber Positionen und Bildinhalt
+zugeordnet. Ein v2-Artikel kann nach einem erfolgreichen nativen Import Bilder
+ohne blobIdentifier liefern; dies darf die v1-Bestaetigung nicht verhindern.
+Globale Wiederverwendung derselben Datei bei verschiedenen Artikeln ist erlaubt;
+Inhalt, Position und unveraenderte bestehende Zuordnungen werden weiterhin geprueft.
+
+Die Auftraege fuer 1082-500 und 1082-100 wurden mit
+`scripts/bestaetige_ausleitung_uploads.py` ausschliesslich rueckgelesen und lokal
+bestaetigt: Bild 2734 an Shop-Position 1 bzw. 2, Inhalt stimmt mit dem Upload
+ueberein. Kein weiterer Wawi-Schreibzugriff. Alte Auftragsdaten bleiben im Journal
+und unter `var/bilder/ausleitung-upload-bestaetigung/` erhalten.
+
+Backend-Deployment, nur wenn Elestio nicht bereits ausrollt:
+
+```sh
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git pull --ff-only origin main &&
+docker compose build app &&
+docker compose up -d --no-deps --force-recreate app
+```
+
+Keine Migration und kein Start des Windows-Bilddienstes erforderlich.

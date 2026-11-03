@@ -22,7 +22,7 @@ def zuordnungen(rows):
             raise ValueError('v1-Bildkanal fehlt.')
         items.add(r['ItemId'])
         result.add((r['ItemId'],r['ImageId'],r['SalesChannelId'],r.get('EbayUserName') or '',r['SortNumber']))
-    if len(items) != 1: raise ValueError('v1-Bildliste gehört nicht eindeutig zu einem Artikel.')
+    if rows and len(items) != 1: raise ValueError('v1-Bildliste gehört nicht eindeutig zu einem Artikel.')
     return [list(v) for v in sorted(result)]
 
 
@@ -216,7 +216,7 @@ async def sortierung_v1_vorbereiten(c, article, revision, order, before):
     if any(j['status'] in ('sendet', 'unklar') for j in auftraege(article)):
         raise ValueError('Ein Bildauftrag ist noch ungeklärt. Zuerst dessen Wawi-Stand prüfen.')
     ids = [b['id'] for b in a['bilder']]
-    if not ids or len(set(order)) != len(order) or set(order) != set(ids) or positionsstand(before) != positionsstand(a['bilder']):
+    if len(set(order)) != len(order) or set(order) != set(ids) or positionsstand(before) != positionsstand(a['bilder']):
         raise ValueError('Bildbestand wurde verändert.')
     detail = await detail_lesen(c, article, a['sku'])
     block = bildblock(detail)

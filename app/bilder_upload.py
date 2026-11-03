@@ -197,11 +197,16 @@ async def uebertragen(c, artikel, bild_id, revision, anfrage_id, raw, nutzer):
         from .bilder_ersetzen import ersetzen
         return await ersetzen(c, artikel, bild_id, revision, anfrage_id, raw, nutzer)
     previous = next((j for j in auftraege() if j["id"] == anfrage_id), None)
-    a = next((a for a in store.lesen()["artikel"] if a["id"] == artikel), {})
-    if (previous and previous.get("art") == "hinzufuegen_v1") or a.get("bild_api") == "v1" or any(b.get("v1_id") for b in a.get("bilder", [])):
-        from .bilder_ersetzen import hinzufuegen
+    if previous and previous.get("art") != "hinzufuegen_v1":
+        return await upload_neuanlage(c, artikel, bild_id, revision, anfrage_id, raw, nutzer)
+    from .bilder_ersetzen import hinzufuegen, sortierung_v1_vorbereiten
+    if previous:
         return await hinzufuegen(c, artikel, revision, anfrage_id, raw, nutzer)
-    return await upload_neuanlage(c, artikel, bild_id, revision, anfrage_id, raw, nutzer)
+    a, _ = lokal(artikel, revision)
+    if a.get("bild_api") != "v1":
+        await sortierung_v1_vorbereiten(c, artikel, revision,
+            [b["id"] for b in a["bilder"]], a["bilder"])
+    return await hinzufuegen(c, artikel, revision, anfrage_id, raw, nutzer)
 
 
 async def upload_neuanlage(c, artikel, bild_id, revision, anfrage_id, raw, nutzer):
