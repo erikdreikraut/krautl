@@ -230,7 +230,7 @@ angefangene Schreibschritte werden nicht automatisch wiederholt oder fortgesetzt
 Eine Fehlermeldung nach dem Import kann daher eine zusaetzliche Testzuordnung
 zur manuellen Diagnose hinterlassen. Journal und SQL-Quittungen aufbewahren.
 
-Die Live-Schreibabnahme steht noch aus. Ein Erfolg prueft die lokale Import-/
+Ein Erfolg dieser Abnahme prueft die lokale Import-/
 Austausch-/Ruecknahmelogik; weder Krautl-Auftragszustellung noch Shop-Veroeffentlichung
 sind damit abgenommen. Bereitstellung des Download-Endpunkts: dieselben oben
 angegebenen App-Build-/Recreate-Befehle, keine Migration und kein Frontend-Build.
@@ -244,3 +244,23 @@ Originaldateien bytegenau verglichen, einschliesslich des API-unsichtbaren Bilds
 Andere unerwartete SQL-Bilder oder Zusatzzuordnungen bleiben Abbruchgruende.
 Die alte Vorpruefung erreichte weder Auftragsjournal-Eintrag noch Upload; fuer
 den korrigierten Lauf ist keine Journal-Loeschung erforderlich oder erlaubt.
+
+### Erfolgreicher Live-Test am 03.11.2026
+
+Die Windows-Ausgabe bestaetigt Austausch und Ruecknahme von Shopbild 2729 fuer
+Artikel 1036. Der native Import erzeugte Testbild 2733. Zuordnungs-IDs, Kanaele,
+Positionen, SEO und alle gesicherten Originaldateien wurden vom Test geprueft;
+2488 mit seinen SQL-only-Zuordnungen blieb erhalten. Testbild 2733 bleibt ohne
+Artikelzuordnung gespeichert. Keine Originale oder Journale wurden geloescht.
+
+Anschliessend unabhaengig vom Krautl-Server lesend bestaetigt: alle vier
+API-sichtbaren Originaldateien 2048/2365/2729/2731 haben die urspruenglichen
+SHA-256-Pruefsummen, alle API-Zuordnungen entsprechen vollstaendig dem gesicherten
+Ausgangsstand, Testbild 2733 ist Artikel 1036 nicht mehr zugeordnet.
+
+Damit ist der lokale Import-/Austausch-/Ruecknahmeweg fuer dieses Bild bestaetigt.
+Das Zielbild hatte keine eBay-Zuordnung; die Wirkung eines Austauschs auf eBay
+ist durch diesen Lauf nicht getestet. Dauerbetrieb bleibt ausgeschaltet.
+Noch offen: alten Krautl-Auftrag und veraltete Vorschau nachvollziehbar klaeren,
+Auftragszustellung/Ergebnisrueckmeldung ueber Krautl abnehmen und die tatsaechliche
+Shop-Veroeffentlichung separat kontrollieren. Abgleiche waren beim Test pausiert.
