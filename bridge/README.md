@@ -284,3 +284,24 @@ umgeleitet oder erneut gesendet. Die bisherigen v2-Tests pruefen weiterhin
 explizit die historische Funktion, neue Tests den Umstieg. Bereitstellung wie
 oben: App bauen/recreate, keine Migration und kein Frontend-Build; zuerst die
 Elestio-Pipeline pruefen. Der Windows-Bilddienst ist fuer Sortieren nicht noetig.
+
+### Vereinfachter Bildstatus (03.11.2026)
+
+Auf Nutzerwunsch bedeutet der gruene Haken nur noch bestaetigter Wawi-Stand des
+JTL-Shop-Bildkanals. Das blaue W entfaellt. Offene Aenderungen, ungepruefte
+Artikel und fehlende Vorschauen erhalten weiterhin eigene Warnzeichen.
+Die automatische oeffentliche Shop-Bildpruefung wird nicht mehr gestartet;
+die Bilder-API liefert keinen zusaetzlichen Shop-Pruefstatus. Historische
+Protokolle bleiben erhalten. Dies ersetzt die vorherige getrennte Shop-Abnahme.
+
+Falls Elestio den Stand noch nicht ausgerollt hat, nach Pipeline-Pruefung:
+
+```bash
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git pull --ff-only origin main &&
+docker compose build app frontend &&
+docker compose up -d --no-deps --force-recreate app frontend
+```
+
+Keine Migration erforderlich.

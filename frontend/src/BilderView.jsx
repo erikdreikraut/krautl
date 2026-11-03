@@ -70,12 +70,10 @@ function Thumbnail({ artikel, bild, position, onBild, auftrag, ungeprueft }) {
   const [fehler, setFehler] = useState(false);
   useEffect(() => setFehler(false), [bild.thumb]);
   const meldung = fehler ? "Vorschau nicht verfügbar" : !bild.thumb ? (bild.fehler || "Vorschau nicht verfügbar") : "";
-  const shop = artikel.shop_pruefung;
   const status = auftrag && auftrag.status !== "wawi"
     ? [auftrag.status === "abgelehnt" ? "!" : "…", auftrag.meldung, "#986c14"]
     : ungeprueft || fehler || !bild.thumb ? ["?", "Bildstand nicht vollständig geprüft", "#986c14"]
-    : shop?.status === "bestaetigt" ? ["✓", `Im Shop bestätigt · ${shop.geprueft_am ? new Date(shop.geprueft_am).toLocaleString("de-DE") : ""}`, "#2C7A25"]
-    : ["W", `Wawi-Stand · ${shop?.meldung || "Shop-Veröffentlichung noch nicht geprüft"}`, "#286480"];
+    : ["✓", "Wawi-Stand bestätigt", "#2C7A25"];
   return <figure className="shrink-0" style={{ width: "120px" }}>
     <button type="button" aria-label={`Bild ${bild.position ?? position+1} von ${artikel.sku} vergrößern`} onClick={()=>onBild?.(artikel,bild)} style={{position:"relative",display:"block"}}>
 

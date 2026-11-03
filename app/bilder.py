@@ -1,4 +1,4 @@
-"""Bilderübersicht für Admin und Grafik; manuelle Wawi-Abrufe und lesende Shop-Prüfung."""
+"""Bilderübersicht für Admin und Grafik; manuelle Wawi-Abrufe ohne öffentliche Shop-Prüfung."""
 import asyncio
 import base64
 import json
@@ -26,7 +26,6 @@ aufgaben = set()
 def liste(response: Response):
     response.headers["Cache-Control"] = "no-store"
     from .bilder_upload import auftraege, oeffentlich
-    from .bilder_shop import staende, aktuell
     data = speicher.zustand()
     from .bilder_bruecke import aktiv, bereit
     all_jobs = [j for j in auftraege() if not j.get('ruecksetzung')]
@@ -39,9 +38,6 @@ def liste(response: Response):
             for job in jobs:
                 if job['id'] in bridge_ids and job['status'] == 'sendet':
                     job['meldung'] = 'Bilddienst derzeit nicht erreichbar. Auftrag bleibt gespeichert; bitte nicht erneut hochladen.'
-    shop = staende()
-    data["artikel"] = [{**a, "shop_pruefung": aktuell(a, data.get("api_ziel"), shop.get(a["id"]))}
-                       for a in data["artikel"]]
     return {**data, "bildauftraege": jobs}
 
 

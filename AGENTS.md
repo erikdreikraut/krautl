@@ -83,3 +83,5 @@
 - Der Kassen-Bildkanal `9-7-8-0` ist fÃ¼r den Nutzer irrelevant und wird bei Bild-Schreibrequests sowie deren BestÃ¤tigungsprÃ¼fung ausgenommen. Wawi 2.1.1 liefert ihn lesend, lehnt ihn aber im Bild-PATCH bereits bei der Request-Verarbeitung ab. Andere KanÃ¤le nicht pauschal entfernen; Wawi-Standardbilder nicht eigenmÃ¤chtig zum Master machen.
 
 - FAQ-Abgleich berücksichtigt seit 03.11.2026 nur aktive Artikel im bestätigten JTL-Shop `2-2-1`; Shop-Status jeden Lauf vor Detailabrufen prüfen. Inaktive Väter bleiben mögliche FAQ-Quellen aktiver Kinder. Alte inaktive Ziele ohne unklaren Schreibversuch lokal aussetzen, keine Wawi-Werte löschen; unklare Schreibversuche weiterhin sichern und rücklesen.
+
+- Seit 03.11.2026: Gruener Bild-Haken bedeutet ausschliesslich bestaetigter Wawi-Stand im JTL-Shop-Kanal. Kein blaues W, keine automatische oeffentliche Shop-Bildpruefung mehr. Entwuerfe, ungeklaerte Aenderungen und ungepruefte/fehlende Vorschauen bleiben unterscheidbar. Historische Shop-Pruefprotokolle erhalten. Diese Vorgabe ersetzt fruehere getrennte Shop-Veroeffentlichungspruefungen.

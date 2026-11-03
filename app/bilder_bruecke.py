@@ -111,7 +111,7 @@ async def bestaetigen(c, job):
         raise ValueError('Bestand während der Bestätigung geändert.')
     store.zwischenstand(a, job['revision'], c.url, abgleich=False)
     job.update(status='wawi', neu_id=lokale_id(a['id'], job['bruecke_bild']),
-               meldung='Bild in Wawi ersetzt; Kanalpositionen erhalten. Shop-Veröffentlichung wird getrennt geprüft.')
+               meldung='Bild in Wawi ersetzt; Kanalpositionen erhalten.')
     sichern(job)
     return oeffentlich(job)
 
