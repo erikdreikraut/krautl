@@ -7,6 +7,12 @@
 - Die Produktivinstanz lÃ¤uft unter `https://krautl.erikschweitzer.de`, Server-Arbeitskopie `/opt/app/krautl`. Ein lokaler Build oder Push belegt kein Deployment.
 - Nach jedem erfolgreichen Push die zum Ã„nderungsstand passenden, direkt ausfÃ¼hrbaren Deployment-Befehle fÃ¼r die Serverkonsole mitliefern. Projektpfad `/opt/app/krautl`, Branch `main` und erforderliche Build-/Migrationsschritte anhand der Projektdokumentation prÃ¼fen. FÃ¼r Git-Remotes und Abrufe HTTPS statt SSH verwenden: `git remote set-url origin https://github.com/erikdreikraut/krautl.git`. Bei reinen DokumentationsÃ¤nderungen ausdrÃ¼cklich darauf hinweisen, dass kein Deployment erforderlich ist; dafÃ¼r genÃ¼gt die HTTPS-Aktualisierung der Server-Arbeitskopie. Das Bereitstellen der Befehle ist keine Freigabe, das Deployment selbst auszufÃ¼hren.
 
+## Direkter Serverzugang
+
+- Seit 03.11.2026 ist `ssh krautl-server` auf diesem Windows-Host erfolgreich geprüft. Ziel `159.195.122.18:22`, Benutzer `root`, Serverhostname `krautl-vm-u70403`. Separater Schlüssel `~/.ssh/krautl_codex`; private Schlüssel niemals ins Repository oder in Ausgaben aufnehmen.
+- Für beauftragte Deployments und Serverdiagnosen diesen Zugang verwenden. Keine Browserwechsel und keine Befehlsblöcke zur Ausführung an den Nutzer delegieren, solange SSH verfügbar ist. Bestehende Deployment-Autorisierung im Gespräch beachten; der Zugang selbst ist keine pauschale Freigabe für neue Produktivänderungen.
+- Ablauf und Hostprüfung: `ops/ssh-deployment.md`. Vor Mutation Elestio-Pipeline und Serverprozesse prüfen; niemals parallel deployen. Ein unbekannter Pipeline-Status beweist keinen Leerlauf.
+
 ## WhatsApp
 
 - GewÃ¤hlter Betrieb: direkte Meta Cloud API, API-only; keine parallele Business-App-Nutzung fÃ¼r die GeschÃ¤ftsnummer voraussetzen.
