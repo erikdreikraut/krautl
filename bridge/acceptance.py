@@ -19,6 +19,8 @@ from bridge.worker import Journal, Wawi, preview, run_job, single_worker
 
 ARTICLE = '770f139d-18dd-405c-9f84-322128000000'
 TARGET = 2729
+# Confirmed by the user's SQL export on 2026-11-03; absent from API images.
+SQL_ONLY = {(2488, 8, 11, 1), (2488, 8, 13, 1), (2488, 8, 14, 1)}
 HASHES = {
     2048: '6fd60fdf953624c062612b313d848b0959f70a3b272512eecc1b4f0afe6c36fc',
     2365: '3910d12665b5b9027ff004775bff6ce9e1bfd0a3e0bc84fc85e5ab5d5b2e20a9',
@@ -57,8 +59,13 @@ def verify_baseline(rows, state):
         raise ValueError('Unerwarteter Artikelbestand')
     if sorted((r[1], r[4]) for r in rows if r[2] == '2-2-1') != [(2365, 2), (2729, 1)]:
         raise ValueError('Shopbilder haben sich seit der Vorbereitung geaendert')
-    if {r[1] for r in rows} != set(HASHES) or {r[2] for r in state['rows']} != set(HASHES):
+    if {r[1] for r in rows} != set(HASHES) or {r[2] for r in state['rows']} != set(HASHES) | {2488}:
         raise ValueError('Unerwartete Bildnummern')
+    extra = [(r[2], r[3], r[4], r[6]) for r in state['rows'] if r[2] not in HASHES]
+    if len(extra) != len(SQL_ONLY) or set(extra) != SQL_ONLY or any(r[1] != 40 for r in state['rows']):
+        raise ValueError('Zusaetzliche SQL-Zuordnungen weichen vom bestaetigten Bestand ab')
+    if set(state['files']) != {str(r[2]) for r in state['rows']}:
+        raise ValueError('Originalsicherung nicht vollstaendig')
     verify_files(state)
 
 
@@ -83,6 +90,9 @@ def verify_result(rows, state, baseline, image):
     if state['seo'] != baseline['sql']['seo']:
         raise ValueError('SEO-Daten wurden geaendert')
     verify_files(state)
+    for ident, original in baseline['sql']['files'].items():
+        if state['files'].get(ident) != original:
+            raise ValueError('Gesicherte Originaldatei geaendert oder fehlt: ' + ident)
 
 
 def job(api, rows, old, raw, original):

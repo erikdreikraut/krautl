@@ -89,6 +89,31 @@ class AcceptanceTest(unittest.TestCase):
     def test_original_hash_mismatch_blocks_before_write(self):
         with self.assertRaises(ValueError): a.verify_files(self.state)
 
+    def test_confirmed_sql_only_image_is_backed_up_and_required(self):
+        rows = self.rows + [[40,2048,'1-1-1','',3],[40,2731,'1-1-1','',1]]
+        state = copy.deepcopy(self.state)
+        state['files'].pop('3000')
+        state['files']['2488'] = base64.b64encode(b'old-original').decode()
+        state['rows'] += [[5,40,2048,1,0,0,3,0,'name','e'],[6,40,2731,1,0,0,1,0,'name','f']]
+        state['rows'] += [[i,40,2488,8,shop,0,1,0,'legacy','x'] for i,shop in enumerate([11,13,14],7)]
+        with patch.object(a,'verify_files'):
+            a.verify_baseline(rows,state)
+            for mutation in ('missing_file','unknown_channel','duplicate_row'):
+                bad = copy.deepcopy(state)
+                if mutation=='missing_file': bad['files'].pop('2488')
+                if mutation=='unknown_channel': bad['rows'][-1][4]=99
+                if mutation=='duplicate_row': bad['rows'].append(bad['rows'][-1])
+                with self.assertRaises(ValueError): a.verify_baseline(rows,bad)
+
+    def test_sql_only_file_change_or_loss_fails_result_check(self):
+        baseline = {'api':self.rows,'sql':copy.deepcopy(self.state)}
+        baseline['sql']['files']['2488'] = base64.b64encode(b'original').decode()
+        for raw in (None,base64.b64encode(b'changed').decode()):
+            changed = copy.deepcopy(self.changed)
+            if raw is not None: changed['files']['2488']=raw
+            with patch.object(a,'verify_files'), self.assertRaises(ValueError):
+                a.verify_result(self.after,changed,baseline,3000)
+
     def test_changed_assignments_prevent_restoration_write(self):
         self.after.append([40,3000,'2-2-1','',3])
         self.after.sort()

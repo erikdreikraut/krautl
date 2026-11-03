@@ -234,3 +234,13 @@ Die Live-Schreibabnahme steht noch aus. Ein Erfolg prueft die lokale Import-/
 Austausch-/Ruecknahmelogik; weder Krautl-Auftragszustellung noch Shop-Veroeffentlichung
 sind damit abgenommen. Bereitstellung des Download-Endpunkts: dieselben oben
 angegebenen App-Build-/Recreate-Befehle, keine Migration und kein Frontend-Build.
+
+Erster Windows-Test stoppte vor Schreibbeginn mit `Unerwartete Bildnummern`.
+Die anschliessende Nutzerabfrage bestaetigte zusaetzlich Bild 2488 auf Plattform 8,
+Shops 11/13/14, jeweils Position 1. Diese drei SQL-Zuordnungen fehlen in der API.
+Der Test verlangt nun genau diese bestaetigten Zusatzzuordnungen und sichert
+auch deren Originaldatei. Nach Austausch und Ruecknahme werden alle gesicherten
+Originaldateien bytegenau verglichen, einschliesslich des API-unsichtbaren Bilds.
+Andere unerwartete SQL-Bilder oder Zusatzzuordnungen bleiben Abbruchgruende.
+Die alte Vorpruefung erreichte weder Auftragsjournal-Eintrag noch Upload; fuer
+den korrigierten Lauf ist keine Journal-Loeschung erforderlich oder erlaubt.
