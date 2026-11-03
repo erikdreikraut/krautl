@@ -91,3 +91,39 @@ Ordner nicht loeschen, um einen unklaren Versuch zu wiederholen. Auch eine
 fehlgeschlagene Antwort verbraucht den Schreibversuch. Ein Prozessabbruch nach
 der Absichtssicherung, aber vor dem HTTP-Aufruf, bleibt bewusst gesperrt.
 Keine bestehenden Krautl-Auftraege oder Artikel-Snapshots werden zurueckgesetzt.
+
+
+## Live-Vorprüfung 03.11.2026
+
+`--vorbereiten` wurde per SSH auf dem Produktivserver ausgeführt. Abbruch vor
+Plananlage/PATCH: `Unbekannte Bildfelder; keine Metadaten verwerfen.`
+Keine Schreibabsichtsdateien vorhanden, kein Upload und keine Bildänderung.
+Lesender Diagnosebefund unter
+`/opt/app/krautl/var/bilder/cloud-test-1036/diagnose-20261103.json` gesichert
+(ohne signierte Bild-URLs oder Zugangsdaten).
+
+Konkrete Antwortprobleme für Artikel-UUID
+`770f139d-18dd-405c-9f84-322128000000`:
+
+- V2 liefert zusätzliche Felder `url`/`previewUrl`, die der vorbereitete Test
+  nicht akzeptiert. Ein bloßes Weglassen dieser Felder löst die folgenden
+  Identitätsprobleme nicht.
+- Dem Shop-Hauptbild Position 1 fehlt `blobIdentifier` vollständig. Position 2
+  hat `c930660a-27c0-4fa4-b2f8-3b3f6bc7e54d`.
+- Mehrere unterschiedliche saleschannelImages-Gruppen tragen dieselbe
+  saleschannelId `1-1-0`; sie lassen sich nicht eindeutig zurückschreiben.
+- Direkte Wawi-v2-Antwort zeigt dieselben Probleme. Somit kein ausschließlich
+  vom Cloud-Transport verursachter Befund.
+
+Alternativer Cloud-Endpunkt GET /v1/items/{UUID}/images liefert HTTP 200 und
+31 Einträge mit konkreten ImageId/SalesChannelId/SortNumber. Direkte v1-Antwort
+ordnet im Shop Hauptbild 2729 auf Position 1 und Bild 2365 auf Position 2 zu.
+Cloud-v1-Schreiben wurde NICHT getestet. Die bestehende lokale v1-Sortierlogik
+ist ein Ansatz für einen separat protokollierten, eng begrenzten Cloud-v1-Test;
+Lesbarkeit allein beweist keine Schreibfähigkeit.
+
+Weiterer Vorbehalt: alter Auftrag `8b42f33a-d8aa-4933-9b61-15f58e2d9014`
+ist weiterhin `unklar` (`ersetzen_alle`, 28.10.). Nicht löschen oder als erfolgreich
+markieren, um einen Test zu ermöglichen. Vor neuem Schreibtest Bestandsabgleich
+und Umgang mit diesem Altauftrag ausdrücklich klären. Die Bestätigung, dass
+Shop-/Marktplatzabgleiche pausiert sind, steht ebenfalls noch aus.
