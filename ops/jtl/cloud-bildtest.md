@@ -227,3 +227,75 @@ cd /opt/app/krautl &&
 git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
 git pull --ff-only origin main
 ```
+
+## Vertiefte Dateiaustausch-Diagnose am 03.11.2026
+
+Der Nutzer beauftragte weitere Forschung und Tests und bestaetigte erneut:
+Abgleiche pausiert, Artikel 1036 bleibt unberuehrt. Der ausdruecklich beauftragte
+weitere 403-Diagnoseversuch erhielt ein eigenes dauerhaftes Journal; der erste
+Versuch wurde nicht entsperrt. Alle Originaljournale bleiben bestehen.
+
+Ergebnisse der Live-Tests:
+
+| Versuch | Antwort | Tatsaechlicher Bestand |
+| --- | --- | --- |
+| Cloud, vorhandenes JPEG 2731, 837.330 Bytes | 403, text/html, x-azure-ref | Original unveraendert |
+| Direkte API, gleiche Datei und gleicher PATCH | 201 | Nur Shop-Zuordnung von 2729 auf vorhandenes Bild 2731 umgestellt; andere Kanaele und Originaldateien unveraendert |
+| Direkte Ruecksetzung auf 2729 | 201 | Vollstaendiger Originalbestand bestaetigt |
+| Cloud, neue technische Testkopie, JPEG 512x512, 30.610 Bytes | 201 | Neue Datei 2732 bytegenau gespeichert, Shopposition 1 ersetzt; zusaetzliche Standardzuordnung 1-1-1 an Position 5 angelegt |
+| Cloud, bisherige Standardzuordnung 2729/Position 4 mit SalesChannelId=1-1-1 ersetzen | 201 | Keine Wirkung, alle Zeilen unveraendert |
+| Cloud, derselbe bekannte wirkungslose Auftrag mit separat protokollierter Kennung 1-1-0 | 201 | Ebenfalls keine Wirkung |
+| Direkte Ruecksetzung des Shopbildes auf 2729 | 201 | Shop original; eigene Testkopie nur noch Standardposition 5 |
+| Pruefung Standardposition 4 | kein PATCH | Bereits original, nicht erneut geschrieben |
+| DELETE ausschliesslich der neu erzeugten Testkopie 2732 | 204 | Vollstaendiger Originalbestand bestaetigt |
+
+Abschlusspruefung nochmals unabhaengig ueber Cloud: ORIGINAL. Alle vier
+Originaldateien stimmen bytegenau, alle 30 beruecksichtigten Zeilen einschliesslich
+Dateinamen, Positionen und Duplikatanzahl stimmen mit der Sicherung ueberein.
+Keine gemeinsam genutzten Originale geloescht. POS 9-7-8-0 weiterhin ausgenommen.
+Keine SQL-Schreibzugriffe, keine Aenderung des laufenden Krautl-Bilddienstes.
+
+Einordnung:
+
+- Cloud-Dateiaustausch ist grundsaetzlich moeglich! Der kleine Upload beweist dies.
+  Der Unterschied zwischen gross/klein ist eine Groessen-/Inhaltsspur, noch kein
+  bewiesener harter Grenzwert. Die technische Kopie ist kein Produktivvorschlag
+  zur Qualitaetsreduzierung.
+- Das Service-Account-Token enthaelt items.read und items.write. Die dokumentierte
+  Scope-Systematik wurde am 03.11. gelesen:
+  https://developer.jtl-software.com/cloud/guides/essentials/authentication/scopes-permissions
+  Keine Berechtigungen erweitert oder Registrierungen veraendert.
+- Die beobachtete PATCH-Semantik ist kanalbezogene Neuzuordnung, kein Austausch
+  der Originaldatei fuer saemtliche Verwendungen. Bei einer neuen Datei entsteht
+  zusaetzlich die Standardposition. HTTP 201 beweist dabei keine Wirkung.
+- Die von der installierten Wawi gelieferten Swagger-Dokumente unter
+  /api/eazybusiness/swagger/v1/swagger.json und /swagger/v2/swagger.json wurden
+  lesend geprueft. V1 bietet GET/POST/PATCH/DELETE an Item Images sowie GET ImageData;
+  kein separater globaler Bilddatei-Ersetzungsendpunkt. V2 bietet hier keinen
+  separaten Bild-Schreibendpunkt. Die frueheren v2-Bildblock-Probleme bleiben offen.
+- Ein zuverlaessiger Austausch fuer ALLE bisherigen Kanaele ist weiter nicht
+  abgenommen. Die vorbereitete Windows-Bruecke ist der naechste Pruefschritt,
+  zunaechst ausschliesslich --check. Keine eigenmaechtige SQL-Aktivierung.
+
+Nachweise auf dem Server:
+
+- var/bilder/cloud-v1-inhalt-1036/: diagnose403.intent/antwort/bestand/result.json
+- var/bilder/cloud-v1-inhalt-1036-direkt/: eigene Originale, Plan, Austausch und
+  vollstaendige Ruecksetzung, je ein intent/antwort/bestand/result
+- var/bilder/cloud-kleindatei-1036/: Originale, test.jpg, Plan, Ausfuehrung,
+  standardkanal, standardkanal0, shop-zurueck, standard-zurueck und bereinigen.
+
+Werkzeuge: teste_bilder_cloud_inhalt.py (Cloud und --direkt),
+teste_bilder_dateiweg.py (kleine Testdatei), teste_bilder_kanalweg.py
+(exakt begrenzte Kanaldiagnose und Bereinigung). Alle Schreibversuche sind
+verbraucht. Keine Journale loeschen, um sie erneut auszufuehren. Die kleine
+Testdatei wurde erst nach Wiederherstellung saemtlicher Originalzuordnungen
+entfernt; die Bereinigung akzeptiert ausschliesslich diese eigene neue Datei
+mit genau einer Standardzuordnung an Position 5 und passendem Datei-Hash.
+
+38 lokale Tests bestanden. Sie sichern insbesondere Timeout ohne Wiederholung,
+201 ohne Wirkung, getrennte 403-Diagnose, Fremdaenderungen, zusaetzliche
+Standardzuordnungen und die ausschliessliche Bereinigung eigener Testkopien ab.
+Kein Dienst-Deployment erforderlich; nur Testwerkzeuge und Nachweise geaendert.
+Die HTTPS-Aktualisierung der Server-Arbeitskopie erfolgt mit dem oben angegebenen
+git pull --ff-only origin main, nach Ende einer laufenden Elestio-Pipeline.

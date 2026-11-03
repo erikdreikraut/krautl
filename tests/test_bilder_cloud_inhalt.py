@@ -95,3 +95,38 @@ class TestCloudContent(unittest.IsolatedAsyncioTestCase):
         self.c.tenant_id = 'wrong'
         with self.assertRaises(ValueError): await run(self.c, self.folder, 'pruefen')
         self.c.http.patch.assert_not_called()
+
+    async def test_observed_reassignment_and_restore(self):
+        for r in self.rows:
+            r.update(ImageDataType='.png', Size=12, Width=2, Height=2)
+        original = copy.deepcopy(self.rows)
+        await run(self.c, self.folder, 'vorbereiten')
+        async def patch(url, **kwargs):
+            if self.c.http.patch.await_count == 1:
+                self.assertTrue(url.endswith('/2729'))
+                self.rows[0]['ImageId'] = 2731
+            else:
+                self.assertTrue(url.endswith('/2731'))
+                self.rows[:] = copy.deepcopy(original)
+            return httpx.Response(201)
+        self.c.http.patch.side_effect = patch
+        result = await run(self.c, self.folder, 'ausfuehren')
+        self.assertEqual(result['zustand'], 'SHOP_NEU_ZUGEORDNET')
+        self.assertFalse(result['bestaetigt'])
+        self.assertTrue((await run(self.c, self.folder, 'zuruecksetzen'))['bestaetigt'])
+
+    async def test_explicit_diagnosis_only_after_unchanged_403(self):
+        await run(self.c,self.folder,'vorbereiten')
+        self.c.http.patch.side_effect=None
+        self.c.http.patch.return_value=httpx.Response(403,headers={'content-type':'text/html'},text='<title>Denied</title>')
+        await run(self.c,self.folder,'ausfuehren')
+        result=await run(self.c,self.folder,'diagnose403')
+        self.assertEqual(result['diagnose']['html_titel'],'Denied')
+        with self.assertRaises(ValueError):await run(self.c,self.folder,'diagnose403')
+        self.assertEqual(self.c.http.patch.await_count,2)
+
+    async def test_diagnosis_rejects_uncertain_or_successful_attempt(self):
+        await run(self.c,self.folder,'vorbereiten')
+        await run(self.c,self.folder,'ausfuehren')
+        with self.assertRaises(ValueError):await run(self.c,self.folder,'diagnose403')
+        self.assertEqual(self.c.http.patch.await_count,1)

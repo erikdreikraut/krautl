@@ -2,6 +2,7 @@
 import argparse
 import asyncio
 import base64
+import copy
 import hashlib
 import json
 import os
@@ -11,6 +12,8 @@ from pathlib import Path
 import httpx
 
 from app.jtl_client import ERP_URL, JtlClient
+from app.jtl_onprem import OnPremClient
+from app.jtl_faq_test import antwortdiagnose
 from scripts.teste_bilder_cloud import TENANT, SHOP, POS, canonical, locked, save_once
 
 ARTICLE = "770f139d-18dd-405c-9f84-322128000000"
@@ -23,9 +26,18 @@ def digest(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
+def base_url(c):
+    return c.url if isinstance(c, OnPremClient) else ERP_URL
+
+
+async def headers_for(c):
+    if isinstance(c, OnPremClient):
+        return {}  # The client's own authenticated headers remain in effect.
+    return {"Authorization": "Bearer " + await c._token(), "X-Tenant-ID": TENANT}
+
+
 async def fetch(c, path):
-    r = await c.http.get(ERP_URL + path, headers={
-        "Authorization": "Bearer " + await c._token(), "X-Tenant-ID": TENANT})
+    r = await c.http.get(base_url(c) + path, headers=await headers_for(c))
     if r.status_code != 200:
         raise ValueError(f"Cloud-Lesen HTTP {r.status_code}")
     return r
@@ -73,6 +85,18 @@ def state(plan, rows, files):
     desired[str(TARGET)] = desired[str(SOURCE)]
     if topology(rows) == topology(plan["rows"]) and hashes == desired:
         return "ZIEL"
+    # Exact observed v1 behavior: only the shop assignment changes image ID.
+    expected = copy.deepcopy(plan["rows"])
+    source_meta = [{k: r.get(k) for k in META} for r in expected if r["ImageId"] == SOURCE]
+    if source_meta and all(m == source_meta[0] for m in source_meta):
+        for r in expected:
+            if r["ImageId"] == TARGET and r["SalesChannelId"] == SHOP:
+                r["ImageId"] = SOURCE
+                r.update(source_meta[0])
+        used = {str(r["ImageId"]) for r in expected}
+        expected_hashes = {k: v for k, v in plan["hashes"].items() if k in used}
+        if canonical(rows) == canonical(expected) and hashes == expected_hashes:
+            return "SHOP_NEU_ZUGEORDNET"
     return "ABWEICHUNG"
 
 
@@ -84,7 +108,7 @@ def backup(path, raw):
 
 
 async def run(c, folder, mode):
-    if c.tenant_id != TENANT:
+    if not isinstance(c, OnPremClient) and c.tenant_id != TENANT:
         raise ValueError("Falscher Tenant.")
     with locked(folder):
         if mode == "vorbereiten":
@@ -102,13 +126,13 @@ async def run(c, folder, mode):
             for ident, raw in files.items():
                 backup(folder / (ident + ".original"), raw)
             save_once(folder / "plan.json", {
-                "tenant": TENANT, "article": ARTICLE, "url": ERP_URL,
+                "tenant": TENANT, "article": ARTICLE, "url": base_url(c),
                 "created": datetime.now(timezone.utc).isoformat(), "rows": rows,
                 "hashes": {k: digest(v) for k, v in files.items()},
                 "original_name": next(iter(names)),
                 "test_name": "krautl-cloud-inhalttest-1036.jpg"})
         plan = json.loads((folder / "plan.json").read_text(encoding="utf-8"))
-        if (plan["tenant"], plan["article"], plan["url"]) != (TENANT, ARTICLE, ERP_URL):
+        if (plan["tenant"], plan["article"], plan["url"]) != (TENANT, ARTICLE, base_url(c)):
             raise ValueError("Falscher Plan.")
         for ident, sha in plan["hashes"].items():
             if digest((folder / (ident + ".original")).read_bytes()) != sha:
@@ -121,23 +145,35 @@ async def run(c, folder, mode):
         if intent.exists():
             raise ValueError("Schreibversuch verbraucht. Nur ruecklesen.")
         restore = mode == "zuruecksetzen"
+        if mode == "diagnose403":
+            previous = json.loads((folder / "ausfuehren.result.json").read_text(encoding="utf-8"))
+            if previous.get("http") != 403 or previous.get("zustand") != "ORIGINAL":
+                raise ValueError("Diagnose nur nach bestaetigt wirkungslosem 403.")
         if restore and not (folder / "ausfuehren.intent.json").exists():
             raise ValueError("Kein eigener Schreibversuch.")
         if not restore:
             age = (datetime.now(timezone.utc) - datetime.fromisoformat(plan["created"])).total_seconds()
             if age < 0 or age > 7200 or (folder / "zuruecksetzen.intent.json").exists():
                 raise ValueError("Plan veraltet oder bereits zurueckgesetzt.")
-        if current != ("ZIEL" if restore else "ORIGINAL"):
+        if current not in (("ZIEL", "SHOP_NEU_ZUGEORDNET") if restore else ("ORIGINAL",)):
             raise ValueError("Ausgangsbestand weicht ab: " + current)
         raw = (folder / (str(TARGET if restore else SOURCE) + ".original")).read_bytes()
-        headers = {"Authorization": "Bearer " + await c._token(), "X-Tenant-ID": TENANT}
+        headers = await headers_for(c)
         save_once(intent, {"zeit": datetime.now(timezone.utc).isoformat(), "sha256": digest(raw)})
         result = {"http": None}
         try:
-            r = await c.http.patch(ERP_URL + "/v1/items/" + ARTICLE + "/images/" + str(TARGET),
+            image_id = SOURCE if restore and current == "SHOP_NEU_ZUGEORDNET" else TARGET
+            r = await c.http.patch(base_url(c) + "/v1/items/" + ARTICLE + "/images/" + str(image_id),
                 headers=headers, json={"SalesChannelId": SHOP, "ImageData": base64.b64encode(raw).decode(),
                 "Filename": plan["original_name"] if restore else plan["test_name"]})
             result["http"] = r.status_code
+            auth = headers.get("Authorization", "")
+            if isinstance(c, OnPremClient):
+                auth = c.http.headers.get("Authorization", "")
+            result["diagnose"] = antwortdiagnose(r, [auth,
+                auth.removeprefix("Bearer ").removeprefix("Wawi "), getattr(c, "client_secret", "")])
+            # Preserve the response even if the subsequent verification is interrupted.
+            save_once(folder / (mode + ".antwort.json"), result["diagnose"])
         except httpx.HTTPError:
             result["transportfehler"] = True
         # HTTP success alone does not confirm any image change.
@@ -154,12 +190,15 @@ async def run(c, folder, mode):
         return result
 
 
-async def main(mode):
-    async with JtlClient.aus_umgebung() as c:
-        print(json.dumps(await run(c, Path(FOLDER), mode), ensure_ascii=False))
+async def main(mode, direkt=False):
+    async with (OnPremClient.aus_umgebung() if direkt else JtlClient.aus_umgebung()) as c:
+        folder = Path(FOLDER + "-direkt" if direkt else FOLDER)
+        print(json.dumps(await run(c, folder, mode), ensure_ascii=False))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=["vorbereiten", "ausfuehren", "zuruecksetzen", "pruefen"])
-    asyncio.run(main(parser.parse_args().mode))
+    parser.add_argument("mode", choices=["vorbereiten", "ausfuehren", "zuruecksetzen", "pruefen", "diagnose403"])
+    parser.add_argument("--direkt", action="store_true")
+    args = parser.parse_args()
+    asyncio.run(main(args.mode, args.direkt))
