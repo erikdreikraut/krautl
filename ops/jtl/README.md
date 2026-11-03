@@ -689,3 +689,9 @@ docker compose --profile jtl-sync up -d --no-deps --force-recreate jtl-sync
 
 Danach `docker compose logs --tail=10 jtl-sync` und nach etwa zwei Minuten
 `docker compose ps jtl-sync` prüfen. Ein Push bestätigt kein Live-Deployment.
+
+Der FAQ-Container benötigt für die Einzelshop-Prüfung zusätzlich den bestehenden
+Mount `./var/inkasso-zugang:/app/var/inkasso-zugang:ro`. Fehlte dieser Mount,
+meldete der neue Filter einen fehlenden Inkasso-Zugang. Keine Neuregistrierung:
+Nach Aktualisierung der Compose-Datei den Dienst mit `--force-recreate` neu
+erstellen. Für diese reine Mount-Korrektur ist kein Image-Build erforderlich.
