@@ -41,8 +41,16 @@ class Speicher:
         return name
 
 
+def aktive_shopartikel(katalog):
+    for item in katalog:
+        if type(item.get("isActive")) is not bool or type(item.get("isShopActive")) is not bool:
+            raise JtlFehler("FAQ-Shop-Auswahl: eindeutiger Artikel-/Shop-Status fehlt.")
+    return {i["id"] for i in katalog if i["isActive"] and i["isShopActive"]}
+
+
 def zielplan(quellen, katalog):
     """Own selected FAQ wins over parent FAQ; only actual parent IDs propagate."""
+    aktive = aktive_shopartikel(katalog)
     by_sku = {}
     for item in katalog:
         by_sku.setdefault(item["sku"], []).append(item)
@@ -57,7 +65,7 @@ def zielplan(quellen, katalog):
     result = {}
     for item in katalog:
         html = eigene.get(item["id"], eigene.get(item["parent"]))
-        if html is not None:
+        if html is not None and item["id"] in aktive:
             if not item["sku"]:
                 raise JtlFehler("Zielartikel ohne Artikelnummer.")
             result[item["id"]] = {"sku": item["sku"], "html": html}
@@ -126,19 +134,28 @@ async def abgleichen(client, speicher, quellen):
     # Do not replace plans while unresolved writes exist.
     if bericht["fehler"]:
         return bericht
-    revision = digest(quellen)
-    if state["quelle"] != revision:
-        katalog = await client.katalog() if any(quellen.values()) else []
-        plan = zielplan(quellen, katalog)
-        for ident, alt in state["ziele"].items():
-            if ident not in plan:
-                plan[ident] = {"sku": alt["sku"], "html": ""}
-        for ident, ziel in plan.items():
-            alt = state["ziele"].get(ident, {})
-            ziel["erledigt"] = alt.get("erledigt")
-        state["ziele"], state["quelle"] = plan, revision
-        speicher.speichern()
+    # Shop activation changes independently of FAQ content. Refresh every run.
+    await client.shop_pruefen()
+    katalog = await client.katalog()
+    aktive = aktive_shopartikel(katalog)
+    vorhanden = {i["id"] for i in katalog}
+    plan = zielplan(quellen, katalog)
+    for ident, alt in state["ziele"].items():
+        if ident not in vorhanden:
+            raise JtlFehler(f"FAQ-Shop-Auswahl: bisheriger Artikel {alt['sku']} fehlt im Katalog.")
+        if ident not in aktive:
+            plan[ident] = {**alt, "ausgesetzt": True}
+        elif ident not in plan:
+            plan[ident] = {"sku": alt["sku"], "html": ""}
+    for ident, ziel in plan.items():
+        alt = state["ziele"].get(ident, {})
+        plan[ident] = {**alt, "ausgesetzt": False, **ziel}
+        plan[ident]["erledigt"] = None if alt.get("ausgesetzt") else alt.get("erledigt")
+    state["ziele"], state["quelle"] = plan, digest(quellen)
+    speicher.speichern()
     for ident, ziel in state["ziele"].items():
+        if ziel.get("ausgesetzt"):
+            continue
         revision = digest({"sku": ziel["sku"], "html": ziel["html"]})
         if ziel.get("erledigt") == revision:
             continue

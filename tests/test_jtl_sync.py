@@ -22,6 +22,9 @@ KATALOG = [{"id": "p", "sku": "VATER", "parent": None},
            {"id": "d", "sku": "KIND2", "parent": "p"},
            {"id": "x", "sku": "FREMD", "parent": None}]
 
+for row in KATALOG:
+    row.update(isActive=True, isShopActive=True)
+
 
 class SyncTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -46,8 +49,61 @@ class SyncTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(a["salesChannelValues"][0]["values"][0]["languageIso"], "de")
             html = attrs["values"][1]["salesChannelValues"][0]["values"][0]["value"]
             self.bestand[ident] = zielattribute(self.bestand[ident], html)
-        self.client = SimpleNamespace(katalog=AsyncMock(return_value=KATALOG),
+        self.client = SimpleNamespace(shop_pruefen=AsyncMock(), katalog=AsyncMock(return_value=KATALOG),
             lesen=AsyncMock(side_effect=lesen), schreiben=AsyncMock(side_effect=schreiben))
+
+    async def test_inaktiver_vater_vererbt_nur_an_aktive_kinder(self):
+        rows = copy.deepcopy(KATALOG)
+        rows[0]["isShopActive"] = False
+        rows[1]["isActive"] = False
+        self.client.katalog.return_value = rows
+        result = await abgleichen(self.client, self.store, {"VATER": "FAQ"})
+        self.assertEqual(result["geschrieben"], 1)
+        self.assertEqual({c.args[0] for c in self.client.lesen.call_args_list}, {"d"})
+
+    async def test_altauftrag_deaktivieren_und_reaktivieren(self):
+        from app.jtl_sync_status import status_speichern, status_laden
+        await abgleichen(self.client, self.store, {"VATER": "FAQ"})
+        self.store.state["ziele"]["c"]["erledigt"] = None
+        rows = copy.deepcopy(KATALOG)
+        rows[1]["isShopActive"] = False
+        self.client.katalog.return_value = rows
+        self.client.lesen.reset_mock()
+        self.client.schreiben.reset_mock()
+        result = await abgleichen(self.client, self.store, {"VATER": "FAQ"})
+        self.client.lesen.assert_not_called()
+        self.client.schreiben.assert_not_called()
+        self.assertTrue(self.store.state["ziele"]["c"]["ausgesetzt"])
+        status_speichern(self.store, result)
+        self.assertTrue(status_laden(self.tmp.name, aktiviert=True)["gesund"])
+        rows[1]["isShopActive"] = True
+        result = await abgleichen(self.client, self.store, {"VATER": "FAQ"})
+        self.assertEqual(result["bereits_gleich"], 1)
+        self.assertFalse(self.store.state["ziele"]["c"]["ausgesetzt"])
+
+    async def test_deaktivierung_verwirft_keinen_unklaren_schreibversuch(self):
+        self.client.schreiben.side_effect = JtlFehler("Timeout")
+        await abgleichen(self.client, self.store, {"VATER": "FAQ"})
+        journal = self.store.state["ziele"]["p"]["offen"]
+        rows = copy.deepcopy(KATALOG)
+        rows[0]["isShopActive"] = False
+        self.client.katalog.return_value = rows
+        result = await abgleichen(self.client, self.store, {"VATER": "FAQ"})
+        self.assertTrue(result["fehler"])
+        self.assertEqual(self.store.state["ziele"]["p"]["offen"], journal)
+        self.assertEqual(self.client.schreiben.await_count, 1)
+
+    async def test_unbekannter_shopstatus_und_shopfehler_sperren(self):
+        rows = copy.deepcopy(KATALOG)
+        rows[1].pop("isShopActive")
+        self.client.katalog.return_value = rows
+        with self.assertRaises(JtlFehler):
+            await abgleichen(self.client, self.store, {"VATER": "FAQ"})
+        self.client.lesen.assert_not_called()
+        self.client.shop_pruefen.side_effect = JtlFehler("Mehrere Shops")
+        with self.assertRaises(JtlFehler):
+            await abgleichen(self.client, self.store, {"VATER": "FAQ"})
+        self.client.schreiben.assert_not_called()
 
     async def test_persistenz_kein_zugriff_ohne_aenderung(self):
         self.assertEqual(INTERVALL, 300)
@@ -56,7 +112,7 @@ class SyncTests(unittest.IsolatedAsyncioTestCase):
         for mock in (self.client.katalog, self.client.lesen, self.client.schreiben):
             mock.reset_mock()
         await abgleichen(self.client, Speicher(self.tmp.name), {"VATER": "<p>FAQ</p>"})
-        self.client.katalog.assert_not_called()
+        self.client.katalog.assert_awaited_once()
         self.client.lesen.assert_not_called()
         self.client.schreiben.assert_not_called()
 
@@ -183,7 +239,7 @@ class SyncTests(unittest.IsolatedAsyncioTestCase):
         self.client.schreiben.assert_not_called()
 
     def test_keine_prefix_vererbung(self):
-        katalog = KATALOG + [{"id": "falsch", "sku": "VATER-2", "parent": None}]
+        katalog = KATALOG + [{"id": "falsch", "sku": "VATER-2", "parent": None, "isActive": True, "isShopActive": True}]
         self.assertNotIn("falsch", zielplan({"VATER": "FAQ"}, katalog))
 
     def test_auswahl_google_und_entwurf_unabhaengig(self):

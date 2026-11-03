@@ -62,8 +62,8 @@ class TimeoutTest(unittest.IsolatedAsyncioTestCase):
             store = Speicher(folder)
             async def haengt(*args):
                 await asyncio.Event().wait()
-            client = SimpleNamespace(
-                katalog=AsyncMock(return_value=[{"id": "p", "sku": "123", "parent": None}]),
+            client = SimpleNamespace(shop_pruefen=AsyncMock(),
+                katalog=AsyncMock(return_value=[{"id": "p", "sku": "123", "parent": None, "isActive": True, "isShopActive": True}]),
                 lesen=AsyncMock(return_value={"values": []}), schreiben=AsyncMock(side_effect=haengt))
             with self.assertRaises(asyncio.TimeoutError):
                 await asyncio.wait_for(abgleichen(client, store, {"123": "FAQ"}), timeout=0.1)

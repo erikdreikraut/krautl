@@ -75,3 +75,5 @@
 
 - JTL-Shop (`2-2-1`) ist der Masterkanal fÃ¼r Bilder. Die zwischenzeitliche Angabe JTL-Wawi wurde vom Nutzer ausdrÃ¼cklich korrigiert.
 - Der Kassen-Bildkanal `9-7-8-0` ist fÃ¼r den Nutzer irrelevant und wird bei Bild-Schreibrequests sowie deren BestÃ¤tigungsprÃ¼fung ausgenommen. Wawi 2.1.1 liefert ihn lesend, lehnt ihn aber im Bild-PATCH bereits bei der Request-Verarbeitung ab. Andere KanÃ¤le nicht pauschal entfernen; Wawi-Standardbilder nicht eigenmÃ¤chtig zum Master machen.
+
+- FAQ-Abgleich berücksichtigt seit 03.11.2026 nur aktive Artikel im bestätigten JTL-Shop `2-2-1`; Shop-Status jeden Lauf vor Detailabrufen prüfen. Inaktive Väter bleiben mögliche FAQ-Quellen aktiver Kinder. Alte inaktive Ziele ohne unklaren Schreibversuch lokal aussetzen, keine Wawi-Werte löschen; unklare Schreibversuche weiterhin sichern und rücklesen.

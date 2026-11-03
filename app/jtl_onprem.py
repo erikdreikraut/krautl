@@ -64,7 +64,9 @@ class OnPremClient:
                     raise JtlFehler("Doppelte Artikel-ID im JTL-Katalog.")
                 gesehen.add(ident)
                 result.append({"id": ident, "sku": item.get("sKU", item.get("sku")),
-                               "parent": item.get("parentItemId")})
+                               "parent": item.get("parentItemId"),
+                               "isActive": item.get("isActive"),
+                               "isShopActive": item.get("isShopActive")})
             if data.get("hasNextPage") is False:
                 if len(result) != data.get("totalItems"):
                     raise JtlFehler("JTL-Katalog während Abruf verändert; nächster Lauf versucht erneut.")
@@ -72,6 +74,10 @@ class OnPremClient:
             if not items or data.get("hasNextPage") is not True:
                 raise JtlFehler("Unvollständige JTL-Paginierung.")
         raise JtlFehler("JTL-Katalog überschreitet Seitenlimit.")
+
+    async def shop_pruefen(self):
+        from .bilder_abgleich import einzelshop_pruefen
+        await einzelshop_pruefen(self.url)
 
     async def lesen(self, ident, sku):
         data = await self._request("GET", "/v2/items/" + str(UUID(ident)))

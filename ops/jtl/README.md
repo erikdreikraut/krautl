@@ -654,3 +654,38 @@ Lokal geprÃ¼ft, nicht gegen einen verfÃ¼gbaren SQL Server ausgefÃ¼hrt. Keine
 Produktivaufzeichnung durch Codex gestartet. Kein Container-Deployment erforderlich.
 Grundlage: [Microsoft XE-Dateiziele](https://learn.microsoft.com/en-us/sql/relational-databases/extended-events/targets-for-extended-events-in-sql-server?view=sql-server-ver15).
 
+
+
+### FAQ-Ziele nur im aktiven JTL-Shop (03.11.2026)
+
+Der FAQ-Dauerabgleich prüft jetzt in jedem Lauf den vollständigen Artikelkatalog
+und den bestätigten Einzelshop `2-2-1` (bestehender Inkasso-Lesezugang für
+Verkaufskanäle, gleicher API-Endpunkt). Nur Artikel mit `isActive=true` und
+`isShopActive=true` werden als Ziele gelesen oder beschrieben. Inaktive Vaterartikel
+können weiterhin FAQ-Quelle ihrer aktiven Kinder sein. Fehlende Statusfelder,
+mehrere Shops oder ein unvollständiger Katalog führen zum sichtbaren Abbruch.
+
+Bereits eingeplante, inzwischen inaktive Artikel bleiben als `ausgesetzt` im
+lokalen Stand erhalten; keine Löschung von Wawi-Attributen und kein vorgetäuschter
+Schreiberfolg. Bei Reaktivierung wird erneut rückgelesen. Unklare Schreibversuche
+werden unabhängig von der Aktivierung zuerst rückgelesen und niemals verworfen.
+Die Statusprüfung zählt ausgesetzte Ziele nicht als ausstehende Übertragung.
+
+Anlass: 20560-100 ist laut Nutzer nicht im Shop aktiv. Sein Detailabruf und die
+Abrufe 20562-100/20562-50 scheitern mit SqlNullValueException/GetByte; bei allen
+ist nVPE NULL. Die beiden weiteren Artikel werden nur bei bestätigtem inaktivem
+Katalogstatus ausgeschlossen, nicht anhand ihrer Artikelnummer.
+
+Nach Abschluss der Elestio-Pipeline muss auch der optionale Worker neu erstellt
+werden (ein Neustart allein übernimmt kein neues Image):
+
+```bash
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git pull --ff-only origin main &&
+docker compose build app &&
+docker compose --profile jtl-sync up -d --no-deps --force-recreate jtl-sync
+```
+
+Danach `docker compose logs --tail=10 jtl-sync` und nach etwa zwei Minuten
+`docker compose ps jtl-sync` prüfen. Ein Push bestätigt kein Live-Deployment.

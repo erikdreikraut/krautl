@@ -14,7 +14,7 @@ def status_speichern(speicher, ergebnis, jetzt=None):
     zeit = jetzt.isoformat()
     state = speicher.state
     offen = sum(z.get("erledigt") != digest({"sku": z["sku"], "html": z["html"]})
-                for z in state["ziele"].values())
+                for z in state["ziele"].values() if not z.get("ausgesetzt"))
     gesperrt = sum(bool(z.get("offen")) for z in state["ziele"].values())
     if not ergebnis.get("fehler") and not offen and not gesperrt:
         state["letzter_erfolg"] = zeit
