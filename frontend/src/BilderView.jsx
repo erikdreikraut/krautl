@@ -68,11 +68,12 @@ function ArtikelDialog({ artikel, speichern, schliessen, laeuft, fehler }) {
 
 function Thumbnail({ artikel, bild, position, onBild, auftrag, ungeprueft }) {
   const [fehler, setFehler] = useState(false);
-  const meldung = bild.fehler || (fehler || !bild.thumb ? "Vorschau nicht verfügbar" : "");
+  useEffect(() => setFehler(false), [bild.thumb]);
+  const meldung = fehler ? "Vorschau nicht verfügbar" : !bild.thumb ? (bild.fehler || "Vorschau nicht verfügbar") : "";
   const shop = artikel.shop_pruefung;
   const status = auftrag && auftrag.status !== "wawi"
     ? [auftrag.status === "abgelehnt" ? "!" : "…", auftrag.meldung, "#986c14"]
-    : ungeprueft || !bild.thumb ? ["?", "Bildstand nicht vollständig geprüft", "#986c14"]
+    : ungeprueft || fehler || !bild.thumb ? ["?", "Bildstand nicht vollständig geprüft", "#986c14"]
     : shop?.status === "bestaetigt" ? ["✓", `Im Shop bestätigt · ${shop.geprueft_am ? new Date(shop.geprueft_am).toLocaleString("de-DE") : ""}`, "#2C7A25"]
     : ["W", `Wawi-Stand · ${shop?.meldung || "Shop-Veröffentlichung noch nicht geprüft"}`, "#286480"];
   return <figure className="shrink-0" style={{ width: "120px" }}>
@@ -85,7 +86,7 @@ function Thumbnail({ artikel, bild, position, onBild, auftrag, ungeprueft }) {
     <span title={status[1]} aria-label={status[1]} style={{position:"absolute",right:3,bottom:3,borderRadius:3,width:14,height:14,display:"flex",alignItems:"center",justifyContent:"center",background:status[2],color:"white",fontWeight:700,fontSize:10,lineHeight:1}}>{status[0]}</span>
     </button>
     {bild.quelle === "ameise" && <p style={{ fontSize: "10px", color: "#6C6F5F" }}>Exportvorschau</p>}
-    {bild.fehler && <details className="mt-1" style={{ fontSize: "11px", color: "#9A4332", overflowWrap: "anywhere" }}><summary style={{ cursor: "pointer" }}>Fehlerdetails</summary>{bild.fehler}</details>}
+    {meldung && <details className="mt-1" style={{ fontSize: "11px", color: "#9A4332", overflowWrap: "anywhere" }}><summary style={{ cursor: "pointer" }}>Fehlerdetails</summary>{meldung}</details>}
   </figure>;
 }
 

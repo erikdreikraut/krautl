@@ -95,7 +95,14 @@ test("Fehlendes Bild bleibt als Platzhalter mit Position sichtbar und wird nach 
   await act(async()=>view.update(React.createElement(BilderListe,{artikel})));
   assert.equal(view.root.findAllByType("img").length,2);
   assert.equal(view.root.findAllByProps({role:"img"}).length,0);
-  assert.match(JSON.stringify(view.toJSON()),/Exportvorschau/);
+  assert.match(JSON.stringify(view.toJSON()),/Exportvorschau/); 
+  assert.doesNotMatch(JSON.stringify(view.toJSON()),/HTTP 400|Fehlerdetails/);
+  await act(async()=>view.root.findAllByType("img")[0].props.onError());
+  assert.match(JSON.stringify(view.toJSON()),/Vorschau nicht verfügbar/);
+  artikel[0].bilder[0]={...artikel[0].bilder[0],thumb:"repaired-again"};
+  await act(async()=>view.update(React.createElement(BilderListe,{artikel})));
+  assert.equal(view.root.findAllByType("img").length,2);
+  assert.doesNotMatch(JSON.stringify(view.toJSON()),/HTTP 400|Fehlerdetails/);
 });
 
 test("Ein Status trennt Artikelabbruch und Bildfehler; Filter erhält Ausblendungen", async t => {
