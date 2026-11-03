@@ -4,6 +4,48 @@ Stand: 09.10.2026. Eigene interne Krautl-App; Werkel bleibt unverändert.
 
 ## Dauerabgleich: HTTPS, alle fünf Minuten, nur Änderungen
 
+### 03.11.2026: begrenzter Ruecklesevergleich fuer bekannte Leerwerte
+
+Die Diagnose zu 40504 bestaetigt korrekte FAQ-Zielwerte und ausschliesslich den
+Verlust derselben vollstaendig leeren Attributzuordnung wie zuvor bei 20015.
+Der FAQ-Dienst behandelt deshalb kuenftig genau zwei nachgewiesene Muster:
+
+- Vollstaendiges Fehlen von `29708817-225b-4208-9a57-5ff5f0000000`, nur wenn
+  es vorher und im Ziel ausschliesslich einen sprachneutralen Defaultwert `""`
+  enthielt, ohne weitere Werte.
+- Fehlen des Wertes `29708817-225b-4208-9a57-5ff59a000000 / 1-1-0 / de`, nur
+  wenn dieser vorher und im Ziel exakt `""` war und alles andere erhalten ist.
+
+Alle anderen Unterschiede bleiben Sperrgruende, auch leere unbekannte Attribute,
+Whitespace, null, verlorene nichtleere Werte und fehlende FAQ-Zielwerte. Keine
+allgemeine Gleichsetzung von fehlenden und leeren Werten. Der Grund fuer die
+Wawi-seitige Entfernung ist weiterhin nicht belegt; die Regel akzeptiert nur
+die eng beschriebenen beobachteten Abweichungen.
+
+Vor Aufloesung wird der Live-Stand mit dem Originaljournal und dem rekonstruierten
+FAQ-Ziel verglichen. Ein eigener Nachweis `bekannte_leerwertabweichung` sichert
+Ausnahme und Lesestand dauerhaft, bevor die Sperre aufgehoben wird. Originaljournal
+bleibt erhalten. Offene Schreibversuche werden nicht wiederholt; anschliessend
+kann der regulaere Abgleich andere ausstehende FAQ-Auftraege schreiben.
+
+Wichtig: Der separate `jtl-sync`-Container gehoert zu einem optionalen Compose-Profil.
+Der normale App-Rollout hat ihn bislang nicht erneuert. Ein blosses `start` oder
+`restart` laedt keinen neuen Code in diesen alten Container. Nach abgeschlossenem
+Elestio-Lauf gezielt das neue Image bauen und den FAQ-Dienst neu erstellen:
+
+```bash
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git pull --ff-only origin main &&
+docker compose build app &&
+docker compose --profile jtl-sync up -d --no-deps --force-recreate jtl-sync
+```
+
+Danach `docker compose ps jtl-sync` und `docker compose logs --tail=15 jtl-sync`
+pruefen. Lokale Tests bestaetigen keinen produktiven Wiederanlauf. Die historische
+fehlgeschlagene Elestio-Ausfuehrung bleibt fehlgeschlagen; erst ein spaeterer
+Pipeline-Lauf kann den Deployment-Erfolg bestaetigen. Bildverwaltung unveraendert.
+
 ### Diagnose 02.11.2026: Sperre 20562-10
 
 Der laufende FAQ-Dienst meldet einen unklaren Versuch fuer `20562-10` und damit

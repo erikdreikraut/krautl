@@ -64,6 +64,50 @@ def zielplan(quellen, katalog):
     return result
 
 
+# Only the two concrete empty-value shapes observed in this installation.
+# Never normalize all empty attributes, FAQ values, whitespace or null values.
+LEERES_ALTATTRIBUT = "29708817-225b-4208-9a57-5ff5f0000000"
+LEERER_KANALWERT = ("29708817-225b-4208-9a57-5ff59a000000", "1-1-0", "de")
+
+
+def bekannte_leerwertabweichungen(vorher, erwartet, aktuell):
+    alt, soll, ist = map(signatur, (vorher, erwartet, aktuell))
+    erlaubt = set()
+    leer = {(LEERES_ALTATTRIBUT,): True, (LEERES_ALTATTRIBUT, None, None): ""}
+    if (all({k: v for k, v in stand.items() if k[0] == LEERES_ALTATTRIBUT} == leer
+            for stand in (alt, soll))
+            and not any(k[0] == LEERES_ALTATTRIBUT for k in ist)):
+        erlaubt.update(leer)
+    if (LEERER_KANALWERT in alt and alt[LEERER_KANALWERT] == ""
+            and LEERER_KANALWERT in soll and soll[LEERER_KANALWERT] == ""
+            and LEERER_KANALWERT not in ist):
+        erlaubt.add(LEERER_KANALWERT)
+    abweichungen = {k for k in set(soll) | set(ist)
+                   if k not in soll or k not in ist or soll[k] != ist[k]}
+    if not abweichungen or not abweichungen <= erlaubt:
+        return []
+    return sorted(abweichungen, key=str)
+
+
+def ruecklesestand_bestaetigen(speicher, ident, ziel, journal, ist):
+    revision = digest({"sku": ziel["sku"], "html": ziel["html"]})
+    if (journal.get("id") != ident or journal.get("sku") != ziel["sku"]
+            or journal.get("revision") != revision
+            or signatur(journal["nachher"]) != signatur(zielattribute(journal["vorher"], ziel["html"]))):
+        raise JtlFehler("Journal passt nicht zum offenen FAQ-Auftrag; keine Freigabe.")
+    if signatur(ist) == signatur(journal["nachher"]):
+        return
+    abweichungen = bekannte_leerwertabweichungen(journal["vorher"], journal["nachher"], ist)
+    if not abweichungen:
+        raise JtlFehler("Unklarer Schreibversuch; Journal manuell prüfen, keine Wiederholung.")
+    # Durable audit precedes clearing the pending flag. No API write or replay.
+    ziel["leerwert_nachweis"] = speicher.sichern({
+        "art": "bekannte_leerwertabweichung", "regelversion": 1,
+        "ursprungsjournal": ziel["offen"], "id": ident, "sku": ziel["sku"],
+        "revision": revision, "abweichungen": abweichungen, "lesestand": ist,
+    })
+
+
 async def abgleichen(client, speicher, quellen):
     state = speicher.state
     bericht = {"geschrieben": 0, "bereits_gleich": 0, "fehler": []}
@@ -73,8 +117,7 @@ async def abgleichen(client, speicher, quellen):
             try:
                 journal = json.loads((speicher.folder / ziel["offen"]).read_text(encoding="utf-8"))
                 ist = await client.lesen(ident, ziel["sku"])
-                if signatur(ist) != signatur(journal["nachher"]):
-                    raise JtlFehler("Unklarer Schreibversuch; Journal manuell prüfen, keine Wiederholung.")
+                ruecklesestand_bestaetigen(speicher, ident, ziel, journal, ist)
                 ziel["erledigt"] = journal["revision"]
                 ziel["offen"] = None
                 speicher.speichern()
@@ -115,8 +158,8 @@ async def abgleichen(client, speicher, quellen):
             # Only the two German shop values, never echo unrelated neutral values.
             await client.schreiben(ident, zielattribute({"values": []}, ziel["html"]))
             ist = await client.lesen(ident, ziel["sku"])
-            if signatur(ist) != signatur(nachher):
-                raise JtlFehler("Rückleseprüfung fehlgeschlagen; Journal prüfen, keine Wiederholung.")
+            journal = json.loads((speicher.folder / ziel["offen"]).read_text(encoding="utf-8"))
+            ruecklesestand_bestaetigen(speicher, ident, ziel, journal, ist)
             ziel["erledigt"], ziel["offen"] = revision, None
             speicher.speichern()
             bericht["geschrieben"] += 1

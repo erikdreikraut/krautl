@@ -12,7 +12,8 @@ import httpx
 from app.jtl_client import JtlFehler
 from app.jtl_faq_test import signatur, zielattribute
 from app.jtl_onprem import OnPremClient
-from app.jtl_sync_engine import Speicher, abgleichen, zielplan
+from app.jtl_sync_engine import (Speicher, abgleichen, zielplan, LEERES_ALTATTRIBUT,
+    LEERER_KANALWERT, bekannte_leerwertabweichungen)
 from app.jtl_sync_service import quellen_bauen, INTERVALL
 
 
@@ -111,6 +112,70 @@ class SyncTests(unittest.IsolatedAsyncioTestCase):
         result = await abgleichen(self.client, self.store, {"VATER": "FAQ"})
         self.assertTrue(result["fehler"])
         self.assertEqual(self.client.schreiben.await_count, 1)
+
+    async def test_bekannter_leerverlust_mit_audit_ohne_wiederholung(self):
+        self.bestand["p"]["values"].append({"attributeId": LEERES_ALTATTRIBUT,
+                                              "defaultValues": [{"value": ""}]})
+        original = self.client.schreiben.side_effect
+        async def bereinigt(ident, attrs):
+            await original(ident, attrs)
+            self.bestand[ident]["values"] = [a for a in self.bestand[ident]["values"]
+                                              if a["attributeId"] != LEERES_ALTATTRIBUT]
+            raise JtlFehler("Antwort verloren")
+        self.client.schreiben.side_effect = bereinigt
+        await abgleichen(self.client, self.store, {"VATER": "FAQ"})
+        journal_name = self.store.state["ziele"]["p"]["offen"]
+        original_journal = (self.store.folder / journal_name).read_bytes()
+        self.client.schreiben.side_effect = original
+        result = await abgleichen(self.client, Speicher(self.tmp.name), {"VATER": "FAQ"})
+        self.assertFalse(result["fehler"])
+        state = Speicher(self.tmp.name).state
+        self.assertIsNone(state["ziele"]["p"]["offen"])
+        self.assertTrue((self.store.folder / state["ziele"]["p"]["leerwert_nachweis"]).exists())
+        self.assertEqual(original_journal, (self.store.folder / journal_name).read_bytes())
+        self.assertEqual([c.args[0] for c in self.client.schreiben.call_args_list], ["p", "c", "d"])
+
+    async def test_bekannter_leerverlust_beim_ersten_ruecklesen(self):
+        self.bestand["p"]["values"].append({"attributeId": LEERES_ALTATTRIBUT,
+                                              "defaultValues": [{"value": ""}]})
+        original = self.client.schreiben.side_effect
+        async def bereinigt(ident, attrs):
+            await original(ident, attrs)
+            self.bestand[ident]["values"] = [a for a in self.bestand[ident]["values"]
+                                              if a["attributeId"] != LEERES_ALTATTRIBUT]
+        self.client.schreiben.side_effect = bereinigt
+        result = await abgleichen(self.client, self.store, {"VATER": "FAQ"})
+        self.assertFalse(result["fehler"])
+        self.assertEqual(result["geschrieben"], 3)
+        self.assertTrue(self.store.state["ziele"]["p"]["leerwert_nachweis"])
+
+    def test_kein_pauschales_ignorieren_leerer_werte(self):
+        for ident, value in (("fremd", ""), (LEERES_ALTATTRIBUT, " "),
+                             (LEERES_ALTATTRIBUT, None), (LEERES_ALTATTRIBUT, "wichtig")):
+            with self.subTest(ident=ident, value=value):
+                vorher = {"values": [{"attributeId": ident, "defaultValues": [{"value": value}]}]}
+                soll = zielattribute(vorher, "FAQ")
+                ist = zielattribute({"values": []}, "FAQ")
+                self.assertEqual(bekannte_leerwertabweichungen(vorher, soll, ist), [])
+
+    def test_bekannte_abweichung_entschuldigt_keinen_faq_verlust(self):
+        vorher = {"values": [{"attributeId": LEERES_ALTATTRIBUT, "defaultValues": [{"value": ""}]}]}
+        soll = zielattribute(vorher, "FAQ")
+        self.assertEqual(bekannte_leerwertabweichungen(vorher, soll, {"values": []}), [])
+        self.assertEqual(bekannte_leerwertabweichungen(vorher, soll,
+                         zielattribute({"values": []}, "anderer Text")), [])
+
+    def test_nur_bekannter_kanalwert_darf_fehlen(self):
+        ident, kanal, sprache = LEERER_KANALWERT
+        vorher = {"values": [{"attributeId": ident, "salesChannelValues": [
+            {"salesChannelId": kanal, "values": [{"languageIso": sprache, "value": ""},
+                                                {"languageIso": "en", "value": "keep"}]}]}]}
+        soll = zielattribute(vorher, "FAQ")
+        ist = copy.deepcopy(soll)
+        ist["values"][0]["salesChannelValues"][0]["values"].pop(0)
+        self.assertEqual(bekannte_leerwertabweichungen(vorher, soll, ist), [LEERER_KANALWERT])
+        ist["values"][0]["salesChannelValues"][0]["values"] = []
+        self.assertEqual(bekannte_leerwertabweichungen(vorher, soll, ist), [])
 
     async def test_fehlende_sku_stoppt_vor_schreiben(self):
         with self.assertRaises(JtlFehler):
