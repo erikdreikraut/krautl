@@ -268,10 +268,11 @@ test("Drag-and-drop bleibt lokal bis Speichern, erstes Bild wird Hauptbild und P
   assert.doesNotMatch(JSON.stringify(view.toJSON()),/Noch nicht gespeichert · erstes Bild wird Hauptbild/);
   await act(async()=>view.update(render(structuredClone(a))));
   assert.equal(view.root.findAllByType("img")[0].props.src.endsWith("/y"),true);
-  assert.match(view.root.findAllByType("figcaption")[0].children.join(""),/1.*Hauptbild/);
+  assert.equal(view.root.findAllByType("figcaption").length,0);
   const save=()=>view.root.findAllByType("button").find(b=>b.children.includes("Reihenfolge speichern"));
   await act(async()=>save().props.onClick());
   assert.deepEqual(calls[0][1].reihenfolge,["b","a"]);
+  assert.doesNotMatch(JSON.stringify(view.toJSON()),/In Wawi bestätigt/);
   assert.deepEqual(calls[0][1].vorher,a.bilder.map(({id,position,hauptbild})=>({id,position,hauptbild})));
   assert.equal(calls.length,1);
 });
