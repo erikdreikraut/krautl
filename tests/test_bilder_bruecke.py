@@ -45,6 +45,16 @@ class QueueTest(unittest.TestCase):
         store.zwischenstand({'id': ID, 'bilder': []}, 0, self.job['api_ziel'])
         sichern(self.job, image())
 
+    def test_removal_only_delivered_to_version_two(self):
+        self.job['operation']='entfernen_shop'
+        sichern(self.job)
+        old=self.client.post('/bilder-bruecke/poll',headers=self.headers,json={'worker':WORKER})
+        self.assertIsNone(old.json()['auftrag'])
+        with self.assertRaises(ValueError):bridge.bereit(entfernen=True)
+        new=self.client.post('/bilder-bruecke/poll',headers=self.headers,json={'worker':WORKER,'protokoll':2})
+        self.assertEqual(new.json()['auftrag']['operation'],'entfernen_shop')
+        bridge.bereit(entfernen=True)
+
     def tearDown(self):
         self.client.close()
         self.env.stop()

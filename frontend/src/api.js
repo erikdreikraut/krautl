@@ -40,6 +40,7 @@ function postForm(pfad, params) {
 
 export const api = {
   bilderReihenfolge: (artikel, body) => anfrage(`/bilder/${encodeURIComponent(artikel)}/reihenfolge`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}),
+  bilderEntfernen: (artikel, body) => anfrage(`/bilder/${encodeURIComponent(artikel)}/entfernen`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}),
   bilderGross: (artikel, bild) => dateiAnfrage(`/bilder/${encodeURIComponent(artikel)}/gross/${encodeURIComponent(bild)}`),
   bilderDatei: (artikel, bild, revision, anfrageId, file) => anfrage(`/bilder/${encodeURIComponent(artikel)}/datei?${new URLSearchParams({revision,anfrage_id:anfrageId,...(bild ? {bild_id:bild} : {})})}`, {method:"POST",headers:{"Content-Type":"application/octet-stream"},body:file}),
   bilderAuftragPruefen: id => anfrage(`/bilder/auftraege/${encodeURIComponent(id)}/pruefen`, {method:"POST"}),

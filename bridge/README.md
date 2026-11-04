@@ -436,3 +436,51 @@ docker compose build app frontend &&
 docker compose up -d --no-deps --force-recreate app frontend
 ```
 Keine Datenbankmigration erforderlich.
+
+
+## Bilddienst-Update und Entfernen (04.11.2026)
+
+Protokoll 2 unterstuetzt `entfernen_shop`: nur die exakte Shop-Zuordnung
+(Plattform 2, Shop 1, eBay-Konto 0) des bestaetigten Artikels entfernen.
+Folgende Shop-Positionen werden innerhalb derselben SQL-Transaktion geschlossen.
+Andere Zuordnungen, Originaldatei und fremde Artikel bleiben erhalten.
+Fulfillment-Verweise verhindern das Entfernen. SEO der entfernten Zuordnung
+wird mitgesichert; verbleibende SEO-Daten muessen unveraendert sein.
+Die Quittung verwendet Neubild=0 und einen separaten Entfernungshash.
+Nach unklarem Commit nur Quittung und Bestand lesen, niemals erneut loeschen.
+
+Minus-Ziel: Drag-and-drop oder Klick mit Bildauswahl, danach Vorschau und
+Rueckfrage. Erst Bestaetigung erzeugt den Auftrag. Erfolg schliesst den Dialog.
+Aktueller Dienst, frischer Protokoll-2-Heartbeat und SKU-Freigabe sind erforderlich.
+Ohne diese Voraussetzungen bleibt Minus deaktiviert. Kein automatischer Ersatz
+ueber die kanalunspezifische Wawi-DELETE-API.
+
+Windows-Update ueber den bestehenden Admin-Download:
+https://krautl.erikschweitzer.de/api/admin/bilddienst-paket
+
+Neue ZIP unter Downloads/Krautl-Bilddienst-Einrichtung.zip speichern.
+Das Paket aktualisiert vorhandenen Code bei ausgeschalteter Schreibfreigabe,
+behaelt config.json, Zertifikat und Journale und prueft dieselbe Dienstidentitaet.
+Ein laufender Worker verhindert das Update durch dieselbe lokale Dateisperre.
+Danach wird nur lesend geprueft; erwartete Ausgabe: Bilddienst-Protokoll: 2.
+
+```powershell
+Set-Location C:\Krautl-Bilddienst
+& .\.venv\Scripts\python.exe -c "from pathlib import Path; import zipfile; p=Path.home()/'Downloads/Krautl-Bilddienst-Einrichtung.zip'; z=zipfile.ZipFile(p); s=z.read('einrichten.py'); z.close(); exec(compile(s,'einrichten.py','exec'))"
+```
+
+Noch ausstehend: aktualisierte Windows-Strukturpruefung, kontrollierte Live-Abnahme
+der Entfernung und danach Dauerbetrieb. Ein Paketdownload oder diese Lesepruefung
+aktiviert keine Schreibzugriffe. Die bereits bestaetigte isolierte Austauschprobe
+an 1036 ersetzt nicht die Abnahme von Entfernen oder allen Verkaufskanaelen.
+
+Deployment nach erfolgreichem Push nur falls Elestio nicht bereits ausrollt:
+```sh
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git pull --ff-only origin main &&
+docker compose build app frontend &&
+docker compose up -d --no-deps --force-recreate app frontend
+```
+Keine manuelle Datenbankmigration. Protokoll-Heartbeat wird lokal in SQLite
+angelegt. Bestehende SQL-Quittungstabelle bleibt unveraendert.

@@ -3,12 +3,13 @@ import json
 from pathlib import Path
 import httpx
 from .sql import Database
-from .worker import Wawi, https
+from .worker import Wawi, https, PROTOCOL_VERSION
 
 
 def check(config):
     if config.get('enable_writes') is not False:
         raise ValueError('Diese Einrichtungspruefung verlangt enable_writes=false')
+    print('Bilddienst-Protokoll:', PROTOCOL_VERSION, flush=True)
     Database(config).preflight()
     print('Datenbankstruktur: OK', flush=True)
     wawi = Wawi(config)

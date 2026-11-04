@@ -38,6 +38,20 @@ def liste(response: Response):
             for job in jobs:
                 if job['id'] in bridge_ids and job['status'] == 'sendet':
                     job['meldung'] = 'Bilddienst derzeit nicht erreichbar. Auftrag bleibt gespeichert; bitte nicht erneut hochladen.'
+    from .bilder_bruecke import artikel_erlaubt
+    removal_ready=False
+    if aktiv():
+        try:
+            bereit(entfernen=True)
+            removal_ready=True
+        except ValueError:pass
+    for article in data.get('artikel',[]):
+        article['entfernen_erlaubt']=False
+        if removal_ready:
+            try:
+                artikel_erlaubt(article['sku'])
+                article['entfernen_erlaubt']=True
+            except ValueError:pass
     return {**data, "bildauftraege": jobs}
 
 
@@ -248,3 +262,21 @@ async def reihenfolge_speichern(artikel_id: UUID, body: BildReihenfolge, request
                     request.state.benutzer["benutzername"])
     except (speicher.Belegt, ValueError, JtlFehler) as exc:
         raise HTTPException(409, str(exc)) from None
+
+
+class BildEntfernen(BaseModel):
+    revision: int = Field(ge=0)
+    anfrage_id: UUID
+    bild_id: UUID
+
+
+@router.post("/{artikel_id}/entfernen")
+async def bild_entfernen(artikel_id: UUID, body: BildEntfernen, request: Request):
+    from .bilder_entfernen import beauftragen
+    from .jtl_onprem import OnPremClient
+    try:
+        with speicher.Laufsperre():
+            async with OnPremClient.aus_umgebung() as c:
+                return await beauftragen(c,str(artikel_id),str(body.bild_id),body.revision,str(body.anfrage_id),request.state.benutzer["benutzername"])
+    except (speicher.Belegt,ValueError,JtlFehler) as exc:
+        raise HTTPException(409,str(exc)) from None

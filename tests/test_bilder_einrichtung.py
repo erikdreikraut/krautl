@@ -125,3 +125,27 @@ class LocalInstallerTest(unittest.TestCase):
             secure=Mock()
             with self.assertRaises(ValueError):install(p,root,secure)
             secure.assert_not_called()
+
+
+class UpdateInstallerTest(unittest.TestCase):
+    def test_update_preserves_credentials_journal_and_rejects_enabled_worker(self):
+        from bridge.install_package import install,FILES
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)/'target';(root/'.venv/Scripts').mkdir(parents=True)
+            (root/'.venv/Scripts/python.exe').touch()
+            (root/'bridge').mkdir();journal=root/'journal';journal.mkdir()
+            (journal/'proof').write_text('receipt')
+            config=dict(enable_writes=False,allowed_skus=['1036'],journal_dir=str(journal),worker_id='id',bridge_token='token',krautl_url='url',wawi_url='wawi',wawi_key='key')
+            raw=json.dumps(config).encode();(root/'bridge/config.json').write_bytes(raw)
+            (root/'bridge/wawi-ca.pem').write_text('verified')
+            package=Path(d)/'setup.zip'
+            with zipfile.ZipFile(package,'w') as z:
+                for name in FILES:z.writestr(name,raw if name.endswith('config.json') else 'updated')
+            install(package,root,Mock(),update=True)
+            self.assertEqual((root/'bridge/config.json').read_bytes(),raw)
+            self.assertEqual((root/'bridge/wawi-ca.pem').read_text(),'verified')
+            self.assertEqual((journal/'proof').read_text(),'receipt')
+            self.assertEqual((root/'bridge/sql.py').read_text(),'updated')
+            config['enable_writes']=True
+            (root/'bridge/config.json').write_text(json.dumps(config))
+            with self.assertRaises(ValueError):install(package,root,Mock(),update=True)

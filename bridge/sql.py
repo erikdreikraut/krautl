@@ -210,3 +210,60 @@ class Database:
         finally:
             db.rollback()
             db.close()
+
+
+    def removal_expected(self, job, before):
+        shop = sorted([r for r in before['rows'] if r[3:6] == [2,1,0]], key=lambda r:r[6])
+        if [r[6] for r in shop] != list(range(1,len(shop)+1)) or len({r[2] for r in shop}) != len(shop):
+            raise ValueError('Shop-Positionen nicht eindeutig')
+        selected = [r for r in shop if r[2] == job['v1_id']]
+        if len(selected) != 1: raise ValueError('Zu entfernende Shop-Zuordnung fehlt')
+        removed = selected[0]
+        result = [list(r) for r in before['rows'] if r[0] != removed[0]]
+        for r in result:
+            if r[3:6] == [2,1,0] and r[6] > removed[6]: r[6] -= 1
+        seo = [r for r in before['seo'] if r[1] != removed[0]]
+        return removed, result, seo
+
+    def remove_shop(self, job, before):
+        self.preflight()
+        removed, expected, seo = self.removal_expected(job,before)
+        db = self.connect()
+        try:
+            c=db.cursor()
+            c.execute('SET XACT_ABORT ON; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE; SET LOCK_TIMEOUT 10000;')
+            c.execute('SELECT Auftrag FROM KrautlBilddienst.Auftrag WITH (UPDLOCK,HOLDLOCK) WHERE Auftrag=?',job['id'])
+            if c.fetchone(): raise ValueError('Auftrag bereits quittiert; nur ruecklesen')
+            if self.rows(c,before['article'],True)!=before['rows'] or self.seo(c,before['article'])!=before['seo']:
+                raise ValueError('Bildzuordnungen oder SEO inzwischen geaendert')
+            original=base64.b64decode(before['original'])
+            if self.data(c,job['v1_id'])!=original:raise ValueError('Original inzwischen geaendert')
+            c.execute('SELECT COUNT(*) FROM FulfillmentNetwork.tProductPictureRef WITH (UPDLOCK,HOLDLOCK) WHERE kArtikelbildPlattform=?',removed[0])
+            if c.fetchone()[0]:raise ValueError('Shop-Zuordnung wird im Fulfillment verwendet')
+            c.execute('DELETE FROM dbo.tArtikelbildPlattform WHERE kArtikelbildPlattform=? AND kArtikel=? AND kBild=? AND kPlattform=2 AND kShop=1 AND kEbayUser=0',removed[0],before['article'],job['v1_id'])
+            for r in sorted(expected,key=lambda r:r[6]):
+                previous=next(b for b in before['rows'] if b[0]==r[0])
+                if r[6]!=previous[6]:
+                    c.execute('UPDATE dbo.tArtikelbildPlattform SET nNr=?,nInet=1 WHERE kArtikelbildPlattform=? AND kArtikel=? AND kPlattform=2 AND kShop=1 AND kEbayUser=0',r[6],r[0],before['article'])
+            if shape(self.rows(c,before['article']))!=shape(expected) or self.seo(c,before['article'])!=seo:
+                raise ValueError('Entfernen hat unerwartete Zuordnungen oder SEO veraendert')
+            if self.data(c,job['v1_id'])!=original:raise ValueError('Original muss erhalten bleiben')
+            digest=hashlib.sha256(b'entfernen-shop:'+original).hexdigest()
+            c.execute('INSERT INTO KrautlBilddienst.Auftrag(Auftrag,Artikel,Altbild,Neubild,Dateihash) VALUES (?,?,?,?,?)',job['id'],before['article'],job['v1_id'],0,digest)
+            db.commit()
+        except BaseException:
+            db.rollback();raise
+        finally:db.close()
+
+    def confirm_removal(self,job,before):
+        removed,expected,seo=self.removal_expected(job,before)
+        db=self.connect()
+        try:
+            c=db.cursor();original=base64.b64decode(before['original'])
+            c.execute('SELECT Artikel,Altbild,Neubild,Dateihash FROM KrautlBilddienst.Auftrag WHERE Auftrag=?',job['id'])
+            receipt=c.fetchone()
+            if not receipt or list(receipt)!=[before['article'],job['v1_id'],0,hashlib.sha256(b'entfernen-shop:'+original).hexdigest()]:
+                raise ValueError('Entfernen nicht quittiert; kein erneutes Schreiben')
+            if shape(self.rows(c,before['article']))!=shape(expected) or self.seo(c,before['article'])!=seo or self.data(c,job['v1_id'])!=original:
+                raise ValueError('Entfernen nicht vollstaendig bestaetigt')
+        finally:db.rollback();db.close()

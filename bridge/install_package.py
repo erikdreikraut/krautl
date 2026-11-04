@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import zipfile
+from contextlib import ExitStack
 
 FILES = {'bridge/__init__.py','bridge/worker.py','bridge/sql.py','bridge/schema.json',
          'bridge/requirements.txt','bridge/check_connection.py','bridge/config.json','bridge/wawi-ca.pem'}
@@ -29,10 +30,10 @@ Set-Acl -LiteralPath 'C:\Krautl-Bilddienst' -AclObject $acl
     subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',script],check=True)
 
 
-def install(package, root, secure=protect):
+def install(package, root, secure=protect, update=False):
     if not (root/'.venv/Scripts/python.exe').is_file():
         raise ValueError('Vorbereitete Python-Umgebung fehlt')
-    if (root/'bridge/config.json').exists():
+    if (root/'bridge/config.json').exists() and not update:
         raise ValueError('Konfiguration vorhanden; sie wird nicht ueberschrieben')
     with zipfile.ZipFile(package) as z:
         names=z.namelist()
@@ -46,21 +47,44 @@ def install(package, root, secure=protect):
         if config.get('enable_writes') is not False or config.get('allowed_skus')!=['1036']:
             raise ValueError('Schreibfreigabe im Einrichtungspaket unzulaessig')
         payload={name:z.read(name) for name in names if name in FILES}
-    secure(root)  # Restrict local access before creating any credential file.
-    for name,raw in payload.items():
-        target=root/name
-        target.parent.mkdir(parents=True,exist_ok=True)
-        with target.open('xb' if name=='bridge/config.json' else 'wb') as f:
-            f.write(raw)
-            f.flush()
-            os.fsync(f.fileno())
+    with ExitStack() as stack:
+        existing=root/'bridge/config.json'
+        if existing.exists():
+            current=json.loads(existing.read_text(encoding='utf-8-sig'))
+            if current.get('enable_writes') is not False:
+                raise ValueError('Bilddienst vor dem Update anhalten und Schreibfreigabe ausschalten')
+            for key in ('worker_id','bridge_token','krautl_url','wawi_url','wawi_key'):
+                if not current.get(key) or current[key]!=config.get(key):
+                    raise ValueError('Paket passt nicht zum eingerichteten Bilddienst')
+            from bridge.worker import single_worker
+            stack.enter_context(single_worker(Path(current['journal_dir'])))
+            payload.pop('bridge/config.json',None)
+            # Keep the locally verified certificate as well as all credentials.
+            payload.pop('bridge/wawi-ca.pem',None)
+        secure(root)
+        previous={name:(root/name).read_bytes() if (root/name).exists() else None for name in payload}
+        written=[]
+        try:
+            for name,raw in payload.items():
+                target=root/name
+                target.parent.mkdir(parents=True,exist_ok=True)
+                temporary=target.with_suffix(target.suffix+'.update')
+                with temporary.open('wb') as f:
+                    f.write(raw);f.flush();os.fsync(f.fileno())
+                os.replace(temporary,target)
+                written.append(name)
+        except BaseException:
+            for name in reversed(written):
+                if previous[name] is None:(root/name).unlink()
+                else:(root/name).write_bytes(previous[name])
+            raise
 
 
 if __name__=='__main__':
     root=Path('C:/Krautl-Bilddienst')
     package=Path.home()/'Downloads/Krautl-Bilddienst-Einrichtung.zip'
     try:
-        install(package,root)
+        install(package,root,update=True)
         package.unlink()
         print('Einrichtung gespeichert. Schreibfreigabe bleibt aus.',flush=True)
         result=subprocess.run([str(root/'.venv/Scripts/python.exe'),'-m','bridge.check_connection'],cwd=root)

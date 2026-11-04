@@ -346,3 +346,16 @@ test("Grüner Haken bestätigt nur Wawi unabhängig vom Shop; ein Entwurf hat Vo
   await act(async()=>view.update(React.createElement(BildReihe,{a:{...a,shop_pruefung:{status:"wartet",meldung:"Shop noch abweichend"}}})));
   assert.deepEqual(tags(),["✓","✓"]);
 });
+
+ test("Entfernen braucht Bestätigung und wiederholt unklaren Auftrag nicht",async t=>{
+ const server=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom'});t.after(()=>server.close());
+ const {BildEntfernenDialog}=await server.ssrLoadModule('/src/BildEntfernenDialog.jsx');
+ const {api}=await server.ssrLoadModule('/src/api.js');
+ let calls=0,closed=0;api.bilderEntfernen=async()=>{calls++;throw Error('Verbindung unterbrochen');};
+ const a={...rows[1],entfernen_erlaubt:true};let view;
+ await act(async()=>{view=create(React.createElement(BildEntfernenDialog,{artikel:a,bild:a.bilder[0],auftraege:[],schliessen:()=>closed++,aktualisiert:async()=>{}}));});
+ t.after(()=>act(()=>view.unmount()));
+ assert.equal(calls,0);
+ const confirm=()=>view.root.findAllByType('button').find(b=>b.children.includes('Entfernen bestätigen'));
+ await act(async()=>confirm().props.onClick());assert.equal(calls,1);assert.equal(confirm().props.disabled,true);assert.equal(closed,0);
+ });

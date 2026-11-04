@@ -35,10 +35,15 @@ def authentifizieren(authorization: str = Header(default='')):
 router = APIRouter(prefix='/bilder-bruecke', dependencies=[Depends(authentifizieren)])
 
 
-def bereit():
+def bereit(entfernen=False):
     with store.datenbank() as db:
         db.execute('CREATE TABLE IF NOT EXISTS bildbruecke (id INTEGER PRIMARY KEY, zeit REAL NOT NULL)')
         row = db.execute('SELECT zeit FROM bildbruecke WHERE id=1').fetchone()
+        if entfernen:
+            db.execute('CREATE TABLE IF NOT EXISTS bildbruecke_version (id INTEGER PRIMARY KEY, zeit REAL NOT NULL, protokoll INTEGER NOT NULL)')
+            version=db.execute('SELECT zeit,protokoll FROM bildbruecke_version WHERE id=1').fetchone()
+            if not version or version[1]<2 or not 0<=time.time()-version[0]<90:
+                raise ValueError('Aktualisierter Bilddienst für Entfernen ist noch nicht erreichbar.')
     if not row or not 0 <= time.time() - row[0] < 90:
         raise ValueError('Der Bilddienst ist nicht erreichbar. Bitte später erneut versuchen.')
 
@@ -49,6 +54,7 @@ def laufend(artikel=None):
 
 class Poll(BaseModel):
     worker: UUID
+    protokoll: StrictInt = 1
 
 
 class Ergebnis(Poll):
@@ -65,10 +71,14 @@ def poll(body: Poll, response: Response):
         db.execute('CREATE TABLE IF NOT EXISTS bildbruecke (id INTEGER PRIMARY KEY, zeit REAL NOT NULL)')
         db.execute('BEGIN IMMEDIATE')
         db.execute('INSERT OR REPLACE INTO bildbruecke VALUES (1, ?)', (time.time(),))
+        db.execute('CREATE TABLE IF NOT EXISTS bildbruecke_version (id INTEGER PRIMARY KEY, zeit REAL NOT NULL, protokoll INTEGER NOT NULL)')
+        db.execute('INSERT OR REPLACE INTO bildbruecke_version VALUES (1,?,?)',(time.time(),body.protokoll))
         for value, raw in db.execute('SELECT daten,datei FROM bildauftraege ORDER BY rowid'):
             job = json.loads(value)
             if not job.get('bruecke') or not (job['status'] == 'sendet' or
                     (job['status'] == 'unklar' and job.get('bruecke_bestaetigt'))):
+                continue
+            if job.get('operation') == 'entfernen_shop' and body.protokoll < 2:
                 continue
             if job.get('bruecke_worker', str(body.worker)) != str(body.worker):
                 continue  # Never reassign an uncertain write to another machine.
@@ -82,7 +92,7 @@ def poll(body: Poll, response: Response):
             db.execute('UPDATE bildauftraege SET daten=? WHERE id=?', (json.dumps(job), job['id']))
             return {'auftrag': {**{k: job[k] for k in ('id','artikel','sku','api_ziel','v1_id',
                 'v1_vorher','vorher_vorschau','dateiname','bruecke_lieferungen')},
-                'datei': base64.b64encode(raw).decode()}}
+                **({'operation':job['operation']} if job.get('operation') else {}), 'datei': base64.b64encode(raw).decode()}}
     return {'auftrag': None}
 
 
@@ -90,6 +100,9 @@ async def bestaetigen(c, job):
     """Independent API readback; a worker success alone is never a UI success."""
     from .bilder_ersetzen import liste, zuordnungen, bild, bestand, lokale_id
     from .bilder_upload import detail_lesen, bildinhalt_bestaetigt
+    if job.get('operation') == 'entfernen_shop':
+        from .bilder_entfernen import bestaetigen as removal_confirm
+        return await removal_confirm(c,job)
     if not job.get('bruecke_bestaetigt'):
         return oeffentlich(job)
     if c.url != job['api_ziel']:
@@ -131,10 +144,10 @@ async def ergebnis(body: Ergebnis):
             if job.get('ruecksetzung') or job['status'] == 'abgelehnt':
                 raise HTTPException(409, 'Auftrag wurde beendet.')
             if not body.erfolgreich:
-                job.update(status='unklar', meldung='Bilddienst konnte den Austausch nicht bestätigen. Kein erneuter Upload; Administrator prüft das Auftragsjournal.')
+                job.update(status='unklar', meldung='Bilddienst konnte die Änderung nicht bestätigen. Kein erneuter Schreibversuch; Administrator prüft das Auftragsjournal.')
                 sichern(job)
                 return oeffentlich(job)
-            if body.bild is None or body.bild <= 0 or body.bild == job['v1_id']:
+            if job.get('operation') != 'entfernen_shop' and (body.bild is None or body.bild <= 0 or body.bild == job['v1_id']):
                 raise HTTPException(422, 'Neue Bildnummer fehlt.')
             if job.get('bruecke_bild') not in (None, body.bild):
                 raise HTTPException(409, 'Widersprüchliches Ergebnis.')

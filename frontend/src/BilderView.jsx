@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Image, RefreshCw, Search, X, EyeOff } from "lucide-react";
+import { BildEntfernenDialog } from "./BildEntfernenDialog.jsx";
 import { BildDialog } from "./BildDialog.jsx";
 import { api } from "./api.js";
 
@@ -92,6 +93,7 @@ const bildStand = a => JSON.stringify([a.revision,a.bilder.map(b=>[b.id,b.positi
 
 export function BildReihe({a, onBild, auftraege=[], gesperrt=false, ungeprueft=false, aktualisiert=async()=>{}}) {
   const [entwurf,setEntwurf]=useState(null), [sendet,setSendet]=useState(false), [info,setInfo]=useState("");
+  const [entfernen,setEntfernen]=useState(null);
   const drag=useRef(null), klickSperre=useRef(0), auftrag=useRef(null);
   const blockiert=gesperrt||ungeprueft||a.ausgeblendet||sendet||auftraege.some(j=>j.artikel===a.id&&["sendet","unklar"].includes(j.status));
   const veraltet=entwurf&&entwurf.stand!==bildStand(a);
@@ -120,7 +122,7 @@ export function BildReihe({a, onBild, auftraege=[], gesperrt=false, ungeprueft=f
       {liste.map((original,n)=>{
         const bild=entwurf&&!veraltet ? {...original,position:n+1,hauptbild:n===0} : original;
         const job=[...auftraege].reverse().find(j=>!(j.art==="reihenfolge"&&j.status==="abgelehnt")&&j.artikel===a.id&&(j.neu_id===bild.id||j.bild_id===bild.id||j.reihenfolge?.includes(bild.id)));
-        return <div key={bild.id} className="shrink-0" draggable={!blockiert&&!veraltet&&liste.length>1} aria-label={`Bildposition ${n+1} verschieben`}
+        return <div key={bild.id} className="shrink-0" draggable={!blockiert&&!veraltet&&(liste.length>1||a.entfernen_erlaubt)} aria-label={`Bildposition ${n+1} verschieben`}
           onDragStart={e=>{if(blockiert||veraltet){e.preventDefault();return;}drag.current=bild.id;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",bild.id);}}
           onDragOver={e=>{if(drag.current&&!blockiert&&!veraltet){e.preventDefault();e.dataTransfer.dropEffect="move";}}}
           onDrop={e=>{e.preventDefault();bewegen(drag.current,bild.id);drag.current=null;klickSperre.current=Date.now()+300;}}
@@ -134,6 +136,11 @@ export function BildReihe({a, onBild, auftraege=[], gesperrt=false, ungeprueft=f
         </div>;
       })}
       <button type="button" aria-label={`Bild zu ${a.sku} hinzufügen`} title="Bild hinzufügen" onClick={()=>onBild?.(a,null)} disabled={blockiert||!!entwurf} className="shrink-0" style={{...box,width:120,height:90,fontSize:32,color:"#2C5A18"}}>+</button>
+      {!!a.bilder.length&&<button type="button" aria-label={`Bild von ${a.sku} entfernen`} title={a.entfernen_erlaubt ? "Bild hierher ziehen oder zum Entfernen auswählen" : "Entfernen benötigt den freigegebenen Bilddienst"}
+        disabled={blockiert||!!entwurf||!a.entfernen_erlaubt} className="shrink-0" style={{...box,width:120,height:90,fontSize:32,color:a.entfernen_erlaubt?"#2C5A18":"#999"}}
+        onClick={()=>setEntfernen(a.bilder[0])}
+        onDragOver={e=>{if(drag.current&&!blockiert&&!entwurf&&a.entfernen_erlaubt)e.preventDefault();}}
+        onDrop={e=>{e.preventDefault();if(drag.current&&!blockiert&&!entwurf&&a.entfernen_erlaubt)setEntfernen(a.bilder.find(b=>b.id===drag.current));drag.current=null;klickSperre.current=Date.now()+300;}}>−</button>}
       {!a.bilder.length&&<span className="py-7" style={{color:"#6C6F5F"}}>Keine Shop-Bilder zugeordnet</span>}
     </div>
     {entwurf&&<div className="flex flex-wrap items-center gap-3 mt-2">
@@ -141,6 +148,7 @@ export function BildReihe({a, onBild, auftraege=[], gesperrt=false, ungeprueft=f
       <button type="button" disabled={sendet} onClick={()=>{setEntwurf(null);auftrag.current=null;setInfo("");}}>Verwerfen</button>
       {veraltet&&<span style={{fontSize:11}}>Bildbestand wurde geändert. Bitte Entwurf verwerfen und neu sortieren.</span>}
     </div>}
+    {entfernen&&<BildEntfernenDialog artikel={a} bild={entfernen} auftraege={auftraege} gesperrt={gesperrt||ungeprueft} schliessen={()=>setEntfernen(null)} aktualisiert={aktualisiert}/>}
     {info&&<p role="status" className="mt-2" style={{fontSize:12}}>{info}</p>}
   </div>;
 }

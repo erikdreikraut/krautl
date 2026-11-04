@@ -17,6 +17,9 @@ import httpx
 from PIL import Image, ImageOps
 
 
+PROTOCOL_VERSION = 2
+
+
 def preview(raw):
     with Image.open(BytesIO(raw)) as im:
         if im.width * im.height > 40_000_000:
@@ -97,6 +100,21 @@ def run_job(job, sql, api, journal, allowed_skus):
     if state['digest'] != digest:
         raise ValueError('Auftragsinhalt wurde geaendert')
     if state.get('result'):
+        return state['result']
+    operation = job.get('operation', 'ersetzen')
+    if operation not in ('ersetzen','entfernen_shop'):raise ValueError('Unbekannte Bildoperation')
+    if operation == 'entfernen_shop':
+        if state['phase'] == 'vorbereitung':
+            state['before'] = sql.prepare(job)
+            sql.removal_expected(job,state['before'])
+            api.check(job)
+            state['phase'] = 'entfernen_versucht'
+            journal.save(ident,state)
+            try:sql.remove_shop(job,state['before'])
+            except Exception:sql.confirm_removal(job,state['before'])
+        sql.confirm_removal(job,state['before'])
+        state.update(result={'erfolgreich':True},phase='bestaetigt')
+        journal.save(ident,state)
         return state['result']
     raw = base64.b64decode(job['datei'], validate=True)
     if not 0 < len(raw) <= 20 * 1024 * 1024:
@@ -187,7 +205,7 @@ def main():
             while True:
                 try:
                     sql.preflight()
-                    response = remote.post(base + '/api/bilder-bruecke/poll', json={'worker': worker})
+                    response = remote.post(base + '/api/bilder-bruecke/poll', json={'worker': worker, 'protokoll': PROTOCOL_VERSION})
                     response.raise_for_status()
                     job = response.json()['auftrag']
                     if job:
