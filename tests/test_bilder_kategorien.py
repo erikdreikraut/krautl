@@ -47,7 +47,7 @@ class KategorienTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(method,"GET")
             if path=="/v2/categories": raise JtlFehler("Direkte JTL-API: HTTP 400.")
             if path=="/v1/categories/uuid-leaf":return {"Id":14,"Name":"Naturpflege","ParentCategoryId":4,"SortNumber":70,"ActiveSalesChannels":["2-2-1"]}
-            if path=="/v1/categories/4":return {"Id":4,"Name":"dreikraut","SortNumber":0,"ActiveSalesChannels":["2-2-1"]}
+            if path=="/v1/categories/4":return {"Id":4,"Name":"dreikraut","SortNumber":0,"ActiveSalesChannels":["8-140-9"]}
             raise AssertionError(path)
         client=AsyncMock();client._request.side_effect=request
         resolver=ShopKategorien(client)

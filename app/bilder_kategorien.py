@@ -88,15 +88,16 @@ class ShopKategorien:
         key = str(key)
         if key in besucht or len(besucht) >= 30:
             raise JtlFehler("Ungültige Kategorie-Hierarchie.")
-        if key in self.cache:
-            return self.cache[key]
+        cache_key = (key, bool(besucht))
+        if cache_key in self.cache:
+            return self.cache[cache_key]
         row = await self.client._request("GET", "/v1/categories/" + key)
         ident = row.get("Id")
         channels = row.get("ActiveSalesChannels")
         if type(ident) is not int or ident <= 0 or (key.isdecimal() and int(key) != ident) or not isinstance(channels, list):
             raise JtlFehler("Uneindeutige v1-Kategorie.")
-        if SHOP not in channels:
-            self.cache[key] = None
+        if not besucht and SHOP not in channels:
+            self.cache[cache_key] = None
             return None
         parent = row.get("ParentCategoryId")
         if parent is not None and (type(parent) is not int or parent < 0):
@@ -109,7 +110,7 @@ class ShopKategorien:
             raise JtlFehler("Kategoriename oder Reihenfolge fehlt.")
         value = {"id": "v1-" + str(ident), "name": (prefix["name"] + " / " if prefix else "") + name.strip(),
                  "sortierung": (prefix["sortierung"] if prefix else []) + [row["SortNumber"]]}
-        self.cache[key] = value
+        self.cache[cache_key] = value
         return value
 
     async def artikel(self, detail):

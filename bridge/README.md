@@ -387,3 +387,9 @@ docker compose up -d --no-deps --force-recreate app frontend
 ```
 Keine Datenbankmigration erforderlich. Kategorie-Metadaten separat lesend
 aktualisieren; bestehende Bildvorschauen und Auftraege dabei erhalten.
+
+Wawi-Wurzel dreikraut.de (Kategorie 4) meldet nur Kanal 8-140-9, ihre
+Shop-Unterrubriken melden 2-2-1. Beim v1-Ausweichweg wird deshalb die direkt
+zugeordnete Rubrik auf Shop-Aktivierung geprueft; Eltern liefern den Wawi-Pfad
+auch ohne eigene Shop-Aktivierung. Inaktive direkt zugeordnete Rubriken bleiben
+ausgeschlossen.
