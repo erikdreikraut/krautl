@@ -224,3 +224,42 @@ class LegacyOrderMigrationTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(ValueError,'ungeklärt'):
                 await umordnen(c,A,0,'new',[B],[{'id':B,'position':1,'hauptbild':True}],'erik')
         self.assertEqual(self.calls,[])
+
+
+class ShopReplacementTest(unittest.IsolatedAsyncioTestCase):
+    setUp = ReplaceTest.setUp
+    tearDown = ReplaceTest.tearDown
+    client = ReplaceTest.client
+    # Native installed-Wawi behavior: new ID in shop, optional standard append.
+    def response(self, req):
+        if req.method == 'PATCH':
+            self.calls.append('PATCH')
+            self.rows[0]['ImageId']=21
+            self.rows.append({'ItemId':10,'ImageId':21,'SalesChannelId':'1-1-1','SortNumber':1})
+            if getattr(self,'foreign_change',False):self.rows[1]['SortNumber']=8
+            return httpx.Response(201,json={})
+        if req.method=='GET' and req.url.path.endswith('/imagedata/21'):
+            self.calls.append('GET')
+            return httpx.Response(200,content=self.new if not getattr(self,'wrong_content',False) else picture('green'))
+        return ReplaceTest.response(self,req)
+
+    async def test_shop_retarget_confirms_updates_local_and_never_repeats(self):
+        async with self.client() as c:
+            result=await uebertragen(c,A,B,0,J,self.new,'user')
+            self.assertEqual(result['status'],'wawi')
+            await uebertragen(c,A,B,0,J,self.new,'user')
+            self.assertEqual((await pruefen(c,auftraege()[0]))['status'],'wawi')
+        self.assertEqual(self.calls.count('PATCH'),1)
+        self.assertEqual(store.lesen()['artikel'][0]['bilder'][0]['v1_id'],21)
+        self.assertEqual(auftraege()[0]['bestaetigter_umfang'],'shop')
+        self.assertTrue(auftraege()[0]['standardbild_ergaenzt'])
+
+    async def test_foreign_change_is_not_relabeled_success(self):
+        self.foreign_change=True
+        async with self.client() as c:
+            self.assertEqual((await uebertragen(c,A,B,0,J,self.new,'user'))['status'],'unklar')
+
+    async def test_wrong_new_content_stays_unclear(self):
+        self.wrong_content=True
+        async with self.client() as c:
+            self.assertEqual((await uebertragen(c,A,B,0,J,self.new,'user'))['status'],'unklar')

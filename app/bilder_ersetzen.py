@@ -91,6 +91,48 @@ async def bestand(c, a, rows=None, fehlertolerant=False):
     return result
 
 
+async def shop_austausch_bestaetigen(c, job, rows):
+    """Accept only the observed native shop retarget, never arbitrary mismatches."""
+    from .bilder_upload import lokal, sichern, bildinhalt_bestaetigt
+    if job.get('art') != 'ersetzen_alle' or job.get('bruecke') or job.get('bereinigung_id') or not job.get('v1_schreibversuch'):
+        return False
+    before = job['v1_vorher']
+    actual = zuordnungen(rows)
+    removed = [r for r in before if r not in actual]
+    added = [r for r in actual if r not in before]
+    if len(removed) != 1 or removed[0][1] != job['v1_id'] or removed[0][2] != SHOP:
+        return False
+    old = removed[0]
+    shop_rows = [r for r in added if r[2] == SHOP]
+    if len(shop_rows) != 1:
+        return False
+    new = shop_rows[0]
+    if new[0] != old[0] or new[3:] != old[3:] or new[1] in {r[1] for r in before}:
+        return False
+    # Native Wawi may append the new file to its standard image list as well.
+    extras = [r for r in added if r != new]
+    standard_position = 1 + max((r[4] for r in before if r[2] == '1-1-1'), default=0)
+    if extras not in ([], [[old[0], new[1], '1-1-1', '', standard_position]]):
+        return False
+    if not bildinhalt_bestaetigt(job, await bild(c, new[1])):
+        return False
+    if not pixelgleich(await bild(c, job['v1_id']), base64.b64decode(job['vorher_vorschau'])):
+        return False
+    a, _ = lokal(job['artikel'], job['revision'])
+    fresh = copy.deepcopy(a)
+    fresh['bilder'] = await bestand(c, a, rows)
+    if zuordnungen(await liste(c, job['artikel'])) != actual or not store.freigegeben(a['id'], job['revision']):
+        raise ValueError('Bildbestand während der Bestätigung geändert.')
+    fresh.update(bild_api='v1', aktualisiert_am=store.jetzt())
+    store.zwischenstand(fresh, a['revision'], c.url, abgleich=False)
+    job.update(status='wawi', bestaetigter_umfang='shop', shop_bild=new[1],
+               shop_bestaetigter_bestand=actual, standardbild_ergaenzt=bool(extras),
+               neu_id=lokale_id(a['id'], new[1]),
+               meldung='Bild im JTL-Shop-Kanal ersetzt. Andere bisherige Kanalzuordnungen sind erhalten.')
+    sichern(job)
+    return True
+
+
 async def pruefen(c, job):
     from .bilder_upload import lokal, sichern, oeffentlich, bildinhalt_bestaetigt, detail_lesen
     if job.get('ruecksetzung'): return oeffentlich(job)
@@ -99,6 +141,8 @@ async def pruefen(c, job):
     rows=await liste(c,job['artikel'])
     expected=job['v1_vorher']
     if zuordnungen(rows)!=expected:
+        if await shop_austausch_bestaetigen(c, job, rows):
+            return oeffentlich(job)
         actual=zuordnungen(rows)
         job['zuordnungsabweichung']={'fehlt':[r for r in expected if r not in actual],
                                     'hinzu':[r for r in actual if r not in expected]}

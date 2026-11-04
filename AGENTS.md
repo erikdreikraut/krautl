@@ -85,3 +85,5 @@
 - FAQ-Abgleich berücksichtigt seit 03.11.2026 nur aktive Artikel im bestätigten JTL-Shop `2-2-1`; Shop-Status jeden Lauf vor Detailabrufen prüfen. Inaktive Väter bleiben mögliche FAQ-Quellen aktiver Kinder. Alte inaktive Ziele ohne unklaren Schreibversuch lokal aussetzen, keine Wawi-Werte löschen; unklare Schreibversuche weiterhin sichern und rücklesen.
 
 - Seit 03.11.2026: Gruener Bild-Haken bedeutet ausschliesslich bestaetigter Wawi-Stand im JTL-Shop-Kanal. Kein blaues W, keine automatische oeffentliche Shop-Bildpruefung mehr. Entwuerfe, ungeklaerte Aenderungen und ungepruefte/fehlende Vorschauen bleiben unterscheidbar. Historische Shop-Pruefprotokolle erhalten. Diese Vorgabe ersetzt fruehere getrennte Shop-Veroeffentlichungspruefungen.
+
+- Bildaustausch seit 04.11.2026: Nutzer akzeptiert als Mindestziel den bestaetigten Austausch im JTL-Shop; alle bisherigen Einsatzstellen sind bevorzugt. Ohne aktiven Bilddienst darf ein streng rueckgepruefter Shop-Austausch als Erfolg schliessen. Keine Behauptung eines Austauschs aller Kanaele; native optionale Standardbild-Ergaenzung explizit pruefen und protokollieren. Details bridge/README.md.

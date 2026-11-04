@@ -409,3 +409,30 @@ git pull --ff-only origin main &&
 docker compose build frontend &&
 docker compose up -d --no-deps --force-recreate frontend
 ```
+
+
+### Mindestziel Bildaustausch (04.11.2026)
+
+Nutzer bestaetigt: Austausch muss mindestens im JTL-Shop erfolgen; alle bisherigen
+Einsatzstellen sind das bevorzugte Ziel. Ohne aktiven Bilddienst darf die native
+v1-Antwort daher als Shop-Erfolg gelten, wenn ausschliesslich die alte Shop-ID
+an derselben Position durch eine neue Bild-ID ersetzt wurde und deren Inhalt
+mit der bestaetigten Datei uebereinstimmt. Alle alten Nicht-Shop-Zuordnungen und
+der alte Bildinhalt bleiben unveraendert. Genau ein von Wawi optional am Ende
+angehaengter Standardbildeintrag wird explizit erfasst; weitere Abweichungen sind
+kein Erfolg. Auftrag speichert bestaetigter_umfang=shop, neuen Bestand und
+standardbild_ergaenzt; Originalauftrag und Originaldateisicherung bleiben erhalten.
+
+Der Dialog verspricht keinen vollstaendigen kanalweiten Austausch mehr. Nach
+bestaetigtem Shop-Erfolg schliesst er automatisch. Fuer alle Kanaele bleibt die
+Bruecke erforderlich; derzeit weiterhin nicht fuer Dauerbetrieb aktiviert.
+
+Deployment (Elestio abwarten, keine parallelen Rollouts):
+```sh
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git pull --ff-only origin main &&
+docker compose build app frontend &&
+docker compose up -d --no-deps --force-recreate app frontend
+```
+Keine Datenbankmigration erforderlich.
