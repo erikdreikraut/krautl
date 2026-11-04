@@ -1,7 +1,7 @@
 import os
 import unittest
 
-os.environ.setdefault("ANTHROPIC_API_KEY", "test")
+os.environ.setdefault("OPENAI_API_KEY", "test")
 
 from app.agent import (
     ANTHROPIC_RECHNUNGSABSENDER,

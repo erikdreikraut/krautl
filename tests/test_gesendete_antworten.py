@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
-os.environ.setdefault("ANTHROPIC_API_KEY", "test")
+os.environ.setdefault("OPENAI_API_KEY", "test")
 
 import httpx
 from sqlalchemy import select

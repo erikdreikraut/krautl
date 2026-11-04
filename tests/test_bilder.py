@@ -9,7 +9,7 @@ from unittest.mock import patch, AsyncMock
 from uuid import UUID
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
-os.environ.setdefault("ANTHROPIC_API_KEY", "test")
+os.environ.setdefault("OPENAI_API_KEY", "test")
 import httpx
 from PIL import Image
 from app import main, bilder, bilder_speicher as store

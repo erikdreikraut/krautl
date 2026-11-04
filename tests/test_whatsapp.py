@@ -9,7 +9,7 @@ from uuid import uuid4
 from types import SimpleNamespace
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
-os.environ.setdefault("ANTHROPIC_API_KEY", "test")
+os.environ.setdefault("OPENAI_API_KEY", "test")
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -441,7 +441,7 @@ class WhatsAppTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(msg.status, "unklar")
 
     async def test_incoming_and_reopened_chat_do_not_call_ai(self):
-        with patch("app.whatsapp.Anthropic") as ai:
+        with patch("app.whatsapp.KIClient") as ai:
             chat = await self.eingang()
             await self.client.put(f"/whatsapp/chats/{chat.id}/erledigen", headers=self.admin, json={"revision": 1})
             chat = await self.eingang(self.payload("follow-up"))
@@ -458,13 +458,13 @@ class WhatsAppTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_explicit_proposal_still_uses_ai_and_never_sends(self):
         chat = await self.eingang()
-        with patch("app.whatsapp.Anthropic") as ai, patch("app.whatsapp.api_senden", new_callable=AsyncMock) as send:
-            ai.return_value.messages.create.return_value = SimpleNamespace(
+        with patch("app.whatsapp.KIClient") as ai, patch("app.whatsapp.api_senden", new_callable=AsyncMock) as send:
+            ai.return_value.erzeugen.return_value = SimpleNamespace(
                 content=[SimpleNamespace(type="text", text="Hallo, wie kann ich helfen?")])
             response = await self.client.post(f"/whatsapp/chats/{chat.id}/vorschlag", headers=self.admin)
             self.assertEqual(response.status_code, 200, response.text)
             self.assertEqual(response.json()["text"], "Hallo, wie kann ich helfen?")
-            ai.return_value.messages.create.assert_called_once()
+            ai.return_value.erzeugen.assert_called_once()
             send.assert_not_awaited()
         detail = (await self.client.get(f"/whatsapp/chats/{chat.id}", headers=self.admin)).json()
         self.assertEqual(detail["entwurf"], "Hallo, wie kann ich helfen?")

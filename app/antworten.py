@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from anthropic import Anthropic
+from .ki import KIClient, STANDARD_MODELL
 from sqlalchemy import select
 
 from .models import Entwurf, FaqEintrag, Klassifikation, Mail, Wissenseintrag
@@ -101,7 +101,7 @@ def _text_aus_antwort(antwort) -> str:
         if block.type == "text" and block.text.strip()
     ).strip()
     if not text:
-        raise RuntimeError("Claude hat keinen Antworttext geliefert")
+        raise RuntimeError("Die KI hat keinen Antworttext geliefert")
     return text
 
 
@@ -109,9 +109,9 @@ def _synchron_erzeugen(
     mail: Mail, faq: list[FaqEintrag], wissen: list[Wissenseintrag] | None = None
 ) -> str:
     stilprofil = STILPROFIL_PFAD.read_text(encoding="utf-8")
-    client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=120.0)
-    antwort = client.messages.create(
-        model="claude-sonnet-4-6",
+    client = KIClient(api_key=os.environ["OPENAI_API_KEY"], timeout=120.0)
+    antwort = client.erzeugen(
+        model=STANDARD_MODELL,
         max_tokens=1600,
         system=f"{SYSTEMPROMPT}\n\n=== VERBINDLICHES STILPROFIL ===\n{stilprofil}",
         messages=[{
@@ -147,7 +147,7 @@ def _synchron_erzeugen(
 async def antwortentwurf_erzeugen(
     mail: Mail, faq: list[FaqEintrag], wissen: list[Wissenseintrag] | None = None
 ) -> str:
-    """Hält den API-Prozess während des synchronen Claude-Aufrufs frei."""
+    """Hält den API-Prozess während des synchronen KI-Aufrufs frei."""
     return await asyncio.to_thread(_synchron_erzeugen, mail, faq, wissen)
 
 
@@ -349,9 +349,9 @@ def _synchron_pruefen(
     wissen: list[Wissenseintrag] | None = None,
 ) -> dict:
     stilprofil = STILPROFIL_PFAD.read_text(encoding="utf-8")
-    client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=120.0)
-    antwort = client.messages.create(
-        model="claude-sonnet-4-6",
+    client = KIClient(api_key=os.environ["OPENAI_API_KEY"], timeout=120.0)
+    antwort = client.erzeugen(
+        model=STANDARD_MODELL,
         max_tokens=700,
         system=PRUEFUNGS_SYSTEMPROMPT,
         tools=[PRUEFUNGS_TOOL],
@@ -375,7 +375,7 @@ def _synchron_pruefen(
     for block in antwort.content:
         if block.type == "tool_use":
             return block.input
-    raise RuntimeError("Claude hat kein Prüfergebnis geliefert")
+    raise RuntimeError("Die KI hat kein Prüfergebnis geliefert")
 
 
 def pruefergebnis_absichern(

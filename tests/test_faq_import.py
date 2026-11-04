@@ -11,7 +11,7 @@ from app.faq_import import Paar, dokument_inhalt, zuordnen, auswerten, strukturi
 class DokumentTest(unittest.TestCase):
     def test_strukturiert_ohne_ki_und_ohne_erfundene_produktkennung(self):
         text = "[Herkunft & Qualität]\n\nQ: Woher?\n\nA: Europa.\n\nZweiter Absatz.\n\n[Anwendung]\nQ: Wie?\nA: Als Tee."
-        with patch("app.faq_import.Anthropic") as ki:
+        with patch("app.faq_import.KIClient") as ki:
             paare = auswerten({"type": "text", "text": text})
         ki.assert_not_called()
         self.assertEqual(len(paare), 2)
@@ -32,8 +32,8 @@ class DokumentTest(unittest.TestCase):
         block = SimpleNamespace(type="tool_use", name="faq_extrahieren", input={
             "eintraege": [{"artikelnummer": None, "produktname": None,
                            "produkt_id": None, "frage": "F?", "antwort": "A."}]})
-        with patch("app.faq_import.Anthropic") as ki:
-            ki.return_value.messages.create.return_value = SimpleNamespace(stop_reason="tool_use", content=[block])
+        with patch("app.faq_import.KIClient") as ki:
+            ki.return_value.erzeugen.return_value = SimpleNamespace(stop_reason="tool_use", content=[block])
             paar = auswerten({"type": "text", "text": "Unstrukturierter Text"})[0]
         self.assertEqual(paar.artikelnummer, "")
         self.assertEqual(paar.produktname, "")
@@ -83,7 +83,7 @@ class ImportApiTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await self.client.get("/faq", headers=self.headers)).json(), [])
 
     async def test_strukturierte_datei_vorschau_ohne_speicherung(self):
-        with patch("app.faq_import.Anthropic") as ki:
+        with patch("app.faq_import.KIClient") as ki:
             r = await self.client.post("/faq/import/analyse", headers=self.headers,
                 files={"datei": ("faq.txt", "[Qualität]\nQ: Woher?\nA: Europa.".encode())})
         self.assertEqual(r.status_code, 200, r.text)

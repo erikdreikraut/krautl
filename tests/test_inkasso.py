@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
-os.environ.setdefault("ANTHROPIC_API_KEY", "test")
+os.environ.setdefault("OPENAI_API_KEY", "test")
 import httpx
 from app import inkasso, inkasso_service, inkasso_zugang, main
 from app.auth import COOKIE_NAME, sitzung_erstellen

@@ -3,7 +3,7 @@ IMAP-Anbindung.
 
 WICHTIG zur Sicherheit: Dieses Modul liest ausschließlich Zugangsdaten aus
 Umgebungsvariablen (siehe .env.example). Niemals Zugangsdaten hart codieren
-oder in Logs/Prompts an die Claude API weitergeben.
+oder in Logs/Prompts an die KI-API weitergeben.
 """
 import os
 from dataclasses import dataclass

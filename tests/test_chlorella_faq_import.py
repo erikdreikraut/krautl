@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_chlorella_faq.db")
-os.environ.setdefault("ANTHROPIC_API_KEY", "test")
+os.environ.setdefault("OPENAI_API_KEY", "test")
 
 from sqlalchemy import select
 

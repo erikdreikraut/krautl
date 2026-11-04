@@ -97,7 +97,7 @@ async def postfach_abrufen_und_klassifizieren(
     """Ruft neue Mails eines Postfachs ab, klassifiziert und speichert sie.
     Legt den geordneten Aufgabenplan der Klassifikation an. Blockierende
     Bestätigungen werden später über die Oberfläche erledigt."""
-    # IMAP und Claude verwenden synchrone Bibliotheken. Sie dürfen deshalb
+    # IMAP und die KI verwenden synchrone Bibliotheken. Sie dürfen deshalb
     # nicht direkt im FastAPI-Ereignisloop laufen, sonst friert während eines
     # größeren Mail-Rückstaus auch die Weboberfläche ein.
     # Nicht der Gelesen-Status entscheidet, sondern die fortlaufende IMAP-UID.

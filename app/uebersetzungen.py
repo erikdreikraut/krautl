@@ -3,10 +3,10 @@
 import asyncio
 import os
 
-from anthropic import Anthropic
+from .ki import KIClient, SCHNELLES_MODELL
 
 
-UEBERSETZUNGS_MODELL = "claude-haiku-4-5-20251001"
+UEBERSETZUNGS_MODELL = SCHNELLES_MODELL
 
 MAIL_UEBERSETZUNGS_TOOL = {
     "name": "mail_uebersetzen",
@@ -55,16 +55,16 @@ def _tool_ergebnis(antwort, tool_name: str) -> dict:
     for block in antwort.content:
         if block.type == "tool_use" and block.name == tool_name:
             return block.input
-    raise RuntimeError("Claude hat keine strukturierte Übersetzung geliefert")
+    raise RuntimeError("Die KI hat keine strukturierte Übersetzung geliefert")
 
 
 def _synchron_mail_uebersetzen(
     betreff: str, text: str, erkannte_sprache: str | None = None
 ) -> dict:
-    antwort = Anthropic(
-        api_key=os.environ["ANTHROPIC_API_KEY"], timeout=120.0
-    ).messages.create(
-        model=os.getenv("UEBERSETZUNGS_MODELL", UEBERSETZUNGS_MODELL),
+    antwort = KIClient(
+        api_key=os.environ["OPENAI_API_KEY"], timeout=120.0
+    ).erzeugen(
+        model=os.getenv("OPENAI_TRANSLATION_MODEL", UEBERSETZUNGS_MODELL),
         max_tokens=6000,
         system=(
             "Du erkennst die Hauptsprache einer geschäftlichen E-Mail und erstellst "
@@ -134,10 +134,10 @@ async def uebersetzung_fuer_mail_sicherstellen(mail) -> bool:
 
 
 def _synchron_antwort_uebersetzen(text: str, zielsprache: str) -> str:
-    antwort = Anthropic(
-        api_key=os.environ["ANTHROPIC_API_KEY"], timeout=120.0
-    ).messages.create(
-        model=os.getenv("UEBERSETZUNGS_MODELL", UEBERSETZUNGS_MODELL),
+    antwort = KIClient(
+        api_key=os.environ["OPENAI_API_KEY"], timeout=120.0
+    ).erzeugen(
+        model=os.getenv("OPENAI_TRANSLATION_MODEL", UEBERSETZUNGS_MODELL),
         max_tokens=6000,
         system=(
             "Du übersetzt einen geschäftlichen Antworttext vollständig in die angegebene "
@@ -162,7 +162,7 @@ def _synchron_antwort_uebersetzen(text: str, zielsprache: str) -> str:
     ergebnis = _tool_ergebnis(antwort, "antwort_uebersetzen")
     uebersetzung = str(ergebnis.get("uebersetzung") or "").strip()
     if not uebersetzung:
-        raise RuntimeError("Claude hat einen leeren übersetzten Antworttext geliefert")
+        raise RuntimeError("Die KI hat einen leeren übersetzten Antworttext geliefert")
     return uebersetzung
 
 

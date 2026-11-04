@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 os.environ.setdefault(
     "DATABASE_URL", "sqlite+aiosqlite:///./test_interne_aufgaben_kategorie.db"
 )
-os.environ.setdefault("ANTHROPIC_API_KEY", "test")
+os.environ.setdefault("OPENAI_API_KEY", "test")
 
 from sqlalchemy import select
 

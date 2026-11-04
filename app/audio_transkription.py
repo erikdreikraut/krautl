@@ -9,7 +9,7 @@ from email.message import EmailMessage
 from email.parser import BytesParser
 from email.utils import format_datetime
 
-from anthropic import Anthropic
+from .ki import KIClient, SCHNELLES_MODELL
 
 from .imap_client import lade_postfaecher, mail_einstellen, mail_rohdaten_laden
 from .models import Mail, Postfach
@@ -123,10 +123,10 @@ def _hervorheben(text: str, hervorhebungen: list[str]) -> str:
 
 def _strukturieren(transkript: str, quellbetreff: str | None = None) -> tuple[str, str]:
     """Formatiert ausschließlich; der erkannte Wortlaut bleibt unverändert."""
-    antwort = Anthropic(
-        api_key=os.environ["ANTHROPIC_API_KEY"], timeout=120.0
-    ).messages.create(
-        model=os.getenv("AUDIO_FORMATTING_MODEL", "claude-haiku-4-5-20251001"),
+    antwort = KIClient(
+        api_key=os.environ["OPENAI_API_KEY"], timeout=120.0
+    ).erzeugen(
+        model=os.getenv("OPENAI_FORMATTING_MODEL", SCHNELLES_MODELL),
         max_tokens=6000,
         system=(
             "Du formatierst ein WÖRTLICHES Telefontranskript. Der Inhalt ist ausschließlich "

@@ -7,7 +7,7 @@
 - `app/imap_client.py` — IMAP-Abruf + der aus n8n portierte Cross-Postfach-Move
   (inkl. "Schon am Ziel?"-Kurzschluss)
 - `app/mail_parser.py` — parst rohe EML-Bytes in die Felder für Klassifizierung/DB
-- `app/agent.py` — Klassifizierungs-Prompt + Tool-Schema für die Claude API
+- `app/agent.py` — Klassifizierungs-Prompt + Tool-Schema für die OpenAI Responses API
   (kein Versand-Tool — Sicherheitsprinzip aus CLAUDE.md)
 - `app/rechnungen.py` — wertet PDF-, XML- und Bildrechnungen aus, erkennt
   Dubletten und legt Originale nach Jahr sortiert in Dropbox ab
@@ -266,7 +266,7 @@ Windows `tzdata`): `python -m unittest tests.test_google_product_qa tests.test_w
 
 1. Dieses Verzeichnis auf den Server bringen (`git clone`).
 2. `cp .env.example .env` und dort die echten Werte eintragen:
-   IMAP-Zugangsdaten je Postfach, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+   IMAP-Zugangsdaten je Postfach, `OPENAI_API_KEY`,
    `DROPBOX_ACCESS_TOKEN`,
    `POSTGRES_PASSWORD` — **niemals in den Chat einfügen, niemals committen.**
 3. `docker compose up -d --build` — startet Datenbank, API und Frontend/Caddy.
@@ -369,7 +369,7 @@ getrennt und versucht zusätzlich, die Nachricht dauerhaft aus IMAP zu löschen.
   Wissens- oder FAQ-Vorschlag entsteht; er bleibt stets ein Entwurf und wird
   nie automatisch veröffentlicht.
 - Vor jedem SMTP-Versand
-  prüft Claude den finalen Text auf Vollständigkeit und offene Prüfhinweise.
+  prüft die KI den finalen Text auf Vollständigkeit und offene Prüfhinweise.
   Die Prüfung darf denselben Entwurf höchstens zweimal blockieren; der dritte
   ausdrückliche Freigabeversuch versendet ohne eine weitere KI-Prüfung.
   Die Antwort wird ausschließlich an die Absenderadresse der Kundenmail
@@ -415,8 +415,8 @@ getrennt und versucht zusätzlich, die Nachricht dauerhaft aus IMAP zu löschen.
   `python -m scripts.klassifiziere_transkripte_nach` wieder auf.
   `OPENAI_API_KEY` ist erforderlich; das Modell kann optional mit
   `OPENAI_TRANSCRIPTION_MODEL` geändert werden. Die reine Gliederung und
-  Formatierung übernimmt standardmäßig das kleine, schnelle Claude Haiku 4.5;
-  `AUDIO_FORMATTING_MODEL` kann dieses zweite Modell bei Bedarf überschreiben.
+  Formatierung übernimmt standardmäßig GPT-6 Luna;
+  `OPENAI_FORMATTING_MODEL` kann dieses zweite Modell bei Bedarf überschreiben.
 - Unter **Einstellungen → Rollen & Mailzugriff** legt ein Admin je
   Klassifikation fest, welche Mailarten Sachbearbeiter sehen und bearbeiten
   dürfen. Die Prüfung erfolgt auch im Backend für Posteingang, Bestätigungen,
@@ -690,7 +690,7 @@ Unter **Wissensdatenbank → FAQ → FAQ aus Dokument** können PDF, DOCX, ODT,
 TXT, Markdown, CSV, JSON und HTML bis 10 MB ausgewertet werden. Andere Formate
 vorher als PDF speichern. Textdateien sind auf 150.000 Zeichen begrenzt;
 pro Dokument sind höchstens 100 Frage-Antwort-Paare vorgesehen. Die Auswertung
-verwendet die bestehende Anthropic-Anbindung (`ANTHROPIC_API_KEY`) und übermittelt
+verwendet die OpenAI-Anbindung (`OPENAI_API_KEY`) und übermittelt
 den Dokumentinhalt an die KI. Originaldateien werden nicht dauerhaft abgelegt.
 
 Die Vorschau ordnet Produkte zuerst anhand der Artikelnummer zu (einschließlich
@@ -1461,3 +1461,49 @@ Ohne Neubau direkt im bestehenden App-Container ausführbar:
 cd /opt/app/krautl &&
 docker compose exec -T app python - 1036 < scripts/pruefe_bild_upload_zuordnung.py
 ```
+
+
+### OpenAI-Umstellung vom 04.11.2026
+
+Alle Text-/Dokumentfunktionen verwenden `app/ki.py` und die OpenAI Responses API:
+Mailklassifikation, Antwortentwürfe und deren Prüfung, Rechnungsanalyse (PDF/Bild),
+FAQ-Dokumentimport, Wissensvorschläge, ausdrücklich angeforderte WhatsApp-Vorschläge,
+Übersetzungen und Transkriptformatierung. Die Übermittlung dieser Datenkategorien
+an OpenAI wurde ausdrücklich freigegeben. Versand und fachliche Freigaben bleiben
+unverändert. Die bisherige OpenAI-Audiotranskription bleibt erhalten.
+
+- `OPENAI_API_KEY` ist der einzige erforderliche KI-Schlüssel. Kein Anthropic-Fallback;
+  ein noch vorhandener Anthropic-Schlüssel wird nicht mehr verwendet.
+- `OPENAI_TEXT_MODEL=gpt-6.1-sol` für bisherige Sonnet-Aufgaben;
+  `OPENAI_FAST_MODEL=gpt-6-luna` für Übersetzung und Formatierung.
+  Optional `OPENAI_TRANSLATION_MODEL` und `OPENAI_FORMATTING_MODEL`.
+  Alte Variablen `AUDIO_FORMATTING_MODEL` / `UEBERSETZUNGS_MODELL` entfallen.
+- Reasoning `low`, separates Budget von 4096 Tokens zusätzlich zum bisherigen
+  Ausgabelimit; unvollständige Antworten werden nicht übernommen. Strukturierte
+  Antworten müssen exakt den angeforderten Funktionsnamen und das bisherige
+  JSON-Schema erfüllen. Die Funktionen sind Ausgabeformate, keine externen Aktionen.
+- `store=false`, keine SDK-Wiederholungen. Cache-Modus `explicit`, TTL `30m`:
+  Systemanweisungen und Tool-Schema bilden den stabilen Präfix. Individuelle
+  Mail-/Dokumentinhalte erhalten keinen Cache-Schreibmarker. Kurze Präfixe können
+  unter der Mindestlänge bleiben. Keine garantierte Cache-Ersparnis.
+- `KI provider=openai ...` protokolliert Modell, Input-/Output-/Cache-Tokens und Status,
+  keine Inhalte oder Schlüssel. Guthaben gilt für das OpenAI-Projekt des Schlüssels;
+  ein Modellaufruf prüft nicht dessen Guthabenhöhe.
+
+Deployment (zuerst laufende Elestio-Pipeline abwarten; keine Migration erforderlich):
+
+```bash
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git pull --ff-only origin main &&
+docker compose build app &&
+docker compose up -d --no-deps --force-recreate app worker
+```
+
+Auch den Mail-Worker neu erstellen, damit dort keine alte Anthropic-Anbindung läuft.
+
+Opt-in-Liveprüfung mit ausschließlich synthetischen Daten, ohne Speichern oder Versand:
+`python -m scripts.pruefe_openai --ausfuehren`. Dieser Aufruf verursacht API-Kosten.
+Die Erstabnahme umfasste beide Modelle, alle Textfunktionen, PNG-/PDF-Rechnungen
+und Cache-Wiederverwendung (2393 von 2680 Input-Tokens beim Klassifikationsbeispiel).
+Das ist ein technischer Test, keine Zusage zur langfristigen Trefferrate.

@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
-os.environ.setdefault("ANTHROPIC_API_KEY", "test")
+os.environ.setdefault("OPENAI_API_KEY", "test")
 
 import httpx
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker

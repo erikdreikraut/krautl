@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-os.environ.setdefault("ANTHROPIC_API_KEY", "test")
+os.environ.setdefault("OPENAI_API_KEY", "test")
 
 from app.uebersetzungen import (
     antwort_in_originalsprache_uebersetzen, antwort_ins_deutsche_uebersetzen,

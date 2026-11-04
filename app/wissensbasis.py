@@ -4,7 +4,7 @@ import html
 import os
 import re
 
-from anthropic import Anthropic
+from .ki import KIClient, STANDARD_MODELL
 from sqlalchemy import select
 
 from .models import (
@@ -179,10 +179,10 @@ def _vorschlag_synchron(
     produktliste = "\n".join(
         f"{p.id}: {p.name} (Artikelnummer {p.artikelnummer or '-'})" for p in produkte
     ) or "Keine Produkte angelegt."
-    antwort = Anthropic(
-        api_key=os.environ["ANTHROPIC_API_KEY"], timeout=120.0
-    ).messages.create(
-        model="claude-sonnet-4-6",
+    antwort = KIClient(
+        api_key=os.environ["OPENAI_API_KEY"], timeout=120.0
+    ).erzeugen(
+        model=STANDARD_MODELL,
         max_tokens=1200,
         system=(
             "Prüfe nach einer bearbeiteten Kundenantwort, ob durch die menschliche "

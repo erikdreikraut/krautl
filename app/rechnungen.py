@@ -9,7 +9,7 @@ from pathlib import PurePosixPath
 from zoneinfo import ZoneInfo
 
 import dropbox
-from anthropic import Anthropic
+from .ki import KIClient, STANDARD_MODELL
 from dropbox.files import WriteMode
 from sqlalchemy import select
 
@@ -532,10 +532,10 @@ def _analysiere(anhang: dict, mail: Mail) -> dict:
         dokument = {"type": "image", "source": {"type": "base64", "media_type": mime,
                     "data": base64.b64encode(anhang["inhalt"]).decode("ascii")}}
 
-    antwort = Anthropic(
-        api_key=os.environ["ANTHROPIC_API_KEY"], timeout=120.0
-    ).messages.create(
-        model="claude-sonnet-4-6", max_tokens=1200,
+    antwort = KIClient(
+        api_key=os.environ["OPENAI_API_KEY"], timeout=120.0
+    ).erzeugen(
+        model=STANDARD_MODELL, max_tokens=1200,
         system=RECHNUNGS_SYSTEM_PROMPT,
         tools=[RECHNUNGS_TOOL], tool_choice={"type": "tool", "name": "rechnung_erfassen"},
         messages=[{"role": "user", "content": [
@@ -559,7 +559,7 @@ def _bild_mime_type(anhang: dict) -> str:
 
     Scanner, Shops und Mailprogramme benennen JPEG-Dateien nicht selten als
     PNG oder liefern sie als application/octet-stream. Die Bildsignatur ist
-    fuer die Anthropic-API massgeblich.
+    fuer die KI-API massgeblich.
     """
     inhalt = anhang.get("inhalt") or b""
     if inhalt.startswith(b"\xff\xd8\xff"):

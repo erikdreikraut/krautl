@@ -9,11 +9,11 @@ Aktion in der Krautl-Oberfläche.
 import os
 import json
 import re
-from anthropic import Anthropic
+from .ki import KIClient, STANDARD_MODELL
 
 from .interne_aufgaben import ist_interne_aufgabenmail
 
-client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=120.0)
+client = KIClient(timeout=120.0)
 
 KLASSIFIZIERUNGS_SYSTEMPROMPT = """\
 Du klassifizierst eingehende geschäftliche E-Mails für dreikraut e.K.
@@ -578,8 +578,8 @@ Spam-Score: {mail.get('spam_score', 'nicht vorhanden')}
 === ENDE DER E-MAIL ===
 """
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
+    response = client.erzeugen(
+        model=STANDARD_MODELL,
         max_tokens=1024,
         system=KLASSIFIZIERUNGS_SYSTEMPROMPT,
         tools=[KLASSIFIZIERUNGS_TOOL],

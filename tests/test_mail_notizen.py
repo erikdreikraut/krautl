@@ -8,7 +8,7 @@ from sqlalchemy import select
 os.environ.setdefault(
     "DATABASE_URL", "sqlite+aiosqlite:///./test_mail_notizen.db"
 )
-os.environ.setdefault("ANTHROPIC_API_KEY", "test")
+os.environ.setdefault("OPENAI_API_KEY", "test")
 
 from app.db import SessionLocal, engine
 from app.main import MailNotizAenderung, liste_mails, mail_notiz_speichern

@@ -8,7 +8,7 @@ from unittest.mock import patch
 from sqlalchemy import select
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_wissensbasis.db")
-os.environ.setdefault("ANTHROPIC_API_KEY", "test")
+os.environ.setdefault("OPENAI_API_KEY", "test")
 
 from app.db import SessionLocal, engine
 from app.models import (
