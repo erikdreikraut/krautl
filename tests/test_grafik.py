@@ -80,6 +80,26 @@ class GrafikZugriffTest(unittest.IsolatedAsyncioTestCase):
         for user in ("erik", "ludwig"):
             self.assertEqual((await self.web.get("/mails", headers=self.cookie(user))).status_code, 200)
 
+    async def test_bild_entfernen_passiert_middleware_nur_fuer_admin_und_grafik(self):
+        article = "770f139d-18dd-405c-9f84-322104000000"
+        body = {"revision": 0, "bild_id": article, "anfrage_id": article}
+        with patch("app.bilder.speicher.Laufsperre"), \
+             patch("app.jtl_onprem.OnPremClient.aus_umgebung") as client, \
+             patch("app.bilder_entfernen.beauftragen", new_callable=AsyncMock) as queue:
+            client.return_value.__aenter__ = AsyncMock()
+            client.return_value.__aexit__ = AsyncMock(return_value=False)
+            queue.return_value = {"status": "sendet"}
+            for user in ("micha", "erik"):
+                response = await self.web.post(f"/bilder/{article}/entfernen", json=body, headers=self.cookie(user))
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(queue.call_args.args[-1], user)
+            count = queue.call_count
+            response = await self.web.post(f"/bilder/{article}/entfernen", json=body, headers=self.cookie("ludwig"))
+            self.assertEqual(response.status_code, 403)
+            response = await self.web.post(f"/bilder/{article}/entfernen", json=body)
+            self.assertEqual(response.status_code, 401)
+            self.assertEqual(queue.call_count, count)
+
     async def test_alte_sitzung_erhaelt_sofort_aktuelle_rolle(self):
         with patch.dict(BENUTZER["micha"], {"rolle": "sachbearbeiter"}):
             token = sitzung_erstellen("micha")

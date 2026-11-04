@@ -13,7 +13,12 @@ export function BildEntfernenDialog({artikel,bild,auftraege,gesperrt,schliessen,
   try {
    const r=await api.bilderEntfernen(artikel.id,{bild_id:id,revision:revision.current,anfrage_id:request.current});
    if(r.status==='wawi')schliessen();else setInfo(r.meldung);
-  }catch(e){setInfo(e.message+' Bitte den Auftragsstatus prüfen; nicht erneut entfernen.');}
+  }catch(e){
+   if(e.status===401||e.status===403){
+    setGestartet(false);
+    setInfo(e.status===401?'Bitte erneut anmelden. Der Löschauftrag wurde nicht angenommen.':'Keine Berechtigung zum Entfernen. Der Löschauftrag wurde nicht angenommen.');
+   }else setInfo(e.message+' Bitte den Auftragsstatus prüfen; nicht erneut entfernen.');
+  }
   finally{setSendet(false);await aktualisiert();}
  };
  return <dialog ref={ref} onCancel={e=>{e.preventDefault();if(!sendet)schliessen();}} aria-labelledby="bild-entfernen-titel" style={{padding:24,maxWidth:500,background:'#FDFCEE',border:'1px solid #DDD9C4',borderRadius:8}}>
