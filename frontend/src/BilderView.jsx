@@ -149,7 +149,7 @@ export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildf
   const gruppen = gruppieren(artikel, ausgeblendete, suche, nurBildfehler);
   return <div aria-label="Shop-Artikel und Bilder">
     {nachKategorien(gruppen).map(abschnitt => <section key={abschnitt.kategorie?.id || "unbekannt"} className="mb-5">
-      <h3 className="mt-4 mb-2" style={{fontSize:"13px", fontWeight:600, color:"#2C5A18"}} >{abschnitt.kategorie?.name || "Ohne bestätigte Rubrik"}</h3>
+      <h3 className="mt-6 mb-3" style={{fontSize:"17px", fontWeight:700, color:"#2C5A18", paddingBottom:"8px", borderBottom:"1px solid #BBC99D"}}>{abschnitt.kategorie?.name?.replace(/^dreikraut(?:\.de)?\s*\/\s*/i, "") || "Ohne bestätigte Rubrik"}</h3>
       {abschnitt.gruppen.map(gruppe => <div key={gruppe.id}>
 
       {gruppe.artikel.map((a, i) => <div key={a.id} className="flex gap-4 py-2" style={{ opacity: a.ausgeblendet ? 0.6 : 1 }}>
