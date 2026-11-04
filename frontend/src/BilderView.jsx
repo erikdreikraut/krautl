@@ -153,7 +153,7 @@ export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildf
       {abschnitt.gruppen.map(gruppe => <div key={gruppe.id}>
 
       {gruppe.artikel.map((a, i) => <div key={a.id} className="flex gap-4 py-2" style={{ opacity: a.ausgeblendet ? 0.6 : 1 }}>
-        <div className="shrink-0" style={{ width: "clamp(140px, 22vw, 230px)", boxSizing: "border-box", paddingLeft: a.parent_id ? "36px" : 0, borderLeft: a.parent_id ? "3px solid #BEDC0F" : undefined }}>
+        <div className="shrink-0" style={{ boxSizing: "border-box", paddingLeft: a.parent_id ? "12px" : 0, marginLeft: a.parent_id ? "24px" : 0, width: a.parent_id ? "calc(clamp(140px, 22vw, 230px) - 24px)" : "clamp(140px, 22vw, 230px)", borderLeft: a.parent_id ? "1.5px solid #BEDC0F" : undefined }}>
           <button type="button" onClick={() => onArtikel(a.id)} className="text-left" style={{ color: "#2C5A18", fontWeight: 600, lineHeight: 1.4, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }} title={a.name}>{a.name}</button>
           <div className="mt-1" style={{ fontSize: "11px", color: "#6C6F5F" }}>Art.-Nr. {a.sku}{a.parent_id ? " · Variante" : ""}</div>
           {!!a.kategorien?.length && <p className="mt-1" style={{fontSize:"10px", color:"#6C6F5F"}}>{a.kategorien.map(k=>k.name).join(" · ")}</p>}
