@@ -484,3 +484,34 @@ docker compose up -d --no-deps --force-recreate app frontend
 ```
 Keine manuelle Datenbankmigration. Protokoll-Heartbeat wird lokal in SQLite
 angelegt. Bestehende SQL-Quittungstabelle bleibt unveraendert.
+
+
+### Entfernen: SQL-Abnahme mit Ruecknahme
+
+Windows-Update mit Protokoll 2 und erfolgreicher Struktur-/Zugangspruefung ist
+am 04.11.2026 durch die Nutzerausgabe bestaetigt. Dienst bleibt ausgeschaltet.
+Aktueller Artikel 1036: Shopbild 2729 auf Position 1, 2365 auf Position 2;
+serverseitig keine offenen Brueckenauftraege bei Vorbereitung festgestellt.
+
+Admin-Download `/api/admin/bilddienst-entfernen-pruefung` liefert ein Skript ohne
+Zugangsdaten. `bridge/removal_check.py` fuehrt den echten Entfernen-SQL-Pfad
+inklusive Triggern, Positionskorrektur und Quittung in einer Transaktion aus.
+Seine Verbindungswrapper ersetzen jeden commit-Aufruf zwingend durch rollback.
+Danach werden alle Artikelzuordnungen, SEO, Originaldateien und API-Zuordnungen
+mit der Sicherung verglichen; die Testquittung darf nicht persistiert sein.
+Keine bestehende Zuordnung muss per INSERT wiederhergestellt werden.
+
+```powershell
+Set-Location C:\Krautl-Bilddienst
+& .\.venv\Scripts\python.exe "$env:USERPROFILE\Downloads\Krautl-Entfernen-Pruefung.py" --pruefen
+```
+
+Verlangt enable_writes=false und allowed_skus=["1036"]. Fuer die kontrollierte
+Probe Abgleiche pausieren und Artikel nicht parallel bearbeiten.
+Journal: C:/Krautl-Bilddienst/entfernen-pruefung.sqlite3. Ein Erfolg belegt
+SQL-Ausfuehrbarkeit und Ruecknahme, noch nicht den Dauerbetrieb oder die
+Shop-Veroeffentlichung. Danach folgen begrenzte Dienstaktivierung und
+Bedienabnahme ueber Krautl; keine automatische Freigabe aller Artikel.
+
+Serverbereitstellung: nur app bauen/neu erstellen, sofern Elestio nicht bereits
+ausrollt. HTTPS-Git-Aktualisierung wie oben; keine Datenbankmigration.
