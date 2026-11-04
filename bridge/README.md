@@ -580,3 +580,45 @@ Keine Migration. Deployment allein aktiviert weder Windows-Aufgabe noch weitere
 Artikel. Tests: geschuetzter Download, exakter eingebetteter Runner, PowerShell-
 Syntax und vorhandene Bilddienst-/Entfernen-Tests. Echter Windows-Aufgabenstart
 muss durch Nutzer-Ausgabe und Server-Heartbeat bestaetigt werden.
+
+
+### Produktivstand und Shopabbruch durch Bildgroesse (04.11.2026)
+
+Windows-Einrichtung meldete Freigabe aller Artikel; anschliessend frischen
+Protokoll-2-Heartbeat bestaetigt. Server BILDER_BRUECKE_SKUS=* aktiviert,
+app neu erstellt und weitere Dienstmeldungen bestaetigt. Dienst produktiv.
+Systemneustart selbst wurde nicht getestet.
+
+Nutzer meldet fehlgeschlagenen Shopabgleich: erster belegter Lauf 07:46 Uhr,
+neuester Screenshot 16:01 Uhr, beide Bild 2734 (10,08 MiB), eingeschraenkte
+ZIP-Groesse und LoginErrorOrInvalidZip. Letzter Screenshot bestaetigt dagegen
+Artikel-Bilder(Loeschen) erfolgreich 1/1. Bild 2734 stammt aus Krautl-Uploads vom
+03.11., Auftraege beafb0d0-15b9-481d-b312-9d951156e9de (1082-500) und
+86acd14b-f54d-4023-bdaa-ca22e7b2d13b (1082-100). Je 10.571.407 Byte PNG,
+3350x3350 RGB, ohne Transparenz. ZIP immer noch 10.549.633 Byte.
+
+Ursache in Krautl: bisher jedes Bild nach PNG konvertiert und bis 20 MiB
+uebertragen. Jetzt max. 4 MiB aufbereitete Uebertragung; grosse deckende Bilder
+als JPEG Qualitaet 95/kein Chroma-Subsampling, Pixelmasse unveraendert. Kleine
+Bilder bleiben PNG, Transparenz bleibt PNG und wird bei Uebergroesse abgewiesen.
+Keine automatische Aufloesungsreduktion, Dateiendung entspricht echtem Format.
+Uploadhinweis vor Bestaetigung ergaenzt. Eingangsgrenze 20 MiB/40 MP bleibt.
+4 MiB ist eine konservative Krautl-Grenze, kein behauptetes universelles JTL-Limit.
+
+Vorbereitete Ersatzdatei lokal unter var/bilder/reparatur-2734,
+3.074.366 Byte JPEG bei 3350x3350. Original dort gesichert und ausserdem in
+beiden bestehenden Auftragsjournalen. Zu diesem Dokumentationsstand noch keine
+Wawi-Reparatur: ausdrueckliche Vorschau-/Austauschbestaetigung angefragt.
+Shop-Erfolg erst nach neuem Shopabgleich bestaetigbar; ZIP-/Serverparameter
+wurden nicht geaendert.
+
+Deployment (laufendes Elestio abwarten):
+```sh
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git pull --ff-only origin main &&
+docker compose build app frontend &&
+docker compose up -d --no-deps --force-recreate app frontend
+```
+Kein Windows-Update, keine Migration. Bestehende Auftraege nicht neu normalisieren
+oder erneut schreiben. Neue Auftraege verwenden die neue Groessenpruefung.

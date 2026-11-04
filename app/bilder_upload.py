@@ -64,6 +64,15 @@ def ablehnungsdetails(response):
     return text[:4000]
 
 
+MAX_TRANSFER_BYTES = 4 * 1024 * 1024
+
+
+def dateiendung(raw):
+    if raw.startswith(b'\xff\xd8\xff'):return '.jpg'
+    if raw.startswith(b'\x89PNG\r\n\x1a\n'):return '.png'
+    raise ValueError('Unbekanntes aufbereitetes Bildformat.')
+
+
 def datei_pruefen(raw):
     if not raw or len(raw) > 20 * 1024 * 1024:
         raise ValueError("Bilddatei muss zwischen 1 Byte und 20 MB groß sein.")
@@ -71,16 +80,21 @@ def datei_pruefen(raw):
         with Image.open(BytesIO(raw)) as im:
             if im.format not in {"JPEG", "PNG", "WEBP"} or getattr(im, "n_frames", 1) != 1 or im.width * im.height > 40_000_000:
                 raise ValueError()
-            im = ImageOps.exif_transpose(im)
+            im = ImageOps.exif_transpose(im).convert('RGBA')
+            opaque = im.getchannel('A').getextrema() == (255,255)
+            clean = im.convert('RGB') if opaque else im
             out = BytesIO()
-            # Lossless PNG, no unsafe filename or metadata forwarded to Wawi.
-            im.convert("RGBA" if "A" in im.getbands() else "RGB").save(out, "PNG")
+            clean.save(out, 'PNG')
             data = out.getvalue()
-            if len(data) > 20 * 1024 * 1024:
+            if len(data) > MAX_TRANSFER_BYTES and opaque:
+                out = BytesIO()
+                clean.save(out, 'JPEG', quality=95, subsampling=0, optimize=True)
+                data = out.getvalue()
+            if len(data) > MAX_TRANSFER_BYTES:
                 raise ValueError()
             return data
     except (OSError, ValueError, Image.DecompressionBombError):
-        raise ValueError("Bitte ein einzelnes JPG-, PNG- oder WebP-Bild bis 40 Megapixel wählen; die aufbereitete Datei darf 20 MB nicht überschreiten.") from None
+        raise ValueError("Bitte ein einzelnes JPG-, PNG- oder WebP-Bild bis 40 Megapixel wählen. Die aufbereitete Datei darf für den Shop-Abgleich höchstens 4 MiB haben; bitte bei Bedarf vor dem Upload verkleinern. Transparenz wird nicht entfernt.") from None
 
 
 def bildinhalt_bestaetigt(job, thumb):
@@ -235,7 +249,7 @@ async def upload_neuanlage(c, artikel, bild_id, revision, anfrage_id, raw, nutze
     await c._request("GET", "/v1/items/" + artikel + "/images", expected_type=list)
     job = {"id":anfrage_id,"artikel":artikel,"sku":a["sku"],"bild_id":bild_id,"eingang_hash":digest,
            "erstellt":store.jetzt(),"nutzer":nutzer,"api_ziel":c.url,"vorher":before,
-           "dateiname":"krautl-" + anfrage_id + ".png", "status":"sendet", "phase":"upload",
+           "dateiname":"krautl-" + anfrage_id + dateiendung(raw), "status":"sendet", "phase":"upload",
            "meldung":"Übertragung an Wawi läuft.", "revision":revision,
            "thumb_hash":hashlib.sha256(vorschaubild(raw)).hexdigest()}
     if not store.freigegeben(artikel, revision):

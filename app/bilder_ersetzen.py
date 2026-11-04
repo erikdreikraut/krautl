@@ -179,7 +179,7 @@ async def pruefen(c, job):
 
 async def ersetzen(c, article, image_key, revision, request_id, raw, user):
     from .bilder_bruecke import aktiv, bereit, artikel_erlaubt
-    from .bilder_upload import auftraege, lokal, datei_pruefen, detail_lesen, sichern, oeffentlich
+    from .bilder_upload import auftraege, lokal, datei_pruefen,dateiendung, detail_lesen, sichern, oeffentlich
     digest=hashlib.sha256(raw).hexdigest()
     previous=next((j for j in auftraege() if j['id']==request_id),None)
     if previous:
@@ -219,7 +219,7 @@ async def ersetzen(c, article, image_key, revision, request_id, raw, user):
     job={'id':request_id,'artikel':article,'sku':a['sku'],'bild_id':image_key,'eingang_hash':digest,
          'art':'ersetzen_alle','v1_id':image,'v1_vorher':assignments,
          'vorher_vorschau':base64.b64encode(before).decode(),'erstellt':store.jetzt(),'nutzer':user,
-         'api_ziel':c.url,'dateiname':'krautl-'+request_id+'.png','revision':revision,
+         'api_ziel':c.url,'dateiname':'krautl-'+request_id+dateiendung(raw),'revision':revision,
          'thumb_hash':hashlib.sha256(vorschaubild(raw)).hexdigest(),'status':'sendet',
          'phase':'ersetzen','meldung':'Bestehendes Bild wird für alle bisherigen Kanäle ersetzt.'}
     await sichern_original(c,request_id,image,before)
@@ -375,7 +375,7 @@ async def reihenfolge_pruefen(c,job):
     sichern(job);return oeffentlich(job)
 
 async def hinzufuegen(c,article,revision,request_id,raw,user):
-    from .bilder_upload import auftraege,lokal,datei_pruefen,sichern,oeffentlich,detail_lesen
+    from .bilder_upload import auftraege,lokal,datei_pruefen,dateiendung,sichern,oeffentlich,detail_lesen
     digest=hashlib.sha256(raw).hexdigest()
     previous=next((j for j in auftraege() if j['id']==request_id),None)
     if previous:
@@ -392,7 +392,7 @@ async def hinzufuegen(c,article,revision,request_id,raw,user):
     raw=datei_pruefen(raw)
     job={'id':request_id,'artikel':article,'sku':a['sku'],'bild_id':None,'art':'hinzufuegen_v1','revision':revision,
          'eingang_hash':digest,'api_ziel':c.url,'erstellt':store.jetzt(),'nutzer':user,
-         'thumb_hash':hashlib.sha256(vorschaubild(raw)).hexdigest(),'dateiname':'krautl-'+request_id+'.png',
+         'thumb_hash':hashlib.sha256(vorschaubild(raw)).hexdigest(),'dateiname':'krautl-'+request_id+dateiendung(raw),
          'v1_ausgang':before,'status':'sendet','meldung':'Zusätzliches Shopbild wird angelegt.'}
     if not store.freigegeben(article,revision):raise ValueError('Artikelrevision verändert.')
     sichern(job,raw)

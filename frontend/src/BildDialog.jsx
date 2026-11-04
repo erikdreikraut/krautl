@@ -67,6 +67,7 @@ export function BildDialog({artikel,bild,schliessen,aktualisiert,gesperrt=false,
     </div>
     {!ergebnis&&<><label className="block my-3">{bild ? "Ersatzbild auswählen" : "Neues Bild auswählen"}<input className="block mt-2" aria-label="Neue Bilddatei" type="file" accept=".jpg,.jpeg,.png,.webp" onChange={waehlen} disabled={sendet||gesperrt}/></label>
       <p className="text-sm mb-3">{bild ? "Ersetzt dieses Bild im JTL-Shop an derselben Position. Andere Kanäle können das bisherige Bild behalten; Wawi kann das neue Bild zusätzlich bei den Standardbildern ablegen." : "Fügt das Bild am Ende der JTL-Shop-Bilder hinzu."}{!bild && " Andere Verkaufskanäle behalten ihre Bilder."}</p>
+      <p className="text-sm mb-3">Große Bilder ohne Transparenz werden bei Bedarf als hochwertiges JPEG gespeichert. Die Pixelmaße bleiben erhalten; maximal 4 MiB nach Aufbereitung.</p>
       {gesperrt&&<p>Änderungen sind während eines Abgleichs oder bei einem ungeklärten Bildauftrag gesperrt.</p>}
       <button onClick={bestaetigen} disabled={!file||sendet||gesperrt} style={{padding:"8px 12px",border:"1px solid #2C5A18",borderRadius:4,opacity:!file||sendet||gesperrt?0.5:1}}>{sendet ? "Übertragung läuft …" : "Bestätigen und an Wawi übertragen"}</button></>}
     {ergebnis&&<p role="status" className="mt-3">{ergebnis.meldung}</p>}
