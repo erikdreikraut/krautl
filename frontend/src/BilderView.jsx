@@ -248,14 +248,10 @@ export function BilderView() {
   const [fehler, setFehler] = useState("");
   const [suche, setSuche] = useState("");
   const [ausgeblendete, setAusgeblendete] = useState(false);
-  const [nurBildfehler, setNurBildfehler] = useState(false);
   const [auswahl, setAuswahl] = useState(null);
   const [speichert, setSpeichert] = useState(false);
   const [dialogFehler, setDialogFehler] = useState("");
   const [startet, setStartet] = useState(false);
-  const [importInfo, setImportInfo] = useState("");
-  const [importiert, setImportiert] = useState(false);
-  const [importErgebnis, setImportErgebnis] = useState(null);
   const abruf = useRef(0);
   const aktiv = useRef(false);
   const laden = useCallback(async () => {
@@ -277,20 +273,6 @@ export function BilderView() {
     catch (e) { setFehler(e.message); }
     finally { setStartet(false); }
   };
-  const exportImport = async event => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setImportiert(true); setImportInfo(""); setImportErgebnis(null);
-    try {
-      if (file.size > 20 * 1024 * 1024) throw new Error("Vorschaudatei darf höchstens 20 MB groß sein.");
-      const result = await importiereVorschaudatei(await file.text(), api.bilderExportvorschau, setImportInfo);
-      setImportErgebnis(result);
-      setImportInfo(`${result.importiert} fehlende Vorschauen ergänzt; ${result.verarbeitet} Artikel geprüft, ${result.ausgelassen.length} ausgelassen. Wawi unverändert.`);
-      await laden();
-    } catch (e) { setImportInfo(e.message); }
-    finally { setImportiert(false); }
-  };
   const artikel = daten?.artikel.find(a => a.id === auswahl);
   const speichern = async hidden => {
     setSpeichert(true); setDialogFehler("");
@@ -305,28 +287,17 @@ export function BilderView() {
       <div><h2 className="flex items-center gap-2" style={{ fontFamily: "'Source Serif 4', serif", fontSize: "21px", fontWeight: 700, color: "#2C5A18" }}><Image size={22} /> Bilder</h2>
         <p className="mt-1" style={{ color: "#6C6F5F" }}>Shop-Bilder · {sichtbar} Artikel · {(daten?.artikel.length || 0) - sichtbar} ausgeblendet</p>
       </div>
-      <button type="button" onClick={aktualisieren} disabled={startet || laeuft || importiert || !daten} className="flex items-center gap-2" style={{ ...button, opacity: startet || laeuft || !daten ? 0.5 : 1 }}><RefreshCw size={15} className={laeuft ? "animate-spin" : ""} />{laeuft || startet ? "Wird aktualisiert …" : "Aktualisieren"}</button>
+      <button type="button" onClick={aktualisieren} disabled={startet || laeuft || !daten} className="flex items-center gap-2" style={{ ...button, opacity: startet || laeuft || !daten ? 0.5 : 1 }}><RefreshCw size={15} className={laeuft ? "animate-spin" : ""} />{laeuft || startet ? "Wird aktualisiert …" : "Aktualisieren"}</button>
     </div>
     <div className="flex flex-wrap gap-5 items-center mb-5">
       <label className="flex items-center gap-2 px-3 py-2" style={box}><Search size={15} /><input type="search" aria-label="Artikelname oder Artikelnummer suchen" placeholder="Name oder Artikelnummer …" value={suche} onChange={e => setSuche(e.target.value)} style={{ background: "transparent", outline: "none" }} /></label>
       <label className="flex items-center gap-2"><input type="checkbox" checked={ausgeblendete} onChange={e => setAusgeblendete(e.target.checked)} /> Ausgeblendete anzeigen</label>
-      <label className="flex items-center gap-2"><input type="checkbox" checked={nurBildfehler} onChange={e => setNurBildfehler(e.target.checked)} /> Nur Artikel mit Bildfehlern</label>
     </div>
-    <details className="mb-4" style={{ fontSize: "12px" }}>
-      <summary style={{ cursor: "pointer" }}>Ersatzvorschauen aus Shop-Export</summary>
-      <p className="my-2">Vorbereitete Krautl-Vorschaudatei auswählen. Ergänzt nur fehlende Vorschauen; Wawi bleibt unverändert.</p>
-      <input aria-label="Shop-Vorschaudatei importieren" type="file" accept=".json" disabled={laeuft || importiert} onChange={exportImport} />
-      {importInfo && <p role="status" className="mt-2">{importInfo}</p>}
-      {importErgebnis?.abbruch && <p role="alert" className="mt-2">{importErgebnis.abbruch}</p>}
-      {!!importErgebnis?.ausgelassen.length && <details className="mt-2"><summary>Ausgelassene Artikel anzeigen</summary><ul>
-        {importErgebnis.ausgelassen.map((a,i)=><li key={i}>{a.sku}: {a.grund}</li>)}
-      </ul></details>}
-    </details>
     {(daten?.bildauftraege||[]).filter(j=>["sendet","unklar"].includes(j.status)).map(j=><div key={j.id} className="mb-2 p-2" style={box}><p>{daten?.artikel.find(a=>a.id===j.artikel)?.sku}: {j.meldung}</p><button onClick={async()=>{setAuftragFehler("");try{await api.bilderAuftragPruefen(j.id);await laden();}catch(e){setAuftragFehler(e.message);}}}>Wawi-Stand prüfen</button></div>)}
     {auftragFehler&&<p role="alert">{auftragFehler}</p>}
     <BilderStatus daten={daten} fehler={fehler} />
     {!daten && !fehler && <p>Lade Bilderübersicht …</p>}
-    {daten && !daten.letzter_erfolg && !daten.artikel.length ? <p className="py-12 text-center" style={{ color: "#6C6F5F" }}>Mit „Aktualisieren“ lädst du die Shop-Artikel und ihre Bilder erstmals aus der Wawi.</p> : daten && <BilderListe aktualisiert={laden} onBild={(artikel,bild)=>setBildAuswahl({artikel,bild})} auftraege={daten.bildauftraege||[]} gesperrt={laeuft} ungeprueft={daten.ungeprueft || []} nurBildfehler={nurBildfehler} artikel={daten.artikel} ausgeblendete={ausgeblendete} suche={suche} onArtikel={id => { setDialogFehler(""); setAuswahl(id); }} />}
+    {daten && !daten.letzter_erfolg && !daten.artikel.length ? <p className="py-12 text-center" style={{ color: "#6C6F5F" }}>Mit „Aktualisieren“ lädst du die Shop-Artikel und ihre Bilder erstmals aus der Wawi.</p> : daten && <BilderListe aktualisiert={laden} onBild={(artikel,bild)=>setBildAuswahl({artikel,bild})} auftraege={daten.bildauftraege||[]} gesperrt={laeuft} ungeprueft={daten.ungeprueft || []} artikel={daten.artikel} ausgeblendete={ausgeblendete} suche={suche} onArtikel={id => { setDialogFehler(""); setAuswahl(id); }} />}
     {bildAuswahl&&<BildDialog auftraege={daten?.bildauftraege||[]} artikel={bildAuswahl.artikel} bild={bildAuswahl.bild} schliessen={()=>setBildAuswahl(null)} aktualisiert={laden} gesperrt={laeuft||bildAuswahl.artikel.ausgeblendet||(daten?.ungeprueft||[]).some(u=>u.id===bildAuswahl.artikel.id)||(daten?.bildauftraege||[]).some(j=>j.artikel===bildAuswahl.artikel.id&&["sendet","unklar"].includes(j.status))}/>}
     {artikel && <ArtikelDialog artikel={artikel} speichern={speichern} schliessen={() => setAuswahl(null)} laeuft={speichert} fehler={dialogFehler} />}
   </section>;

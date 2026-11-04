@@ -71,10 +71,8 @@ test("Bilder-Popup speichert Ausblenden mit Revision; Filter erlaubt erneutes Ei
   assert.equal(data[0].ausgeblendet, false);
   assert.equal(data[0].revision, 2);
   assert.equal(calls.filter(([,o])=>o.method==="PUT").length, 2);
-  await act(async()=>view.root.findByProps({"aria-label":"Shop-Vorschaudatei importieren"}).props.onChange({
-    target:{files:[{size:17,text:async()=>'{"format":"test"}'}],value:""}
-  }));
-  assert.match(JSON.stringify(view.toJSON()),/fehlende Vorschauen ergänzt/);
+  assert.doesNotMatch(JSON.stringify(view.toJSON()), /Nur Artikel mit Bildfehlern|Ersatzvorschauen aus Shop-Export|Shop-Vorschaudatei importieren/);
+
 
 });
 

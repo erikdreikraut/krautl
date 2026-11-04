@@ -393,3 +393,19 @@ Shop-Unterrubriken melden 2-2-1. Beim v1-Ausweichweg wird deshalb die direkt
 zugeordnete Rubrik auf Shop-Aktivierung geprueft; Eltern liefern den Wawi-Pfad
 auch ohne eigene Shop-Aktivierung. Inaktive direkt zugeordnete Rubriken bleiben
 ausgeschlossen.
+
+
+### Bilderoberflaeche 04.11.2026
+
+Filter "Nur Artikel mit Bildfehlern" und Importbereich "Ersatzvorschauen aus
+Shop-Export" entfernt. Bestehende Diagnose-/Importfunktionen im Backend bleiben
+unveraendert. "Ausgeblendete anzeigen" bleibt zur Wiederherstellung ausgeblendeter
+Artikel erhalten. Reiner Frontend-Rollout, sofern Elestio nicht bereits ausrollt:
+
+```sh
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git pull --ff-only origin main &&
+docker compose build frontend &&
+docker compose up -d --no-deps --force-recreate frontend
+```
