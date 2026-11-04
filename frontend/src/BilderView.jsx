@@ -149,12 +149,12 @@ export function BilderListe({ artikel, ausgeblendete, suche, onArtikel, nurBildf
   const gruppen = gruppieren(artikel, ausgeblendete, suche, nurBildfehler);
   return <div aria-label="Shop-Artikel und Bilder">
     {nachKategorien(gruppen).map(abschnitt => <section key={abschnitt.kategorie?.id || "unbekannt"} className="mb-5">
-      <h3 className="mt-4 mb-2" style={{fontSize:"13px", fontWeight:600, color:"#2C5A18"}} hidden={!abschnitt.kategorie}>{abschnitt.kategorie?.name}</h3>
+      <h3 className="mt-4 mb-2" style={{fontSize:"13px", fontWeight:600, color:"#2C5A18"}} >{abschnitt.kategorie?.name || "Ohne bestätigte Rubrik"}</h3>
       {abschnitt.gruppen.map(gruppe => <div key={gruppe.id}>
 
       {gruppe.artikel.map((a, i) => <div key={a.id} className="flex gap-4 py-2" style={{ opacity: a.ausgeblendet ? 0.6 : 1 }}>
-        <div className="shrink-0" style={{ width: "clamp(140px, 22vw, 230px)", paddingLeft: a.parent_id ? "12px" : 0, borderLeft: a.parent_id ? "3px solid #BEDC0F" : undefined }}>
-          <button type="button" onClick={() => onArtikel(a.id)} className="text-left" style={{ color: "#2C5A18", fontWeight: 600, lineHeight: 1.4, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }} title={a.name}>{a.name}</button>
+        <div className="shrink-0" style={{ width: "clamp(140px, 22vw, 230px)", boxSizing: "border-box", paddingLeft: a.parent_id ? "36px" : 0, borderLeft: a.parent_id ? "3px solid #BEDC0F" : undefined }}>
+          <button type="button" onClick={() => onArtikel(a.id)} className="text-left" style={{ color: "#2C5A18", fontWeight: 600, lineHeight: 1.4, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }} title={a.name}>{a.name}</button>
           <div className="mt-1" style={{ fontSize: "11px", color: "#6C6F5F" }}>Art.-Nr. {a.sku}{a.parent_id ? " · Variante" : ""}</div>
           {!!a.kategorien?.length && <p className="mt-1" style={{fontSize:"10px", color:"#6C6F5F"}}>{a.kategorien.map(k=>k.name).join(" · ")}</p>}
           {a.kategorie_fehler && <p title={a.kategorie_fehler} style={{fontSize:"10px", color:"#6C6F5F"}}>Kategoriezuordnung nicht verfügbar</p>}

@@ -40,3 +40,27 @@ class KategorienTest(unittest.IsolatedAsyncioTestCase):
         result, error = await ShopKategorien(AsyncMock()).artikel({})
         self.assertEqual(result, [])
         self.assertIsNotNone(error)
+
+
+    async def test_v1_fallback_uses_uuid_lookup_and_parent_order(self):
+        async def request(method,path,**kwargs):
+            self.assertEqual(method,"GET")
+            if path=="/v2/categories": raise JtlFehler("Direkte JTL-API: HTTP 400.")
+            if path=="/v1/categories/uuid-leaf":return {"Id":14,"Name":"Naturpflege","ParentCategoryId":4,"SortNumber":70,"ActiveSalesChannels":["2-2-1"]}
+            if path=="/v1/categories/4":return {"Id":4,"Name":"dreikraut","SortNumber":0,"ActiveSalesChannels":["2-2-1"]}
+            raise AssertionError(path)
+        client=AsyncMock();client._request.side_effect=request
+        resolver=ShopKategorien(client)
+        detail={"categories":{"categories":[{"categoryId":"uuid-leaf"}]}}
+        value,error=await resolver.artikel(detail)
+        self.assertIsNone(error)
+        self.assertEqual(value,[{"id":"v1-14","name":"dreikraut / Naturpflege","sortierung":[0,70]}])
+        await resolver.artikel(detail)
+        self.assertEqual(client._request.await_count,3)
+
+    async def test_v1_cycle_remains_visible_error(self):
+        client=AsyncMock()
+        client._request.side_effect=[JtlFehler("HTTP 400"),{"Id":1,"Name":"X","ParentCategoryId":1,"SortNumber":0,"ActiveSalesChannels":["2-2-1"]},{"Id":1,"Name":"X","ParentCategoryId":1,"SortNumber":0,"ActiveSalesChannels":["2-2-1"]}]
+        value,error=await ShopKategorien(client).artikel({"categories":{"categories":[{"categoryId":"uuid"}]}})
+        self.assertEqual(value,[])
+        self.assertIn("Hierarchie",error)

@@ -345,3 +345,45 @@ sortieren. Exportvorschauen werden nicht als Identitaetsnachweis verwendet.
 Bei 20821 zeigte die alte Exportvorschau an Position 3 ein Etikett, waehrend Wawi
 dort Bild 2094 (Erntefoto) fuehrt. Keine Wawi-Schreibkorrektur durchgefuehrt.
 Backend-Deployment wie im vorigen Abschnitt; keine Migration erforderlich.
+
+
+### Rubriken und Entfernen: Stand 04.11.2026
+
+Die v2-Kategorieliste scheitert in Wawi 2.1.1 beim internen Mapping (HTTP 400).
+Krautl verwendet dann einzelne v1-Kategorien: UUID aus der Artikelzuordnung wird
+am v1-Endpunkt aufgeloest, Eltern werden ueber ParentCategoryId verfolgt.
+ActiveSalesChannels begrenzt auf 2-2-1; SortNumber bestimmt die Rubrikenfolge.
+Familien bleiben zusammen, mehrfach zugeordnete Artikel erscheinen einmal.
+Kindtexte sind 36px eingerueckt; Titel haben maximal drei Zeilen. Bildspalten
+bleiben ausgerichtet.
+
+Gepruefter Plan fuer Minus-Ablage (noch NICHT aktiviert/implementiert):
+- Bild auf Minus-Feld derselben Artikelzeile ziehen; alternativ per Tastatur oder
+  Bildmenue "Aus Shop entfernen". Keine Loeschung beim blossen Ablegen.
+- Rueckfrage mit Vorschau und Artikel: "Dieses Bild aus dem JTL-Shop entfernen?"
+  Andere Kanaele/Artikel und die Originaldatei bleiben erhalten.
+- Dauerhafter Auftrag mit Revision und komplettem Ausgangsbestand; offene
+  Sortierentwuerfe vorher speichern oder verwerfen. Bei unklarem Ausgang nur lesen.
+- Die installierte v1-DELETE-Operation hat nur Artikel- und Bild-ID, keinen
+  SalesChannelId-Parameter. Sie ist deshalb fuer selektives Entfernen ungeeignet.
+  Der fruehere Test loeschte lediglich eine eigens erzeugte Testkopie und belegt
+  keine sichere Kanalentfernung gemeinsam genutzter Bilder.
+- Bilddienst um eine eigene Operation erweitern: ausschliesslich betreffende
+  Shop-Zuordnung entfernen, restliche Shop-Positionen auf 1..n setzen. Andere
+  Zuordnungen/SEO erhalten, Original-Bilddatensatz nie loeschen. Sicherung,
+  Schema-/Triggerpruefung und atomare Quittung wie beim Austausch.
+- Nach API-Ruecklesen erster verbleibender Eintrag Hauptbild; bei letztem Bild
+  leerer Bestand. Abnahme mit kanal-/artikeluebergreifend genutztem Testbild,
+  Hauptbild, letztem Bild und unterbrochener Antwort erforderlich. Der normale
+  Windows-Bilddienst ist noch nicht aktiviert; vor Umsetzung Betrieb klaeren.
+
+Deployment fuer diese Rubriken-/Layoutaenderung, falls kein Elestio-Lauf aktiv:
+```sh
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git pull --ff-only origin main &&
+docker compose build app frontend &&
+docker compose up -d --no-deps --force-recreate app frontend
+```
+Keine Datenbankmigration erforderlich. Kategorie-Metadaten separat lesend
+aktualisieren; bestehende Bildvorschauen und Auftraege dabei erhalten.

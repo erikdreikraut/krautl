@@ -10,6 +10,7 @@ class ShopKategorien:
         self.index = None
         self.fehler = None
         self.cache = {}
+        self.v1 = False
 
     async def laden(self):
         if self.fehler:
@@ -39,6 +40,10 @@ class ShopKategorien:
                     break
             raise JtlFehler("Unvollständiger Kategorie-Katalog.")
         except JtlFehler as exc:
+            if "HTTP 400" in str(exc):
+                self.v1 = True
+                self.index = {}
+                return
             self.fehler = str(exc)
             raise
 
@@ -79,6 +84,34 @@ class ShopKategorien:
             self.cache[key] = exc
             raise
 
+    async def pfad_v1(self, key, besucht=()):
+        key = str(key)
+        if key in besucht or len(besucht) >= 30:
+            raise JtlFehler("Ungültige Kategorie-Hierarchie.")
+        if key in self.cache:
+            return self.cache[key]
+        row = await self.client._request("GET", "/v1/categories/" + key)
+        ident = row.get("Id")
+        channels = row.get("ActiveSalesChannels")
+        if type(ident) is not int or ident <= 0 or (key.isdecimal() and int(key) != ident) or not isinstance(channels, list):
+            raise JtlFehler("Uneindeutige v1-Kategorie.")
+        if SHOP not in channels:
+            self.cache[key] = None
+            return None
+        parent = row.get("ParentCategoryId")
+        if parent is not None and (type(parent) is not int or parent < 0):
+            raise JtlFehler("Ungültige übergeordnete Kategorie.")
+        prefix = await self.pfad_v1(parent, (*besucht, key)) if parent else None
+        if parent and prefix is None:
+            raise JtlFehler("Übergeordnete Kategorie ist nicht im Shop aktiv.")
+        name = row.get("Name")
+        if not isinstance(name, str) or not name.strip() or type(row.get("SortNumber")) is not int:
+            raise JtlFehler("Kategoriename oder Reihenfolge fehlt.")
+        value = {"id": "v1-" + str(ident), "name": (prefix["name"] + " / " if prefix else "") + name.strip(),
+                 "sortierung": (prefix["sortierung"] if prefix else []) + [row["SortNumber"]]}
+        self.cache[key] = value
+        return value
+
     async def artikel(self, detail):
         try:
             block = detail.get("categories")
@@ -91,9 +124,9 @@ class ShopKategorien:
             result = {}
             for row in rows:
                 key = row.get("categoryId") if isinstance(row, dict) else None
-                if not isinstance(key, str) or key not in self.index:
+                if not isinstance(key, str) or (not self.v1 and key not in self.index):
                     raise JtlFehler("Kategoriezuordnung nicht eindeutig.")
-                value = await self.pfad(key)
+                value = await self.pfad_v1(key) if self.v1 else await self.pfad(key)
                 if value:
                     result[key] = value
             return sorted(result.values(), key=lambda c: (c["sortierung"], c["name"], c["id"])), None
