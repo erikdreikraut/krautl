@@ -515,3 +515,68 @@ Bedienabnahme ueber Krautl; keine automatische Freigabe aller Artikel.
 
 Serverbereitstellung: nur app bauen/neu erstellen, sofern Elestio nicht bereits
 ausrollt. HTTPS-Git-Aktualisierung wie oben; keine Datenbankmigration.
+
+
+## Produktivfreigabe und automatischer Start (04.11.2026)
+
+Nutzer hat nach erfolgreichem UI-Test Hinzufuegen/Entfernen an 1036 die
+Produktivnahme ausdruecklich beauftragt. API-Nachpruefung: Shopbilder 2729/1 und
+2365/2 unveraendert, keine alte Kanalzuordnung entfernt. Testbild 2737 bleibt
+als von Wawi beim Upload hinzugefuegtes Standardbild 1-1-1/5 erhalten; seine
+Shop-Zuordnung wurde ueber den Bilddienst erfolgreich entfernt. Keine weitere
+Testbereinigung ohne gezielte Zuordnungspruefung. Der Rollback-Test hatte zuvor
+Entfernen und Aufruecken inklusive Wiederherstellung des Originalbestands bestaetigt.
+
+Admin-Download `/api/admin/bilddienst-dauerbetrieb` liefert
+Krautl-Dauerbetrieb.ps1 ohne Zugangsdaten. Er enthaelt den aktuellen
+service_runner.py und richtet eine Aufgabe unter dem bereits geprueften
+Windows-Konto ein. Voraussetzung: bisherigen Konsolenworker mit Strg+C stoppen,
+PowerShell unter demselben Konto als Administrator ausfuehren.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Krautl-Dauerbetrieb.ps1"
+```
+
+ExecutionPolicy gilt nur fuer diesen Prozess. Windows-Kennwort wird ausschliesslich
+lokal per Get-Credential abgefragt und an die Windows-Aufgabenplanung uebergeben;
+es kommt weder in Dateien noch nach Krautl oder in den Chat. Konto-SID muss dem
+bisherigen Konto entsprechen. Bestehende gleichnamige Aufgabe wird nicht ersetzt.
+
+Vorpruefung: Protokoll 2, freie Worker-Dateisperre, SQL-Schema. Neue Aufgabe wird
+zuerst deaktiviert registriert. Danach unter Worker-Dateisperre config.json sichern
+und allowed_skus=["*"], enable_writes=true atomar schreiben. Token, Worker-ID,
+SQL-Verbindung und Journalpfad bleiben erhalten. Aufgabe aktivieren und starten.
+Bei Fehler Stop/Disable der neu angelegten Aufgabe, kein automatisches Weiterlaufen.
+Sicherung: bridge/config.vor-dauerbetrieb.json. Fehlerausgabe pruefen, bevor die
+Aufgabe erneut gestartet oder eine vorhandene Aufgabe ersetzt wird.
+
+Aufgabe Krautl-Bilddienst: Systemstart, StartWhenAvailable, IgnoreNew,
+unbegrenzte Laufzeit, Neustart nach einer Minute bei Prozessfehler (max. 999).
+Python laeuft nichtinteraktiv unter dem bisherigen Konto mit Kennwortanmeldung.
+Startskript protokolliert nach C:/Krautl-Bilddienst/bilddienst.log mit Rotation
+(2 MB, drei Sicherungen), keine Tracebacks mit moeglichen Zugangsdaten.
+Die vorhandene lokale Worker-Sperre verhindert weiterhin parallele Schreiber.
+
+WICHTIGE REIHENFOLGE: Server BILDER_BRUECKE_SKUS bleibt 1036, bis der Nutzer den
+Dauerbetrieb mit Windows-Freigabe fuer alle Artikel bestaetigt hat und der frische
+Protokoll-2-Heartbeat gelesen wurde. Erst dann serverseitig BILDER_BRUECKE_SKUS=*
+setzen und nur app neu erstellen. Sonst koennte ein alter auf 1036 begrenzter
+Worker einen fremden Auftrag abholen und ablehnen. Stand bei Bereitstellung des
+Downloads: Windows-Aufgabe und breite Serverfreigabe noch nicht bestaetigt.
+
+Microsoft-Referenz zu Aufgabenregistrierung und Einstellungen:
+https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/register-scheduledtask
+https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/new-scheduledtasksettingsset
+
+Bereitstellung nach Push, nur wenn Elestio nicht bereits ausrollt:
+```sh
+cd /opt/app/krautl &&
+git remote set-url origin https://github.com/erikdreikraut/krautl.git &&
+git pull --ff-only origin main &&
+docker compose build app &&
+docker compose up -d --no-deps --force-recreate app
+```
+Keine Migration. Deployment allein aktiviert weder Windows-Aufgabe noch weitere
+Artikel. Tests: geschuetzter Download, exakter eingebetteter Runner, PowerShell-
+Syntax und vorhandene Bilddienst-/Entfernen-Tests. Echter Windows-Aufgabenstart
+muss durch Nutzer-Ausgabe und Server-Heartbeat bestaetigt werden.

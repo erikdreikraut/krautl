@@ -1,4 +1,5 @@
 """Explicitly authorized, admin-only bridge configuration download."""
+import base64
 import io
 import json
 import os
@@ -32,6 +33,20 @@ def removal_test_download(request: Request):
         raise HTTPException(403, 'Nur fuer Administratoren')
     return Response((ROOT/'bridge/removal_check.py').read_bytes(), media_type='text/plain', headers={
         'Content-Disposition': 'attachment; filename="Krautl-Entfernen-Pruefung.py"',
+        'Cache-Control': 'no-store, private', 'X-Content-Type-Options': 'nosniff'})
+
+
+
+@router.get('/admin/bilddienst-dauerbetrieb')
+def production_download(request: Request):
+    user = getattr(request.state, 'benutzer', None)
+    if not user or not ist_admin(user):
+        raise HTTPException(403, 'Nur fuer Administratoren')
+    script=(ROOT/'bridge/production.ps1').read_text(encoding='utf-8-sig')
+    runner=base64.b64encode((ROOT/'bridge/service_runner.py').read_bytes()).decode('ascii')
+    script=script.replace('__RUNNER_BASE64__',runner)
+    return Response(script.encode('utf-8-sig'), media_type='text/plain', headers={
+        'Content-Disposition': 'attachment; filename="Krautl-Dauerbetrieb.ps1"',
         'Cache-Control': 'no-store, private', 'X-Content-Type-Options': 'nosniff'})
 
 
