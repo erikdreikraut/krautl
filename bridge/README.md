@@ -333,3 +333,15 @@ docker compose up -d --no-deps --force-recreate app
 ```
 
 Keine Migration und kein Start des Windows-Bilddienstes erforderlich.
+
+
+### Veraltete Exportvorschauen beim Sortieren (04.11.2026)
+
+Ist eine alte v2-Vorschau nicht lesbar, wird kein Sortierauftrag geschrieben.
+Stattdessen werden alle Shop-Vorschauen des Artikels ueber v1 neu gelesen und
+nach erneutem Zuordnungsvergleich lokal gespeichert. Neue lokale Bildkennungen
+sperren den alten Entwurf: Seite neu laden und anhand der aktuellen Bilder erneut
+sortieren. Exportvorschauen werden nicht als Identitaetsnachweis verwendet.
+Bei 20821 zeigte die alte Exportvorschau an Position 3 ein Etikett, waehrend Wawi
+dort Bild 2094 (Erntefoto) fuehrt. Keine Wawi-Schreibkorrektur durchgefuehrt.
+Backend-Deployment wie im vorigen Abschnitt; keine Migration erforderlich.

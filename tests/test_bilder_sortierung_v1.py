@@ -92,3 +92,40 @@ class V1OrderTest(unittest.IsolatedAsyncioTestCase):
         target["saleschannelImages"][0]["images"].reverse()
         for n,b in enumerate(target["saleschannelImages"][0]["images"],1):b.update(sortNumber=n,isMainImage=n==1)
         with self.assertRaises(ValueError):schritt(self.before,target,self.rows)
+
+
+class LegacyPreviewTest(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = V1OrderTest.asyncSetUp
+    asyncTearDown = V1OrderTest.asyncTearDown
+    transport = V1OrderTest.transport
+
+    async def prepare(self, changed=False):
+        from app.bilder_ersetzen import sortierung_v1_vorbereiten
+        from app.bilder_abgleich import BildFehler
+        from unittest.mock import AsyncMock
+        with store.datenbank() as db: db.execute("DELETE FROM bildauftraege")
+        a=store.lesen()["artikel"][0]
+        original=copy.deepcopy(a)
+        async def fresh(*args):
+            if changed:self.rows[0]["SortNumber"]=9
+            return [{"id":"fresh", "v1_id":101,"position":1,"hauptbild":True,"thumb":"fresh"}]
+        async with OnPremClient(URL,"secret",transport=httpx.MockTransport(self.transport)) as c:
+            with patch("app.bilder_ersetzen.bild",new=AsyncMock(return_value=b"fresh")), patch("app.bilder_ersetzen.bild_laden",new=AsyncMock(side_effect=BildFehler("HTTP 400"))), patch("app.bilder_ersetzen.bestand",new=fresh):
+                with self.assertRaisesRegex(ValueError,"verändert" if changed else "neu laden"):
+                    await sortierung_v1_vorbereiten(c,A,0,[b["id"] for b in a["bilder"]],a["bilder"])
+            if not changed:
+                from app.bilder_ersetzen import reihenfolge
+                with self.assertRaisesRegex(ValueError,"verändert"):
+                    await reihenfolge(c,A,0,"new",[b["id"] for b in a["bilder"]],a["bilder"],"user")
+        self.assertTrue(all(m=="GET" for m in self.calls))
+        self.assertEqual(auftraege(),[])
+        return original,store.lesen()["artikel"][0]
+
+    async def test_failed_legacy_preview_refreshes_keys_and_rejects_old_draft_without_write(self):
+        old,new=await self.prepare()
+        self.assertEqual(new["bild_api"],"v1")
+        self.assertNotEqual(old["bilder"][0]["id"],new["bilder"][0]["id"])
+
+    async def test_concurrent_change_prevents_refresh(self):
+        old,new=await self.prepare(changed=True)
+        self.assertEqual(old,new)

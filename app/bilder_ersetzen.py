@@ -235,7 +235,23 @@ async def sortierung_v1_vorbereiten(c, article, revision, order, before):
             raise ValueError('v1-Shopposition fehlt.')
         source = next(v for g in detail['images']['saleschannelImages'] if g['saleschannelId'] == SHOP
                       for v in g['images'] if v['blobIdentifier'] == b['id'])
-        if not pixelgleich(await bild(c, image_id), await bild_laden(c, b['id'], source)):
+        live_preview = await bild(c, image_id)
+        try:
+            legacy_preview = await bild_laden(c, b['id'], source)
+        except BildFehler:
+            # Never map an old/export preview to a numeric ID on position alone.
+            # Publish fresh v1 images with NEW local keys, invalidating the draft.
+            refreshed = copy.deepcopy(a)
+            refreshed['bilder'] = await bestand(c, a, rows)
+            if zuordnungen(await liste(c, article)) != initial or fingerprint(bildblock(await detail_lesen(c, article, a['sku']))) != fingerprint(block):
+                raise ValueError('Bildbestand während der Vorbereitung verändert.')
+            if not store.freigegeben(article, revision):
+                raise ValueError('Artikelrevision verändert.')
+            refreshed['bild_api'] = 'v1'
+            refreshed['aktualisiert_am'] = store.jetzt()
+            store.zwischenstand(refreshed, revision, c.url, abgleich=False)
+            raise ValueError('Alte Vorschauen wurden durch aktuelle Wawi-Bilder ersetzt. Bitte Seite neu laden und die Reihenfolge anhand der aktuellen Bilder neu wählen. Es wurde nichts umsortiert.')
+        if not pixelgleich(live_preview, legacy_preview):
             raise ValueError('v1- und v2-Bildinhalt stimmen nicht überein. Bitte Bilder aktualisieren.')
         b['v1_id'] = image_id
     if zuordnungen(await liste(c, article)) != initial or fingerprint(bildblock(await detail_lesen(c, article, a['sku']))) != fingerprint(block):
