@@ -126,3 +126,41 @@ class ImapVerschiebenTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ErsatzkennungLesenTest(unittest.TestCase):
+    def test_ersatzkennung_vergleicht_anhaenge_und_erhaelt_flags(self):
+        from email.message import EmailMessage
+        from app.mail_parser import parse_eml
+        mail = EmailMessage()
+        mail["From"] = "rechnung@example.test"
+        mail["Subject"] = "Rechnung"
+        mail.set_content("Gleicher Text")
+        mail.add_attachment(b"Original PDF", maintype="application", subtype="pdf", filename="rechnung.pdf")
+        original = mail.as_bytes()
+        kennung = parse_eml(original)["message_id"]
+        falsch = original.replace(b"T3JpZ2luYWwgUERG", b"RmFsc2NoZXMgUERG")
+        self.assertNotEqual(parse_eml(falsch)["message_id"], kennung)
+        client = MagicMock()
+        client.search.side_effect = [[], [1, 2, 3]]
+        def fetch(uids, fields):
+            if fields == ["BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]"]:
+                return {1: {b"BODY[HEADER.FIELDS (MESSAGE-ID)]": b"\r\n"},
+                        2: {b"BODY[HEADER.FIELDS (MESSAGE-ID)]": b"Message-ID: \r\n\r\n"},
+                        3: {b"BODY[HEADER.FIELDS (MESSAGE-ID)]": b"Message-ID: <normal@test>\r\n"}}
+            return {uids[0]: {b"BODY[]": falsch if uids[0] == 2 else original}}
+        client.fetch.side_effect = fetch
+        with patch("app.imap_client.IMAPClient", new=_ClientKontext([client])):
+            result = mail_rohdaten_nach_message_id_laden(PostfachConfig("info", "host", "user", "pw"), kennung, "Rechnungen")
+        self.assertEqual(result, original)
+        client.select_folder.assert_called_once_with("Rechnungen", readonly=True)
+        self.assertEqual(client.fetch.call_count, 3)
+
+    def test_falsche_ersatzkennung_liefert_keine_fremde_mail(self):
+        client = MagicMock()
+        client.search.side_effect = [[], [1]]
+        client.fetch.side_effect = [{1: {b"BODY[HEADER.FIELDS (MESSAGE-ID)]": b"\r\n"}},
+                                    {1: {b"BODY[]": b"Subject: Andere\r\n\r\nInhalt"}}]
+        with patch("app.imap_client.IMAPClient", new=_ClientKontext([client])):
+            with self.assertRaises(RuntimeError):
+                mail_rohdaten_nach_message_id_laden(PostfachConfig("info", "host", "user", "pw"), "<generiert-" + "0" * 64 + "@krautl.local>")

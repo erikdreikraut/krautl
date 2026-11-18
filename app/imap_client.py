@@ -6,6 +6,7 @@ Umgebungsvariablen (siehe .env.example). Niemals Zugangsdaten hart codieren
 oder in Logs/Prompts an die KI-API weitergeben.
 """
 import os
+import re
 from dataclasses import dataclass
 from email import message_from_bytes, policy
 
@@ -107,6 +108,30 @@ def mail_rohdaten_nach_message_id_laden(
             ).get("Message-ID")
             if gefundene_id and gefundene_id.strip() == erwartete_id:
                 return eml
+        # Ersatzkennungen stehen nur in Krautl, nicht im Mail-Header.
+        if re.fullmatch(r"<generiert-[0-9a-f]{64}@krautl\.local>", erwartete_id):
+            from app.mail_parser import _stabile_ersatz_message_id, nachrichtentext
+
+            kandidaten = list(reversed(client.search(["ALL"])))
+            for start in range(0, len(kandidaten), 200):
+                block = kandidaten[start:start + 200]
+                header = client.fetch(block, ["BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]"])
+                for uid in block:
+                    roh = header.get(uid, {}).get(b"BODY[HEADER.FIELDS (MESSAGE-ID)]")
+                    if roh is None:
+                        continue
+                    kopf = message_from_bytes(roh, policy=policy.default)
+                    if str(kopf.get("Message-ID") or "").strip():
+                        continue
+                    daten = client.fetch([uid], ["BODY.PEEK[]"])
+                    eml = daten.get(uid, {}).get(b"BODY[]")
+                    if not eml:
+                        continue
+                    msg = message_from_bytes(eml, policy=policy.default)
+                    if str(msg.get("Message-ID") or "").strip():
+                        continue
+                    if _stabile_ersatz_message_id(msg, nachrichtentext(msg)) == erwartete_id:
+                        return eml
     raise RuntimeError(
         f"Mail {erwartete_id} wurde in {config.user}/{ordner} nicht gefunden"
     )
