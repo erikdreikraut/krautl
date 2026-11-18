@@ -34,6 +34,9 @@ class WhatsAppTest(unittest.IsolatedAsyncioTestCase):
             "WHATSAPP_VERIFY_TOKEN": "verify", "WHATSAPP_API_VERSION": "v23.0",
             "WHATSAPP_PROVIDER": "meta"})
         self.env.start()
+        self.translation = patch("app.whatsapp_sprachen.mail_ins_deutsche_uebersetzen", new_callable=AsyncMock,
+            return_value={"originalsprache": "Deutsch", "text_deutsch": None})
+        self.translation_mock = self.translation.start()
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="https://krautl.test")
         self.admin = {"Cookie": f"{COOKIE_NAME}={sitzung_erstellen('erik')}"}
         self.staff = {"Cookie": f"{COOKIE_NAME}={sitzung_erstellen('ludwig')}"}
@@ -42,6 +45,7 @@ class WhatsAppTest(unittest.IsolatedAsyncioTestCase):
         await self.client.aclose()
         main.app.dependency_overrides.clear()
         self.env.stop()
+        self.translation.stop()
         await self.engine.dispose()
 
     def payload(self, mid="in-1", zeit=None, echo=False, telefon="123", text="Hallo"):
@@ -69,6 +73,71 @@ class WhatsAppTest(unittest.IsolatedAsyncioTestCase):
     async def send(self, chat, auftrag=None, revision=None):
         return await self.client.post(f"/whatsapp/chats/{chat.id}/senden", headers=self.admin,
             json={"text": "Antwort", "revision": chat.revision if revision is None else revision, "auftrag_id": str(auftrag or uuid4())})
+
+    async def test_spanish_display_and_send_persist_both_versions(self):
+        self.translation_mock.return_value = {"originalsprache": "Spanisch", "text_deutsch": "Wo ist meine Bestellung?"}
+        chat = await self.eingang(self.payload(text="Donde esta mi pedido?"))
+        detail = (await self.client.get(f"/whatsapp/chats/{chat.id}", headers=self.admin)).json()
+        mid = detail["nachrichten"][0]["id"]
+        response = await self.client.post(f"/whatsapp/chats/{chat.id}/nachrichten/{mid}/uebersetzung", headers=self.admin)
+        self.assertEqual(response.status_code, 200, response.text)
+        detail = (await self.client.get(f"/whatsapp/chats/{chat.id}", headers=self.admin)).json()
+        self.assertEqual(detail["nachrichten"][0]["text_deutsch"], "Wo ist meine Bestellung?")
+        self.assertEqual(detail["versandsprache"], "Spanisch")
+        with patch("app.whatsapp.antwort_in_originalsprache_uebersetzen", new_callable=AsyncMock, return_value="Respuesta") as translate, patch("app.whatsapp.api_senden", new_callable=AsyncMock, return_value="out-translated") as send:
+            result = await self.send(chat)
+            self.assertEqual(result.status_code, 200, result.text)
+            translate.assert_awaited_once_with("Antwort", "Spanisch")
+            self.assertEqual(send.await_args.args[1], "Respuesta")
+        detail = (await self.client.get(f"/whatsapp/chats/{chat.id}", headers=self.admin)).json()
+        self.assertEqual(detail["nachrichten"][-1]["text_deutsch"], "Antwort")
+        self.assertEqual(detail["nachrichten"][-1]["text"], "Respuesta")
+        self.translation_mock.assert_awaited_once()
+
+    async def test_translation_failure_never_sends(self):
+        chat = await self.eingang()
+        with patch("app.whatsapp.antwort_in_originalsprache_uebersetzen", side_effect=RuntimeError("offline")), patch("app.whatsapp.api_senden", new_callable=AsyncMock) as send:
+            self.assertEqual((await self.send(chat)).status_code, 502)
+            send.assert_not_awaited()
+
+    async def test_new_message_during_translation_blocks_send(self):
+        chat = await self.eingang()
+        async def translate(*args):
+            await self.eingang(self.payload("new-during-translation"))
+            return "Antwort"
+        with patch("app.whatsapp.antwort_in_originalsprache_uebersetzen", side_effect=translate), patch("app.whatsapp.api_senden", new_callable=AsyncMock) as send:
+            self.assertEqual((await self.send(chat)).status_code, 409)
+            send.assert_not_awaited()
+
+    async def test_window_expiring_during_translation_blocks_send(self):
+        chat = await self.eingang()
+        async def translate(*args):
+            async with self.sessions() as session:
+                current = await session.get(Chat, chat.id)
+                current.letzte_kundennachricht = datetime.now(timezone.utc) - timedelta(hours=25)
+                await session.commit()
+            return "Antwort"
+        with patch("app.whatsapp.antwort_in_originalsprache_uebersetzen", side_effect=translate), patch("app.whatsapp.api_senden", new_callable=AsyncMock) as send:
+            self.assertEqual((await self.send(chat)).status_code, 409)
+            send.assert_not_awaited()
+
+    async def test_language_failure_blocks_send_and_other_chat_access(self):
+        chat = await self.eingang()
+        self.translation_mock.side_effect = RuntimeError("offline")
+        with patch("app.whatsapp.api_senden", new_callable=AsyncMock) as send:
+            self.assertEqual((await self.send(chat)).status_code, 502)
+            send.assert_not_awaited()
+        detail = (await self.client.get(f"/whatsapp/chats/{chat.id}", headers=self.admin)).json()
+        mid = detail["nachrichten"][0]["id"]
+        response = await self.client.post(f"/whatsapp/chats/{chat.id}/nachrichten/{mid + 999}/uebersetzung", headers=self.admin)
+        self.assertEqual(response.status_code, 404)
+
+    async def test_short_confirmation_keeps_spanish_thread_language(self):
+        chat = await self.eingang(self.payload(text="Donde esta mi pedido?"))
+        await self.eingang(self.payload("confirmation", datetime.now(timezone.utc) + timedelta(seconds=1), text="ja"))
+        async with self.sessions() as session:
+            msg = await whatsapp.letzte_kundennachricht(session, chat.id)
+            self.assertEqual(msg.text, "Donde esta mi pedido?")
 
     async def test_sender_name_uses_profile_or_phone_number(self):
         payload = self.payload()

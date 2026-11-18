@@ -48,6 +48,25 @@ test("WhatsApp-Antworten ohne echten Versand", async t => {
     };
   }
 
+  await t.test("Übersetzung nachladen, Original anzeigen und deutsche Antwort behalten", async t => {
+    const c = await chatOeffnen(t);
+    c.chat.nachrichten = [{id: 7, richtung: "eingehend", text: "Donde esta mi pedido?", zeit: new Date().toISOString(), status: "empfangen", uebersetzung_fehlt: true}];
+    const translate = t.mock.method(api, "whatsappUebersetzen", async () => {
+      c.chat.nachrichten = [{...c.chat.nachrichten[0], uebersetzung_fehlt: false, text_deutsch: "Wo ist meine Bestellung?", originalsprache: "Spanisch"}];
+      c.chat.versandsprache = "Spanisch";
+    });
+    await c.fokus(true);
+    assert.equal(translate.mock.callCount(), 1);
+    assert.match(JSON.stringify(c.view.toJSON()), /Wo ist meine Bestellung/);
+    assert.match(JSON.stringify(c.view.toJSON()), /Originaltext/);
+    assert.match(JSON.stringify(c.view.toJSON()), /Donde esta mi pedido/);
+    await c.schreiben("Wir prüfen Ihre Lieferung.");
+    await c.fokus(true);
+    assert.equal(c.antwort().props.value, "Wir prüfen Ihre Lieferung.");
+    assert.equal(translate.mock.callCount(), 1);
+    assert.equal(c.senden.mock.callCount(), 0);
+  });
+
   await t.test("Genehmigte Schnellantwort-Vorlage anzeigen und manuell senden", async t => {
     const c = await chatOeffnen(t, {fensterOffen: false});
     t.mock.method(api, "whatsappVorlagen", async () => [{name: "anfrage_aufgreifen", sprache: "de",

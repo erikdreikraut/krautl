@@ -1440,12 +1440,10 @@ function PosteingangView({ mails: emailMails, katalog, benutzer, alleMails, mail
                 )}
               </div>
             ) : null}
-            {selected.istFremdsprache && (
-              <div className="px-6 pt-4 mail-original-label" style={{ ...fontMono, fontSize: "10.5px", color: tokens.inkMuted, letterSpacing: "0.05em" }}>
-                ORIGINAL · {selected.originalsprache.toUpperCase()}
-              </div>
-            )}
-            <MailInhalt key={selected.id} mail={selected} />
+            {selected.uebersetzung ? <details key={`original-${selected.id}`} className="mail-original-label">
+              <summary className="px-6 py-3 cursor-pointer" style={{...fontUI, fontSize: "12px", color: tokens.inkMuted}}>Deutsche Übersetzung · Originaltext ({selected.originalsprache}) anzeigen</summary>
+              <MailInhalt key={selected.id} mail={selected} />
+            </details> : <MailInhalt key={selected.id} mail={selected} />}
             {Object.keys(selected.felder).length > 0 && (
               <div className="px-6 py-4 grid grid-cols-2 gap-3 mail-fields" style={{ borderBottom: `1px solid ${tokens.line}` }}>
                 {Object.entries(selected.felder).map(([k, v]) => (

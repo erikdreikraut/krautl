@@ -71,6 +71,23 @@ Nachrichten werden anhand der WhatsApp-ID erkannt. Fehler bleiben im Admin-
 Bereich **Archiv → WhatsApp-Chats** sichtbar und können ohne Versand erneut verarbeitet werden.
 Berechtigungen gelten für Chatliste, Verlauf, Medien und sämtliche Aktionen.
 
+### Fremdsprachen in WhatsApp
+
+Beim Öffnen eines Chats werden eingehende Texte und vorhandene Transkripte
+als deutsche Arbeitsfassung nachgeladen; Originale bleiben aufklappbar erhalten.
+Das gilt auch für bestehende Chats. Keine KI-Klassifikation wird ausgelöst.
+Die separate Tabelle `whatsapp_uebersetzung` wird beim App-Start automatisch
+angelegt; bestehende Nachrichtentabellen benötigen keine Spaltenmigration.
+Übersetzungen werden anhand des Originalinhalts wiederverwendet.
+Antwortvorschläge und Entwürfe sind deutsch. Erst beim ausdrücklich ausgelösten
+Versand wird in die Sprache der letzten auswertbaren Kundennachricht übersetzt;
+kurze Bestätigungen und Vorlagenbuttons ändern die bisherige Sprache nicht.
+Arbeitsfassung und tatsächlicher Versandtext bleiben gespeichert. KI-Fehler,
+zu lange Übersetzungen, neue Nachrichten und abgelaufene Antwortfenster brechen
+vor dem Versand ab. Genehmigte Meta-Vorlagen werden niemals umübersetzt.
+Auch bei E-Mails ist das Original unter einem beschrifteten Aufklappbereich
+neben der deutschen Arbeitsübersetzung zugänglich.
+
 ### Einrichtung: direkte Meta Cloud API (API-only)
 
 Der gewählte Betriebsweg verbindet Krautl direkt mit Meta, ohne zusätzlichen

@@ -62,6 +62,7 @@ export const api = {
   whatsappEreignisWiederholen: (id) => anfrage(`/whatsapp/ereignisse/${id}/wiederholen`, {method: "POST"}),
   whatsappStatus: () => anfrage("/whatsapp/status"),
   whatsappChats: (alle = false, archiv = false, suche = "") => anfrage(`/whatsapp/chats?${new URLSearchParams({alle, archiv, suche})}`),
+  whatsappUebersetzen: (id, nachrichtId) => anfrage(`/whatsapp/chats/${id}/nachrichten/${nachrichtId}/uebersetzung`, {method: "POST"}),
   whatsappChat: (id) => anfrage(`/whatsapp/chats/${id}`),
   whatsappReservieren: (id) => anfrage(`/whatsapp/chats/${id}/reservierung`, {method: "POST"}),
   whatsappFreigeben: (id) => anfrage(`/whatsapp/chats/${id}/freigeben`, {method: "POST"}),

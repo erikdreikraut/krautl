@@ -20,6 +20,9 @@ export function useWhatsAppEingang(alle, reload) {
 
 export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
   const [chat, setChat] = useState(null);
+  const [sprachFehler, setSprachFehler] = useState("");
+  const [spracheLaeuft, setSpracheLaeuft] = useState(false);
+  const sprachAbruf = useRef(false);
   const [text, setText] = useState("");
   const [datei, setDatei] = useState(null);
   const [notiz, setNotiz] = useState("");
@@ -89,6 +92,15 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
       fokusNachVersand.current = false;
     }
   }, [chat, eigene, laeuft]);
+  useEffect(() => {
+    const nachricht = chat?.nachrichten.find(m => m.uebersetzung_fehlt);
+    if (!nachricht || sprachFehler || sprachAbruf.current) return;
+    sprachAbruf.current = true;
+    setSpracheLaeuft(true);
+    api.whatsappUebersetzen(id, nachricht.id).then(() => laden()).catch(e => {
+      setSprachFehler(e.message);
+    }).finally(() => {sprachAbruf.current = false; setSpracheLaeuft(false);});
+  }, [id, chat?.nachrichten.filter(m => m.uebersetzung_fehlt).map(m => m.id).join(","), sprachFehler, spracheLaeuft, laden]);
   async function aktion(fn) {
     if (aktionLaeuft.current) return;
     aktionLaeuft.current = true;
@@ -156,20 +168,24 @@ export function WhatsAppChatPanel({id, benutzer, onReload, onZurueck}) {
     <div className="p-5 flex flex-col gap-3" aria-label="WhatsApp-Chatverlauf">
       {chat.nachrichten.map(m => <div key={m.id} className="rounded-lg p-3 max-w-full" style={{alignSelf: "flex-start", marginLeft: m.richtung === "eingehend" ? 0 : "min(8%, 120px)", background: m.richtung === "eingehend" ? "#FDFCEE" : "#E8F0C8", width: "min(85%, 650px)", overflowWrap: "anywhere"}}>
         <div className="text-xs mb-1">{m.richtung === "eingehend" ? chat.name : m.quelle === "app" ? "Wir · Handy" : `Wir · ${m.gesendet_von || "Krautl"}`}</div>
-        <div style={{whiteSpace: "pre-wrap"}}>{m.text}</div>
+        <div style={{whiteSpace: "pre-wrap"}}>{m.text_deutsch || m.text}</div>
+        {m.text_deutsch && <details className="mt-2 text-sm"><summary style={{cursor: "pointer"}}>{m.richtung === "eingehend" ? "Deutsche Übersetzung · Originaltext" : "Deutsche Arbeitsfassung · Versandtext"} ({m.originalsprache}) anzeigen</summary><div className="mt-2 whitespace-pre-wrap">{m.transkript || m.text}</div></details>}
         {m.media && <button style={button} className="mt-2" onClick={() => aktion(async () => {
           const blob = await api.whatsappMedium(id, m.id); const url = URL.createObjectURL(blob);
           const a = document.createElement("a"); a.href = url; a.download = m.dateiname || `whatsapp-${m.id}`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
         })}>{m.dateiname || "Anhang herunterladen"}</button>}
-        {m.status === "failed" && <button style={button} disabled={gesperrt} onClick={() => {versandAuftrag.current = null; setText(m.text); setBasisRevision(chat.revision); setDatei(null); setFehler("Antwort erneut prüfen und anschließend manuell senden. Anhänge gegebenenfalls erneut auswählen.");}}>Neue Antwort vorbereiten</button>}
+        {m.status === "failed" && <button style={button} disabled={gesperrt} onClick={() => {versandAuftrag.current = null; setText(m.text_deutsch || m.text); setBasisRevision(chat.revision); setDatei(null); setFehler("Antwort erneut prüfen und anschließend manuell senden. Anhänge gegebenenfalls erneut auswählen.");}}>Neue Antwort vorbereiten</button>}
         {["unklar", "uebergabe"].includes(m.status) && <div className="mt-2 text-sm"><p>Versand noch ungeklärt. Auf den Meta-Status warten. Nur mit einem verlässlichen Nachweis (z. B. Bestätigung des Empfängers oder technische Versandprüfung) manuell bestätigen; nicht erneut senden.</p>{[["versendet", "Versand nachgewiesen"], ["nicht_versendet", "Nichtversand nachgewiesen"]].map(([wert,label]) => <button key={wert} style={button} disabled={gesperrt} onClick={() => aktion(async () => {await api.whatsappVersandPruefen(id, m.id, {revision: chat.revision, text: wert}); versandAuftrag.current = null;})}>{label}</button>)}</div>}
-        {m.transkript && <div className="mt-2 text-sm whitespace-pre-wrap"><strong>Transkript:</strong> {m.transkript}</div>}
+        {m.transkript && !m.text_deutsch && <div className="mt-2 text-sm whitespace-pre-wrap"><strong>Transkript:</strong> {m.transkript}</div>}
         {m.typ === "audio" && !m.transkript && <button style={button} disabled={gesperrt} onClick={() => aktion(() => api.whatsappTranskribieren(id, m.id))}>Sprachnachricht transkribieren</button>}
         <div className="text-xs mt-2" style={{color: m.fehler ? "#A33E25" : "#6C6F5F"}}>{new Date(m.zeit).toLocaleString("de-DE", {timeZone: "Europe/Berlin"})} · {labels[m.status] || m.status}{m.fehler && ` · ${m.fehler}`}</div>
       </div>)}
     </div>
     <div className="p-5" style={{borderTop: "1px solid #DDD9C4"}}>
       {veraltet && <div className="mb-2 text-sm" style={{color: "#A33E25"}}>Neue Kundennachricht: Antwort prüfen. <button style={button} disabled={gesperrt} onClick={() => {setBasisRevision(chat.revision); versandAuftrag.current = null;}}>Antwort geprüft</button></div>}
+      {spracheLaeuft && <p role="status" className="text-sm mb-2">Deutsche Übersetzung wird erstellt …</p>}
+      {sprachFehler && <p role="alert" className="text-sm mb-2">{sprachFehler} <button style={button} onClick={() => setSprachFehler("")}>Übersetzung erneut versuchen</button></p>}
+      <p className="text-sm mb-2">Du antwortest auf Deutsch. {chat.versandsprache ? `Beim Senden wird die Antwort in ${chat.versandsprache} übertragen.` : "Die Kundensprache wird vor dem Versand ermittelt."}</p>
       <label className="block text-sm mb-2" htmlFor={`wa-antwort-${id}`}>Antwort an {chat.name}</label>
       <textarea ref={antwortRef} onKeyDown={antwortTaste} aria-describedby={`wa-tasten-${id}`} id={`wa-antwort-${id}`} value={text} disabled={gesperrt} rows={4} maxLength={datei ? 1024 : 4096} className="w-full p-3 rounded-md" style={{background: "#FDFCEE", border: "1px solid #DDD9C4"}} onChange={e => {setText(e.target.value);}} />
       <div id={`wa-tasten-${id}`} className="text-xs mt-1" style={{color: "#6C6F5F"}}>Enter: senden · Shift+Enter: Zeilenumbruch</div>

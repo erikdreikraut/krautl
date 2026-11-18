@@ -469,3 +469,11 @@ class WhatsAppEreignis(Base):
     status: Mapped[str] = mapped_column(String(20), default="wartet", index=True)
     fehler: Mapped[str | None] = mapped_column(String(255), nullable=True)
     erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class WhatsAppUebersetzung(Base):
+    __tablename__ = "whatsapp_uebersetzung"
+    nachricht_id: Mapped[int] = mapped_column(ForeignKey("whatsapp_nachricht.id"), primary_key=True)
+    original_hash: Mapped[str] = mapped_column(String(64))
+    sprache: Mapped[str] = mapped_column(String(80))
+    text_deutsch: Mapped[str | None] = mapped_column(Text, nullable=True)
