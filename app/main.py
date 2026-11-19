@@ -11,7 +11,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import case, delete, func, or_, select, update
+from sqlalchemy import and_, case, delete, func, or_, select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -481,8 +481,15 @@ async def liste_mails(
     verweigert = await verweigerte_klassifikationen(session, request.state.benutzer)
     if "*" in verweigert:
         return []
+    ablaufgrenze = datetime.now(timezone.utc) - timedelta(
+        seconds=MAIL_RESERVIERUNG_ABLAUF_SEKUNDEN
+    )
     abfrage = (
-        select(Mail)
+        select(Mail, MailReservierung)
+        .outerjoin(MailReservierung, and_(
+            MailReservierung.mail_id == Mail.id,
+            MailReservierung.letzter_kontakt >= ablaufgrenze,
+        ))
         .outerjoin(
             Klassifikation,
             Mail.klassifikation_id == Klassifikation.klassifikation_id,
@@ -499,8 +506,8 @@ async def liste_mails(
                 else_=1,
             ),
             Mail.empfangen_am.desc(),
+            Mail.id.desc(),
         )
-        .limit(100)
     )
     if verweigert:
         abfrage = abfrage.where(or_(
@@ -510,23 +517,7 @@ async def liste_mails(
     zustand = zustaendigkeitsfilter(benutzer, alle=alle)
     if zustand is not None:
         abfrage = abfrage.where(zustand)
-    result = await session.execute(abfrage)
-    mails = result.scalars().all()
-    reservierungen_nach_mail_id = {}
-    if mails:
-        ablaufgrenze = datetime.now(timezone.utc) - timedelta(
-            seconds=MAIL_RESERVIERUNG_ABLAUF_SEKUNDEN
-        )
-        reservierungen = (await session.execute(
-            select(MailReservierung).where(
-                MailReservierung.mail_id.in_([mail.id for mail in mails]),
-                MailReservierung.letzter_kontakt >= ablaufgrenze,
-            )
-        )).scalars().all()
-        reservierungen_nach_mail_id = {
-            reservierung.mail_id: reservierung
-            for reservierung in reservierungen
-        }
+    mails = (await session.execute(abfrage)).all()
     fuer_sachbearbeiter_verweigert = await verweigerte_klassifikationen(
         session, {"rolle": ROLLE_SACHBEARBEITER}
     )
@@ -542,11 +533,7 @@ async def liste_mails(
                 a.aufgabe_typ == "BESTAETIGUNG_EINHOLEN" and a.status == "wartet"
                 for a in mail.aufgaben
             ),
-            "reservierung": (
-                _reservierungsdaten(reservierungen_nach_mail_id[mail.id])
-                if mail.id in reservierungen_nach_mail_id
-                else None
-            ),
+            "reservierung": _reservierungsdaten(reservierung) if reservierung else None,
             "notiz": (
                 {
                     "text": mail.notiz.text,
@@ -566,7 +553,7 @@ async def liste_mails(
                 ),
             ],
         }
-        for mail in mails
+        for mail, reservierung in mails
     ]
 
 

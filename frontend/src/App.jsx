@@ -883,7 +883,20 @@ function MailInhalt({ mail }) {
   );
 }
 
-function PosteingangView({ mails: emailMails, katalog, benutzer, alleMails, mailZaehler, onAlleMailsAendern, onReload: emailReload }) {
+function nachrichtNebenAlterAuswahl(vorherigeIds, selectedId, sichtbareMails) {
+  const index = vorherigeIds.indexOf(selectedId);
+  if (index === -1) return null;
+  const sichtbarNachId = new Map(sichtbareMails.map((mail) => [mail.id, mail]));
+  for (let i = index + 1; i < vorherigeIds.length; i++) {
+    if (sichtbarNachId.has(vorherigeIds[i])) return sichtbarNachId.get(vorherigeIds[i]);
+  }
+  for (let i = index - 1; i >= 0; i--) {
+    if (sichtbarNachId.has(vorherigeIds[i])) return sichtbarNachId.get(vorherigeIds[i]);
+  }
+  return null;
+}
+
+export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMails, mailZaehler, onAlleMailsAendern, onReload: emailReload }) {
   const whatsapp = useWhatsAppEingang(alleMails, emailReload);
   const onReload = whatsapp.neuLaden;
   const [kanal, setKanal] = useState("alle");
@@ -896,8 +909,9 @@ function PosteingangView({ mails: emailMails, katalog, benutzer, alleMails, mail
       const prioRang = Number(b.prioritaet === "hoch") - Number(a.prioritaet === "hoch");
       if (prioRang) return prioRang;
     }
-    return new Date(b.empfangenAm || 0) - new Date(a.empfangenAm || 0);
-  }), [emailMails, whatsapp.chats, katalog]);
+    const zeitRang = new Date(b.empfangenAm || 0) - new Date(a.empfangenAm || 0);
+    return zeitRang || (a.kanal === "whatsapp" ? b.chatId - a.chatId : b.id - a.id);
+  }), [emailMails, whatsapp.chats]);
   const [filter, setFilter] = useState(null);
   const [suchbegriff, setSuchbegriff] = useState("");
   const [selectedId, setSelectedId] = useState(mails[0]?.id ?? null);
@@ -961,7 +975,11 @@ function PosteingangView({ mails: emailMails, katalog, benutzer, alleMails, mail
         return text.includes(suchtreffer);
       })
     : kategorieGefiltert;
-  const selected = verfuegbareMails.find((m) => m.id === selectedId) ?? sichtbar[0] ?? null;
+  const vorherigeMailIds = useRef([]);
+  const selected = verfuegbareMails.find((mail) => mail.id === selectedId)
+    ?? nachrichtNebenAlterAuswahl(vorherigeMailIds.current, selectedId, sichtbar)
+    ?? sichtbar[0]
+    ?? null;
   const detailSichtbar = Boolean(selected && (!istMobil || mobileDetailOffen));
   const aktuelleReservierung = lokaleReservierung?.mailId === selected?.id
     ? lokaleReservierung
@@ -973,7 +991,6 @@ function PosteingangView({ mails: emailMails, katalog, benutzer, alleMails, mail
   const reserviertVon = RESERVIERUNG_KURZNAMEN[
     aktuelleReservierung?.benutzername
   ] || aktuelleReservierung?.name || "einer anderen Person";
-  const vorherigeMailIds = useRef(verfuegbareMails.map((m) => m.id));
 
   const reservierungFreigeben = useCallback((mailId, perBeacon = false) => {
     if (eigeneReservierungMailId.current !== mailId) return;
@@ -1060,35 +1077,13 @@ function PosteingangView({ mails: emailMails, katalog, benutzer, alleMails, mail
     return () => window.removeEventListener("pagehide", beimSchliessen);
   }, [reservierungFreigeben]);
 
-  // Verschwindet die ausgewählte Mail aus der Liste (verschoben, gelöscht,
-  // Zuständigkeit geändert …), auf den Nachfolger an ihrer alten Position
-  // springen statt immer zurück zum ersten Eintrag.
+  // Den Nachbarn bereits oben im Render wählen, damit beim Erledigen keine
+  // andere Mail vorübergehend geladen oder reserviert wird.
   useEffect(() => {
-    const vorherige = vorherigeMailIds.current;
-    const nochVorhanden = verfuegbareMails.some((m) => m.id === selectedId);
-
-    if (!nochVorhanden && selectedId != null) {
-      const alterIndex = vorherige.indexOf(selectedId);
-      if (alterIndex !== -1) {
-        const sichtbarIds = new Set(sichtbar.map((m) => m.id));
-        let naechsteAuswahl = null;
-        for (let i = alterIndex + 1; i < vorherige.length; i++) {
-          if (sichtbarIds.has(vorherige[i])) { naechsteAuswahl = vorherige[i]; break; }
-        }
-        if (naechsteAuswahl == null) {
-          for (let i = alterIndex - 1; i >= 0; i--) {
-            if (sichtbarIds.has(vorherige[i])) { naechsteAuswahl = vorherige[i]; break; }
-          }
-        }
-        setSelectedId(naechsteAuswahl);
-      }
-    }
-
-    vorherigeMailIds.current = verfuegbareMails.map((m) => m.id);
-    // sichtbar bewusst nicht in den Deps: soll nur auf echte Mail-Reloads
-    // reagieren, nicht auf lokale Filter-Wechsel.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [verfuegbareMails]);
+    vorherigeMailIds.current = verfuegbareMails.map((mail) => mail.id);
+    const sichtbareAuswahl = selected?.id ?? null;
+    if (sichtbareAuswahl !== selectedId) setSelectedId(sichtbareAuswahl);
+  }, [verfuegbareMails, selected?.id, selectedId]);
 
   useEffect(() => {
     const idsVomServer = new Set(mails.map((mail) => mail.id));
@@ -1267,7 +1262,7 @@ function PosteingangView({ mails: emailMails, katalog, benutzer, alleMails, mail
         </div>
         <div className="flex-1 overflow-y-auto">
           {sichtbar.map((m) => (
-            <button key={m.id} onClick={() => mailOeffnen(m.id)} className="w-full text-left px-4 py-3 flex flex-col gap-1.5"
+            <button key={m.id} onClick={() => mailOeffnen(m.id)} aria-current={selected?.id === m.id ? "true" : undefined} className="w-full text-left px-4 py-3 flex flex-col gap-1.5"
               style={{
                 borderBottom: `1px solid ${tokens.line}`,
                 background: m.kanal === "whatsapp"

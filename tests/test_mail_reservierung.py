@@ -13,6 +13,8 @@ os.environ.setdefault("OPENAI_API_KEY", "test")
 from app.db import SessionLocal, engine
 from app.main import (
     liste_mails,
+    mail_erledigen,
+    mail_zaehler,
     mail_reservieren,
     mail_reservierung_freigeben,
 )
@@ -71,6 +73,33 @@ class MailReservierungTest(unittest.IsolatedAsyncioTestCase):
             session.add(mail)
             await session.commit()
             self.mail_id = mail.id
+
+    async def test_alte_mails_sind_vor_dem_erledigen_sichtbar(self):
+        async with SessionLocal() as session:
+            vorhandene = await session.get(Mail, self.mail_id)
+            vorhandene.zustaendig_admin = True
+            weitere = [Mail(
+                message_id=f"<eingang-{i}@example.test>",
+                postfach_id=vorhandene.postfach_id,
+                absender_name="Testkunde",
+                text_auszug="Test",
+                absender_adresse="kunde@example.test",
+                betreff=f"Mail {i}",
+                empfangen_am=vorhandene.empfangen_am - timedelta(days=101 - i // 2),
+                im_krautl_posteingang=True,
+                zustaendig_admin=True,
+            ) for i in range(101)]
+            session.add_all(weitere)
+            await session.commit()
+
+            vorher = await liste_mails(ERIK, session)
+            erwartete_ids = [self.mail_id, *(mail.id for mail in reversed(weitere))]
+            self.assertEqual(len(erwartete_ids), (await mail_zaehler(ERIK, session))["meine"])
+            self.assertEqual(erwartete_ids, [mail["id"] for mail in vorher])
+
+            await mail_erledigen(weitere[0].id, ERIK, session)
+            nachher = await liste_mails(ERIK, session)
+            self.assertEqual(erwartete_ids[:-1], [mail["id"] for mail in nachher])
 
     async def test_reservierung_sperrt_andere_bis_sie_abgelaufen_ist(self):
         async with SessionLocal() as session:
