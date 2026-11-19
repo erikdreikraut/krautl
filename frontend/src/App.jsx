@@ -1402,6 +1402,7 @@ export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMail
                 kiPruefung={String(selected.kat || "").toUpperCase() === "KUNDENSERVICE"}
                 originalsprache={selected.originalsprache}
                 onErledigt={aktionAbschliessen}
+                onGeprueft={() => emailReload({imHintergrund: true, nachLaufendemAbruf: true})}
                 onVersendet={(ergebnis) => setVersandbestaetigungen((alt) => ({
                   ...alt,
                   [selected.id]: ergebnis,
@@ -1492,18 +1493,22 @@ export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMail
   );
 }
 
-function EntwurfPanel({
-  entwurf, kiPruefung, originalsprache, onErledigt, onVersendet,
+export function EntwurfPanel({
+  entwurf, kiPruefung, originalsprache, onErledigt, onVersendet, onGeprueft,
   deaktiviert = false,
 }) {
-  const [text, setText] = useState(entwurf.text);
+  const [lokalerText, setText] = useState(null);
   const [anhaenge, setAnhaenge] = useState([]);
   const [prueft, setPrueft] = useState(false);
-  const [probleme, setProbleme] = useState([]);
+  const [pruefergebnis, setPruefergebnis] = useState(null);
   const [fehler, setFehler] = useState("");
-  const [naechsterOhnePruefung, setNaechsterOhnePruefung] = useState(false);
   const [versanderfolg, setVersanderfolg] = useState(null);
   const dateiEingabe = useRef(null);
+  const text = lokalerText ?? entwurf.text;
+  const probleme = pruefhinweise(pruefergebnis?.probleme ?? entwurf.pruefprobleme ?? []);
+  const naechsterOhnePruefung = kiPruefung && Boolean(
+    pruefergebnis?.naechster_versuch_ohne_pruefung ?? entwurf.naechsterOhnePruefung,
+  );
 
   function anhaengeAuswaehlen(event) {
     const neueDateien = Array.from(event.target.files ?? []);
@@ -1529,14 +1534,13 @@ function EntwurfPanel({
 
   async function freigeben() {
     setPrueft(true);
-    setProbleme([]);
     setFehler("");
     setVersanderfolg(null);
     try {
-      const ergebnis = await api.entwurfFreigeben(entwurf.id, text, anhaenge);
+      const ergebnis = await api.entwurfFreigeben(entwurf.id, text, anhaenge, naechsterOhnePruefung);
       if (ergebnis.status === "pruefung_noetig") {
-        setProbleme(pruefhinweise(ergebnis.probleme ?? ["Die Antwort benötigt noch eine Prüfung."]));
-        setNaechsterOhnePruefung(Boolean(ergebnis.naechster_versuch_ohne_pruefung));
+        setPruefergebnis(ergebnis);
+        onGeprueft();
       } else {
         setVersanderfolg({
           empfaenger: ergebnis.empfaenger,
@@ -1552,6 +1556,7 @@ function EntwurfPanel({
       }
     } catch (e) {
       setFehler(e.message);
+      onGeprueft();
     } finally {
       setPrueft(false);
     }
@@ -1564,7 +1569,7 @@ function EntwurfPanel({
   return (
     <div className="px-6 py-4 flex flex-col entwurf-panel" style={{ borderBottom: `1px solid ${tokens.line}` }}>
       <div style={{ ...fontMono, fontSize: "10.5px", color: tokens.amber, letterSpacing: "0.05em" }}>ANTWORTENTWURF · DEUTSCHE ARBEITSFASSUNG · WARTET AUF FREIGABE</div>
-      <textarea value={text} onChange={(e) => setText(e.target.value)} disabled={deaktiviert} className="mt-2 p-3 resize-y disabled:opacity-70"
+      <textarea value={text} onChange={(e) => setText(e.target.value)} disabled={deaktiviert || prueft} className="mt-2 p-3 resize-y disabled:opacity-70"
         style={{ ...fontSerif, fontSize: "14.5px", background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px", minHeight: "320px" }} />
       <div className="flex items-center gap-2 mt-3 flex-wrap">
         <input
@@ -1608,7 +1613,7 @@ function EntwurfPanel({
           ))}
         </div>
       )}
-      {probleme.length > 0 && (
+      {!prueft && probleme.length > 0 && (
         <div className="mt-3 px-3 py-2.5" style={{ background: tokens.amberPale, border: `1px solid ${tokens.amber}`, borderRadius: "6px" }}>
           <div style={{ ...fontUI, fontSize: "12.5px", fontWeight: 600, color: tokens.ink }}>
             Vor dem Versand bitte noch bearbeiten:
@@ -2253,6 +2258,14 @@ function AktionslogMailDialog({ mailId, onSchliessen }) {
                   </div>
                 </div>
               )}
+              {(mail.abgelehnte_prueffassungen || []).map(fassung => <details key={fassung.id} className="m-5 p-4" style={{ background: tokens.amberPale, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
+                <summary style={{ cursor: "pointer", fontWeight: 600 }}>Abgelehnter Antwortentwurf #{fassung.entwurf_id} · {formatZeitpunkt(fassung.geprueft_am)}</summary>
+                <div className="mt-2" style={{ ...fontSerif, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{fassung.text}</div>
+              </details>)}
+              {(mail.offene_entwuerfe || []).map(entwurf => <details key={entwurf.id} className="m-5 p-4" style={{ background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
+                <summary style={{ cursor: "pointer", fontWeight: 600 }}>{entwurf.ist_vorschlag ? "Ursprünglicher Antwortvorschlag" : "Gespeicherte Arbeitsfassung"} · Entwurf #{entwurf.id}</summary>
+                <div className="mt-2" style={{ ...fontSerif, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{entwurf.text}</div>
+              </details>)}
               {(mail.gesendete_antworten || []).map(antwort => <section key={antwort.id} className="m-5 p-4" style={{ background: tokens.mossPale, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
                 <h4 style={{ ...fontUI, fontWeight: 600 }}>Gesendete Antwort · {formatZeitpunkt(antwort.versendet_am)}</h4>
                 <div className="mt-2" style={{ ...fontSerif, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{antwort.text || "Kein Antworttext gespeichert."}</div>
@@ -2839,7 +2852,12 @@ function KrautlAnwendung({ benutzer, onAbmelden }) {
           letzterKontakt: m.reservierung.letzter_kontakt,
           laeuftAb: m.reservierung.laeuft_ab,
         } : null,
-        entwurf: entwurfRoh ? { id: entwurfRoh.id, text: entwurfRoh.text_ki } : null,
+        entwurf: entwurfRoh ? {
+          id: entwurfRoh.id,
+          text: entwurfRoh.arbeitsfassung ?? entwurfRoh.text_ki,
+          pruefprobleme: entwurfRoh.pruefprobleme,
+          naechsterOhnePruefung: entwurfRoh.naechster_versuch_ohne_pruefung,
+        } : null,
       };
     });
 

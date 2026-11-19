@@ -236,6 +236,20 @@ class Entwurf(Base):
     mail: Mapped["Mail"] = relationship(back_populates="entwuerfe")
 
 
+class EntwurfPrueffassung(Base):
+    """Arbeitsfassung beim Freigabeversuch; abgelehnte Fassungen bleiben im Log."""
+    __tablename__ = "entwurf_prueffassung"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entwurf_id: Mapped[int] = mapped_column(ForeignKey("entwurf.id", ondelete="CASCADE"), index=True)
+    aktionslog_id: Mapped[int | None] = mapped_column(
+        ForeignKey("aktionslog.id", ondelete="SET NULL"), unique=True, nullable=True,
+    )
+    text: Mapped[str] = mapped_column(Text)
+    probleme: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    erstellt_am: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Versandkopie(Base):
     """Unveränderliche Nachricht nach SMTP-Übergabe; IMAP-Ablage ist separat."""
     __tablename__ = "versandkopie"

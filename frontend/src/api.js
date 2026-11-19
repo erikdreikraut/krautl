@@ -228,10 +228,11 @@ export const api = {
     anfrage(`/mails/${mailId}/antwort`, { method: "POST" }),
   mailUebersetzen: (mailId) =>
     anfrage(`/mails/${mailId}/uebersetzung`, { method: "POST" }),
-  entwurfFreigeben: (id, finalerText, anhaenge = []) => {
+  entwurfFreigeben: (id, finalerText, anhaenge = [], ohneWeiterePruefung = false) => {
     if (anhaenge.length > 0) {
       const formular = new FormData();
       formular.append("finaler_text", finalerText);
+      formular.append("ohne_weitere_pruefung", String(ohneWeiterePruefung));
       anhaenge.forEach((datei) => formular.append("anhaenge", datei, datei.name));
       return anfrage(`/entwuerfe/${id}/freigeben-mit-anhaengen`, {
         method: "POST",
@@ -241,7 +242,7 @@ export const api = {
     return anfrage(`/entwuerfe/${id}/freigeben`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ finaler_text: finalerText }),
+      body: JSON.stringify({ finaler_text: finalerText, ohne_weitere_pruefung: ohneWeiterePruefung }),
     });
   },
   entwurfVerwerfen: (id) => anfrage(`/entwuerfe/${id}/verwerfen`, { method: "POST" }),

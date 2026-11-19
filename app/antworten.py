@@ -229,6 +229,7 @@ PRUEFUNGS_TOOL = {
                                 "innerer_widerspruch",
                                 "produkt_faktenfehler",
                                 "sprachfehler",
+                                "sinnentstellender_sprachfehler",
                                 "interner_hinweis",
                                 "kernfrage_unbeantwortet",
                                 "recht_gesundheit",
@@ -287,9 +288,12 @@ Für betriebliche Handlungen gilt eine verbindliche Freigabelogik:
   menschlichen Freigabe aus, statt daraus einen Widerspruch zu konstruieren.
 
 Formuliere jeden gefundenen Fehler als eigenen Eintrag in probleme.
-Die beschreibung ist ein kurzer, direkt nutzbarer Hinweis ohne interne Typcodes
-oder JSON: zum Beispiel "Tippfehler: Versandkosten statt Versankosten im zweiten
-Absatz" oder "Offene Frage: Kann der Kunde die gewuenschte Menge bestellen?".
+Die Beschreibung nennt kurz und konkret das Versandhindernis, etwa
+„Offene Frage: Kann der Kunde die gewünschte Menge bestellen?“.
+Lass reine Tippfehler, Zeichensetzung, Grammatik ohne Bedeutungsänderung und
+mögliche stilistische Verbesserungen weg. Nur wenn die sprachliche Formulierung
+eine wesentliche Information verfälscht oder missverständlich macht, darf sie
+als „sinnentstellender_sprachfehler“ blockieren.
 Nenne Fehlerstelle und konkrete Korrektur, soweit bekannt. Keine langen
 Begruendungen oder Wiederholungen der gesamten Kundenmail. Das Feld probleme
 muss eine echte Liste sein, kein als Zeichenkette kodiertes JSON.
@@ -299,12 +303,12 @@ Dein Schwerpunkt liegt auf:
   widerspricht eine Produkt- oder Preisaussage eindeutig dreikraut-eigenen
   Fakten aus FAQ/Fallwissen? Ein neuer Bearbeitungsstand gegenüber der
   Kundenmail ist ausdrücklich KEIN Widerspruch.
-- sprachlichen und grammatikalischen Fehlern;
+- sinnentstellenden Formulierungen, die wesentliche Informationen verändern;
 - übersehenen internen Hinweisen, Platzhaltern oder eckigen Klammern - auch
   aus einem KI-Entwurf übernommen und beim Bearbeiten vergessen.
 
 Blockiere außerdem bei:
-- einer unbeantwortete Kernfrage der Kundenmail (das Team entscheidet danach
+- einer unbeantworteten Kernfrage der Kundenmail (das Team entscheidet danach
   bewusst, ob trotzdem versendet wird);
 - einer rechtlich oder gesundheitlich riskanten Aussage.
 
@@ -323,7 +327,7 @@ Wichtige Abgrenzungen:
   oder mögliche Verbesserungen sind kein Blockiergrund. Das Stilprofil ist
   Orientierung und kein Perfektionstest.
 
-Jeder ausgegebene Problempunkt muss für sich allein den Versand rechtfertigen.
+Jeder ausgegebene Problempunkt muss für sich allein die Unterbrechung des Versands rechtfertigen.
 Bündele keine korrekten oder bloß diskutablen Formulierungen in einen echten
 Fehler hinein. Wenn du einen klaren Fehler gefunden hast, erfinde keine
 zusätzlichen Punkte, um die Liste zu verlängern. Nur ein wesentliches Hindernis
@@ -339,7 +343,7 @@ logisch unvereinbare Aussagen innerhalb der zu prüfenden Antwort zulässig.
 """
 
 
-NICHT_BLOCKIERENDE_PRUEFTYPEN = {"betriebliche_aussage_unbelegt"}
+NICHT_BLOCKIERENDE_PRUEFTYPEN = {"betriebliche_aussage_unbelegt", "sprachfehler"}
 
 
 def _synchron_pruefen(
@@ -444,10 +448,8 @@ def pruefergebnis_absichern(
             probleme.append(hinweis)
     freigabefaehig = _bool_normalisieren(ergebnis.get("freigabefaehig"))
     if typisierte_pruefung and not echte_ki_probleme:
-        # Die strukturierte Prüfung hatte entweder gar keinen Einwand oder nur
-        # den ausdrücklich nicht blockierenden Zweifel an einer vom Menschen
-        # bestätigten betrieblichen Aussage. Ein abweichendes KI-Bool darf die
-        # Freigabe dann nicht trotzdem verhindern.
+        # Reine Sprachkorrekturen und Zweifel ohne konkreten Widerspruch
+        # blockieren auch bei abweichendem KI-Bool nicht.
         freigabefaehig = True
     if not freigabefaehig and not probleme:
         probleme.append("Die KI konnte die Antwort noch nicht als vollständig bestätigen.")

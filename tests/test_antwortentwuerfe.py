@@ -15,7 +15,7 @@ from fastapi import HTTPException, UploadFile
 from app.db import SessionLocal, engine
 from app.antworten import PRUEFUNGS_SYSTEMPROMPT, pruefergebnis_absichern
 from app.main import (
-    EntwurfFreigabe, _antwortanhaenge_einlesen, entwurf_freigeben,
+    EntwurfFreigabe, _antwortanhaenge_einlesen, aktionslog_mail_ansehen, entwurf_freigeben,
     entwurf_mit_anhaengen_freigeben, liste_entwuerfe,
     mail_antwort_beginnen, mail_antwortentwurf_erzeugen,
 )
@@ -436,7 +436,7 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
             entwurf = await session.get(Entwurf, entwurf_id)
             self.assertEqual("wartet", entwurf.status)
 
-    async def test_dritter_versuch_sendet_ohne_weitere_ki_pruefung(self):
+    async def test_ablehnungen_sichern_fassungen_und_ausdrueckliches_trotzdem_senden(self):
         async with SessionLocal() as session:
             entwurf = Entwurf(
                 mail_id=self.mail_id,
@@ -459,29 +459,74 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
         with patch("app.main.antwort_vor_versand_pruefen", pruefung), \
              patch("app.main.wissenszuwachs_nach_antwort_pruefen", AsyncMock(return_value=None)), \
              patch("app.main.antwort_senden", versand):
-            for _ in range(3):
+            for text in ("Erste Arbeitsfassung.", "Zweite Arbeitsfassung."):
                 async with SessionLocal() as session:
                     ergebnisse.append(await entwurf_freigeben(
-                        entwurf_id,
-                        EntwurfFreigabe(finaler_text="Guten Tag,\n\nTestantwort."),
-                        test_request(),
-                        session,
+                        entwurf_id, EntwurfFreigabe(finaler_text=text), test_request(), session,
                     ))
+            async with SessionLocal() as session:
+                [offen] = await liste_entwuerfe(test_request(), session)
+                archiv = await aktionslog_mail_ansehen(self.mail_id, test_request(), session)
+                self.assertEqual(offen["arbeitsfassung"], "Zweite Arbeitsfassung.")
+                self.assertTrue(offen["naechster_versuch_ohne_pruefung"])
+                self.assertEqual([f["text"] for f in archiv["abgelehnte_prueffassungen"]],
+                                 ["Zweite Arbeitsfassung.", "Erste Arbeitsfassung."])
+                self.assertFalse(archiv["gesendete_antworten"])
+                ergebnisse.append(await entwurf_freigeben(
+                    entwurf_id, EntwurfFreigabe(finaler_text="Zweite Arbeitsfassung."),
+                    test_request(), session,
+                ))
+            versand.assert_not_awaited()
+            async with SessionLocal() as session:
+                ergebnisse.append(await entwurf_freigeben(
+                    entwurf_id,
+                    EntwurfFreigabe(finaler_text="Zweite Arbeitsfassung.", ohne_weitere_pruefung=True),
+                    test_request(), session,
+                ))
 
-        self.assertEqual(
-            ["pruefung_noetig", "pruefung_noetig", "versendet"],
-            [ergebnis["status"] for ergebnis in ergebnisse],
-        )
+        self.assertEqual(["pruefung_noetig", "pruefung_noetig", "pruefung_noetig", "versendet"],
+                         [ergebnis["status"] for ergebnis in ergebnisse])
         self.assertFalse(ergebnisse[0]["naechster_versuch_ohne_pruefung"])
         self.assertTrue(ergebnisse[1]["naechster_versuch_ohne_pruefung"])
-        self.assertTrue(ergebnisse[2]["pruefung_uebersprungen"])
+        self.assertTrue(ergebnisse[3]["pruefung_uebersprungen"])
         self.assertEqual(2, pruefung.await_count)
         versand.assert_awaited_once()
         async with SessionLocal() as session:
             entwurf = await session.get(Entwurf, entwurf_id)
             self.assertEqual("versendet", entwurf.status)
 
+    async def test_technisch_abgebrochene_pruefung_behaelt_ueberarbeiteten_text(self):
+        async with SessionLocal() as session:
+            entwurf = Entwurf(mail_id=self.mail_id, text_ki="KI-Vorschlag", status="wartet")
+            session.add(entwurf)
+            await session.commit()
+        with patch("app.main.antwort_vor_versand_pruefen", side_effect=RuntimeError("Testabbruch")), \
+             patch("app.main.antwort_senden", new_callable=AsyncMock) as versand:
+            async with SessionLocal() as session:
+                with self.assertRaises(HTTPException) as exc:
+                    await entwurf_freigeben(entwurf.id, EntwurfFreigabe(finaler_text="Bearbeiteter Text"),
+                                           test_request(), session)
+            self.assertEqual(exc.exception.status_code, 502)
+            versand.assert_not_awaited()
+        async with SessionLocal() as session:
+            [offen] = await liste_entwuerfe(test_request(), session)
+            archiv = await aktionslog_mail_ansehen(self.mail_id, test_request(), session)
+            self.assertEqual(offen["arbeitsfassung"], "Bearbeiteter Text")
+            self.assertEqual(archiv["offene_entwuerfe"][0]["text"], "Bearbeiteter Text")
+            self.assertEqual(archiv["abgelehnte_prueffassungen"], [])
+
+
 class AntwortpruefungTest(unittest.TestCase):
+    def test_tippfehler_blockieren_nicht_aber_sinnentstellende_fehler_schon(self):
+        text = "Guten Tag, vielen Dank für Ihre Nachrict."
+        for typ, freigabe in [("sprachfehler", True), ("sinnentstellender_sprachfehler", False)]:
+            with self.subTest(typ=typ):
+                result = pruefergebnis_absichern({
+                    "freigabefaehig": False,
+                    "probleme": [{"typ": typ, "beschreibung": "Hinweis"}],
+                }, text)
+                self.assertEqual(result["freigabefaehig"], freigabe)
+
     def test_json_text_wird_als_problemliste_statt_als_einzelzeichen_gelesen(self):
         ergebnis = pruefergebnis_absichern(
             {

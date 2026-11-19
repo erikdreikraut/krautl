@@ -4,6 +4,7 @@ import mimetypes
 from contextlib import suppress
 from datetime import date, datetime, timedelta, timezone
 from pathlib import PurePosixPath
+from typing import Annotated
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 from fastapi import (
@@ -11,7 +12,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, case, delete, func, or_, select, update
+from sqlalchemy import String, and_, case, cast, delete, func, literal, or_, select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,7 +37,7 @@ from .berechtigungen import (
 from .models import (
     Aktionslog, Base, Mail, MailAufgabe, MailNotiz, MailReservierung, Postfach, Rechnung,
     FaqEintrag, FaqVorschlag,
-    Entwurf, Versandkopie, Korrektur, Klassifikation, KlassifikationAufgabe, SystemStatus,
+    Entwurf, EntwurfPrueffassung, Versandkopie, Korrektur, Klassifikation, KlassifikationAufgabe, SystemStatus,
     Produkt, Produktfamilie, RollenMailzugriff, Wissenseintrag, WissensVorschlag,
 )
 from .wissensbasis import (
@@ -101,6 +102,7 @@ class KlassifikationAenderung(BaseModel):
 
 class EntwurfFreigabe(BaseModel):
     finaler_text: str
+    ohne_weitere_pruefung: bool = False
 
 
 def _sicherer_anhangname(rohname: str | None, position: int) -> str:
@@ -1492,19 +1494,41 @@ async def liste_aktionslog(
     }
 
 
+def _neueste_prueffassung_id(entwurf_id):
+    return (select(EntwurfPrueffassung.id)
+            .where(EntwurfPrueffassung.entwurf_id == entwurf_id)
+            .order_by(EntwurfPrueffassung.id.desc()).limit(1).correlate(Entwurf))
+
+
+def _anzahl_antwortblockierungen(mail_id, entwurf_id):
+    return select(func.count(Aktionslog.id)).where(
+        Aktionslog.mail_id == mail_id,
+        Aktionslog.ereignis == "antwort_pruefung_noetig",
+        Aktionslog.detail.like(literal("Entwurf #") + cast(entwurf_id, String) + ":%"),
+    ).correlate(Entwurf)
+
+
 @app.get("/aktionslog/mails/{mail_id}")
 async def aktionslog_mail_ansehen(
     mail_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
-    """Liefert eine historische Mail und ihre versendeten Antworten zur Ansicht."""
+    """Liefert eine historische Mail, gesendete Antworten und Entwurfsfassungen."""
     mail = (await session.execute(
         select(Mail)
         .options(selectinload(Mail.notiz), selectinload(Mail.postfach))
         .where(Mail.id == mail_id)
     )).scalar_one_or_none()
     await _mailzugriff_erfordern(session, request, mail)
+    prueffassungen = (await session.execute(select(EntwurfPrueffassung, Aktionslog.erstellt_am)
+        .join(Aktionslog, Aktionslog.id == EntwurfPrueffassung.aktionslog_id)
+        .where(Aktionslog.mail_id == mail.id, Aktionslog.ereignis == "antwort_pruefung_noetig")
+        .order_by(EntwurfPrueffassung.id.desc()))).all()
+    offene_entwuerfe = (await session.execute(select(Entwurf, EntwurfPrueffassung)
+        .outerjoin(EntwurfPrueffassung, EntwurfPrueffassung.id == _neueste_prueffassung_id(Entwurf.id).scalar_subquery())
+        .where(Entwurf.mail_id == mail.id, Entwurf.status == "wartet")
+        .order_by(Entwurf.id.desc()))).all()
     return {
         "id": mail.id,
         "message_id": mail.message_id,
@@ -1520,6 +1544,15 @@ async def aktionslog_mail_ansehen(
         "klassifikation_id": mail.klassifikation_id,
         "im_krautl_posteingang": mail.im_krautl_posteingang,
         "quellpostfach": mail.postfach.adresse if mail.postfach else None,
+        "abgelehnte_prueffassungen": [
+            {"id": f.id, "entwurf_id": f.entwurf_id, "text": f.text, "geprueft_am": zeit}
+            for f, zeit in prueffassungen
+        ],
+        "offene_entwuerfe": [
+            {"id": e.id, "text": f.text if f else e.text_ki, "ist_vorschlag": f is None}
+            for e, f in offene_entwuerfe
+            if (f and not f.aktionslog_id) or (not f and e.text_ki)
+        ],
         "gesendete_antworten": [
             {"id": e.id, "versendet_am": e.versendet_am, "text": e.text_final,
              "text_deutsch": e.text_final_deutsch}
@@ -2191,10 +2224,11 @@ async def liste_entwuerfe(
     verweigert = await verweigerte_klassifikationen(session, request.state.benutzer)
     if "*" in verweigert:
         return []
-    abfrage = select(Entwurf).join(Mail, Entwurf.mail_id == Mail.id).where(
-        Entwurf.status == "wartet",
-        Mail.im_krautl_posteingang.is_(True),
-    )
+    abfrage = (select(Entwurf, EntwurfPrueffassung, _anzahl_antwortblockierungen(
+        Entwurf.mail_id, Entwurf.id).scalar_subquery())
+        .join(Mail, Entwurf.mail_id == Mail.id)
+        .outerjoin(EntwurfPrueffassung, EntwurfPrueffassung.id == _neueste_prueffassung_id(Entwurf.id).scalar_subquery())
+        .where(Entwurf.status == "wartet", Mail.im_krautl_posteingang.is_(True)))
     if verweigert:
         abfrage = abfrage.where(or_(
             Mail.klassifikation_id.is_(None),
@@ -2204,7 +2238,13 @@ async def liste_entwuerfe(
     if zustand is not None:
         abfrage = abfrage.where(zustand)
     result = await session.execute(abfrage)
-    return result.scalars().all()
+    return [
+        {**{spalte.name: getattr(entwurf, spalte.name) for spalte in Entwurf.__table__.columns},
+         "arbeitsfassung": fassung.text if fassung else None,
+         "pruefprobleme": (fassung.probleme or []) if fassung else [],
+         "naechster_versuch_ohne_pruefung": blockierungen >= 2}
+        for entwurf, fassung, blockierungen in result.all()
+    ]
 
 
 @app.post("/mails/{mail_id}/antwortentwurf")
@@ -2292,11 +2332,12 @@ async def entwurf_mit_anhaengen_freigeben(
     finaler_text: str = Form(...),
     anhaenge: list[UploadFile] | None = File(default=None),
     session: AsyncSession = Depends(get_session),
+    ohne_weitere_pruefung: Annotated[bool, Form()] = False,
 ):
     versand_anhaenge = await _antwortanhaenge_einlesen(anhaenge or [])
     return await _entwurf_freigeben(
         entwurf_id,
-        EntwurfFreigabe(finaler_text=finaler_text),
+        EntwurfFreigabe(finaler_text=finaler_text, ohne_weitere_pruefung=ohne_weitere_pruefung),
         request,
         session,
         versand_anhaenge,
@@ -2329,9 +2370,24 @@ async def _entwurf_freigeben(
             "empfaenger": empfaenger,
         }
 
+    if entwurf.status != "wartet":
+        raise HTTPException(status_code=409, detail="Entwurf ist nicht mehr offen")
+
     finaler_text = freigabe.finaler_text.strip()
     if not finaler_text:
         raise HTTPException(status_code=422, detail="Die Antwort ist leer")
+    prueffassung = EntwurfPrueffassung(entwurf_id=entwurf_id, text=finaler_text)
+    session.add(prueffassung)
+    await session.flush()
+    await session.commit()  # Der Text übersteht Abbruch oder Navigation während der Prüfung.
+
+    entwurf = await session.get(Entwurf, entwurf_id, populate_existing=True, with_for_update=True)
+    if entwurf is None or entwurf.status != "wartet":
+        raise HTTPException(status_code=409, detail="Entwurf wurde inzwischen abgeschlossen")
+    if await session.scalar(_neueste_prueffassung_id(entwurf_id)) != prueffassung.id:
+        raise HTTPException(status_code=409, detail="Es liegt bereits eine neuere Fassung zur Freigabe vor")
+    mail = await session.get(Mail, entwurf.mail_id, populate_existing=True)
+    await _mailzugriff_erfordern(session, request, mail)
     try:
         await uebersetzung_fuer_mail_sicherstellen(mail)
         await session.flush()
@@ -2345,17 +2401,18 @@ async def _entwurf_freigeben(
     pruefung_uebersprungen = False
 
     if kundenservice:
-        _produkt, _wissen, faq = await relevante_wissensbasis(session, mail)
-        bisherige_blockierungen = (await session.execute(
-            select(func.count(Aktionslog.id)).where(
-                Aktionslog.mail_id == mail.id,
-                Aktionslog.ereignis == "antwort_pruefung_noetig",
-                Aktionslog.detail.like(f"Entwurf #{entwurf.id}:%"),
-            )
-        )).scalar_one()
-        pruefung_uebersprungen = bisherige_blockierungen >= 2
+        bisherige_blockierungen = await session.scalar(_anzahl_antwortblockierungen(mail.id, entwurf.id))
+        if bisherige_blockierungen >= 2 and not freigabe.ohne_weitere_pruefung:
+            return {
+                "status": "pruefung_noetig",
+                "probleme": [],
+                "blockierungen": bisherige_blockierungen,
+                "naechster_versuch_ohne_pruefung": True,
+            }
+        pruefung_uebersprungen = bisherige_blockierungen >= 2 and freigabe.ohne_weitere_pruefung
 
     if kundenservice and not pruefung_uebersprungen:
+        _produkt, _wissen, faq = await relevante_wissensbasis(session, mail)
         try:
             pruefung = await antwort_vor_versand_pruefen(
                 mail, finaler_text, faq, _wissen
@@ -2368,7 +2425,7 @@ async def _entwurf_freigeben(
 
         if not pruefung["freigabefaehig"]:
             neue_anzahl = bisherige_blockierungen + 1
-            session.add(Aktionslog(
+            log = Aktionslog(
                 mail_id=mail.id,
                 ereignis="antwort_pruefung_noetig",
                 ausgeloest_von=request.state.benutzer["name"],
@@ -2380,7 +2437,11 @@ async def _entwurf_freigeben(
                         or "Antwort noch nicht freigabefähig"
                     )
                 ),
-            ))
+            )
+            session.add(log)
+            await session.flush()
+            prueffassung.aktionslog_id = log.id
+            prueffassung.probleme = pruefung["probleme"]
             await session.commit()
             return {
                 "status": "pruefung_noetig",
@@ -2453,6 +2514,12 @@ async def _entwurf_freigeben(
     )
     entwurf.status = "versendet"
     entwurf.versendet_am = datetime.now(timezone.utc)
+    # Die versendete Fassung ist bereits gespeichert. Nur im Aktionslog
+    # belegte Ablehnungen als zusätzliche Textfassungen aufbewahren.
+    await session.execute(delete(EntwurfPrueffassung).where(
+        EntwurfPrueffassung.entwurf_id == entwurf_id,
+        EntwurfPrueffassung.aktionslog_id.is_(None),
+    ))
     # Eine erfolgreich versendete Antwort schließt die Bearbeitung in Krautl ab.
     # Das Ausblenden geschieht unabhängig davon, ob die anschließende IMAP-Aktion
     # erfolgreich ist: Der Versand selbst darf nicht durch einen Verschiebefehler
@@ -2562,11 +2629,13 @@ async def entwurf_verwerfen(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
-    entwurf = await session.get(Entwurf, entwurf_id)
+    entwurf = await session.get(Entwurf, entwurf_id, with_for_update=True)
     if entwurf is None:
         raise HTTPException(status_code=404, detail="Entwurf nicht gefunden")
     mail = await session.get(Mail, entwurf.mail_id)
     await _mailzugriff_erfordern(session, request, mail)
+    if entwurf.status != "wartet":
+        raise HTTPException(status_code=409, detail="Entwurf ist nicht mehr offen")
     entwurf.status = "verworfen"
     session.add(Aktionslog(
         mail_id=mail.id,

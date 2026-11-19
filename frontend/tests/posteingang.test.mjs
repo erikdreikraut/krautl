@@ -20,11 +20,11 @@ async function testEingang(t, {fensterAktiv = false} = {}) {
       await server.close();
     }
   });
-  const {PosteingangView} = await server.ssrLoadModule("/src/App.jsx");
+  const {EntwurfPanel, PosteingangView} = await server.ssrLoadModule("/src/App.jsx");
   const {api} = await server.ssrLoadModule("/src/api.js");
   t.mock.method(api, "whatsappChats", async () => []);
   t.mock.method(api, "mailHtml", async () => ({}));
-  return {api, PosteingangView, mount: async element => {
+  return {api, EntwurfPanel, PosteingangView, mount: async element => {
     await act(async () => { view = create(element); });
     return view;
   }};
@@ -98,4 +98,22 @@ test("Nach einem 502 wird die Reservierung derselben offenen Mail erneut versuch
   assert.equal(view.root.findAllByProps({role: "alert"}).length, 0);
   assert.equal(zeitgeber.size, 0);
   assert.equal(window.setInterval.mock.callCount(), 1);
+});
+
+
+test("Wieder geöffneter Entwurf zeigt gespeicherte Prüffassung und bewusstes Trotzdem senden", async t => {
+  const {api, EntwurfPanel, mount} = await testEingang(t);
+  const freigeben = t.mock.method(api, "entwurfFreigeben", async () => ({
+    status: "versendet", empfaenger: "test@example.test",
+  }));
+  const view = await mount(React.createElement(EntwurfPanel, {
+    entwurf: {id: 426, text: "Gespeicherte Überarbeitung", pruefprobleme: ["Offener Punkt"], naechsterOhnePruefung: true},
+    kiPruefung: true, originalsprache: "Deutsch", onVersendet() {}, onGeprueft() {}, async onErledigt() {},
+  }));
+  assert.equal(view.root.findByType("textarea").props.value, "Gespeicherte Überarbeitung");
+  assert.match(JSON.stringify(view.toJSON()), /Offener Punkt/);
+  assert.equal(freigeben.mock.callCount(), 0);
+  const senden = view.root.findAllByType("button").find(button => button.children.includes("Trotzdem senden"));
+  await act(async () => senden.props.onClick());
+  assert.deepEqual(freigeben.mock.calls[0].arguments, [426, "Gespeicherte Überarbeitung", [], true]);
 });
