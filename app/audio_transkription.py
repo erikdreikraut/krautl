@@ -135,6 +135,8 @@ def _strukturieren(transkript: str, quellbetreff: str | None = None) -> tuple[st
             "Wiederholungen bleiben erhalten. Teile ausschließlich den unveränderten "
             "Originalwortlaut nach Sinn in Abschnitte. Nenne als Anrufer nur einen im "
             "Transkript sicher genannten Namen oder eine sichere Rufnummer, sonst 'unbekannt'. "
+            "Erfinde keine Rufnummer und verwechsle Bestellnummern oder erwähnte "
+            "Rückrufnummern Dritter nicht mit der Rufnummer des Anrufers. "
             "Hervorhebungen müssen exakte, im Original vorkommende Textstellen sein."
         ),
         tools=[FORMATIERUNGS_TOOL],
@@ -177,6 +179,24 @@ def _html_transkript(text: str) -> str:
     )
 
 
+def _anrufer_mit_rufnummer(anrufer: str, anhaenge: list[dict]) -> str:
+    # Telefonanlage: TT.MM.JJ_HH.MM_Anruf.<Rufnummer>.wav
+    nummern = set()
+    for anhang in anhaenge:
+        stamm = os.path.splitext(anhang["dateiname"])[0]
+        treffer = re.search(r"(?:^|_)Anruf\.(\+?[0-9]{3,15})$", stamm, flags=re.IGNORECASE)
+        if treffer:
+            nummern.add(treffer.group(1))
+    if len(nummern) != 1:
+        return anrufer
+    nummer = nummern.pop()
+    if anrufer.casefold() in {"unbekannt", "unknown"}:
+        return nummer
+    if re.sub(r"[^0-9]", "", anrufer) == nummer.lstrip("+"):
+        return anrufer
+    return f"{anrufer} ({nummer})"
+
+
 def _ausgabemail(
     mail: Mail,
     anhaenge: list[dict],
@@ -184,7 +204,7 @@ def _ausgabemail(
     anrufer: str = "unbekannt",
 ) -> tuple[bytes, str]:
     message_id = f"<krautl-audio-{mail.id}@dreikraut.de>"
-    betreff_basis = (mail.betreff or "Anruf").strip()
+    anrufer = _anrufer_mit_rufnummer(anrufer, anhaenge)
     nachricht = EmailMessage()
     nachricht["Message-ID"] = message_id
     nachricht["X-Krautl-Generated"] = "audio-transcription"

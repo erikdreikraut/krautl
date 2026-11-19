@@ -58,6 +58,20 @@ class AudioTranskriptionTest(unittest.IsolatedAsyncioTestCase):
             [teil.get_filename() for teil in ausgang.iter_attachments()],
         )
 
+    def test_rufnummer_aus_anrufdatei_steht_in_betreff_und_ueberschrift(self):
+        mail = Mail(id=17, betreff="Mailbox")
+        anhang = {"dateiname": "18.11.26_09.12_Anruf.0049202123456.wav",
+                  "mime_type": "audio/wav", "inhalt": b"fake-wav"}
+        for anrufer, erwartet in [("Frau Müller", "Frau Müller (0049202123456)"),
+                                 ("unbekannt", "0049202123456"),
+                                 ("0049202123456", "0049202123456")]:
+            with self.subTest(anrufer=anrufer):
+                raw, _ = _ausgabemail(mail, [anhang], ["Test"], anrufer)
+                ausgang = BytesParser(policy=policy.default).parsebytes(raw)
+                self.assertEqual(f"[TRANSKRIPTION] Anruf von {erwartet}", ausgang["Subject"])
+                for format in ("plain", "html"):
+                    self.assertIn(f"Anruf erhalten von {erwartet},", ausgang.get_body((format,)).get_content())
+
     def test_fallback_gliedert_ohne_den_wortlaut_zu_veraendern(self):
         original = (
             "Hallo, hier ist Franz Müller. Ich rufe wegen der Bestellung an. "
