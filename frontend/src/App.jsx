@@ -44,6 +44,7 @@ const fontMono = { fontFamily: "'IBM Plex Mono', monospace" };
 const MAX_ANTWORTANHAENGE = 10;
 const MAX_ANTWORTANHAENGE_BYTES = 18 * 1024 * 1024;
 const MAIL_RESERVIERUNG_VERZOEGERUNG_MS = 3_000;
+const MAIL_RESERVIERUNG_WIEDERHOLUNG_MS = [4_000, 8_000, 15_000];
 const MAIL_RESERVIERUNG_HEARTBEAT_MS = 25_000;
 const RESERVIERUNG_KURZNAMEN = {
   erik: "Erik",
@@ -1017,7 +1018,11 @@ export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMail
   useEffect(() => {
     if (!selected || selected.kanal === "whatsapp" || !detailSichtbar || !fensterAktiv) return undefined;
     const mailId = selected.id;
-    const timer = window.setTimeout(async () => {
+    let aktiv = true;
+    let timer = window.setTimeout(reservieren, MAIL_RESERVIERUNG_VERZOEGERUNG_MS);
+
+    async function reservieren(versuch = 0) {
+      if (!aktiv || aktiveMailId.current !== mailId) return;
       try {
         const ergebnis = await api.mailReservieren(mailId);
         if (aktiveMailId.current !== mailId) {
@@ -1029,14 +1034,23 @@ export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMail
         setLokaleReservierung({ mailId, ...ergebnis });
         eigeneReservierungMailId.current = ergebnis.eigene ? mailId : null;
       } catch (fehler) {
-        if (aktiveMailId.current === mailId && fehler.status !== 409) {
-          setStatusMeldung(
-            `Bearbeitungsreservierung konnte nicht aktiviert werden: ${fehler.message}`
-          );
+        if (!aktiv || aktiveMailId.current !== mailId || fehler.status === 409) return;
+        const kurzzeitig = [502, 503, 504].includes(fehler.status);
+        const wartezeit = MAIL_RESERVIERUNG_WIEDERHOLUNG_MS[versuch];
+        if (kurzzeitig && wartezeit) {
+          timer = window.setTimeout(() => reservieren(versuch + 1), wartezeit);
+          return;
         }
+        setStatusMeldung(kurzzeitig
+          ? "Krautl ist beim Reservieren vorübergehend nicht erreichbar. Die Mail ist noch nicht für dich reserviert."
+          : `Bearbeitungsreservierung konnte nicht aktiviert werden: ${fehler.message}`);
       }
-    }, MAIL_RESERVIERUNG_VERZOEGERUNG_MS);
-    return () => window.clearTimeout(timer);
+    }
+
+    return () => {
+      aktiv = false;
+      window.clearTimeout(timer);
+    };
   }, [selected?.id, detailSichtbar, fensterAktiv]);
 
   useEffect(() => {

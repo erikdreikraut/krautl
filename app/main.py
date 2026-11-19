@@ -599,7 +599,8 @@ async def mail_reservieren(
     session: AsyncSession = Depends(get_session),
 ):
     """Reserviert eine drei Sekunden lang geöffnete Mail bzw. erneuert sie."""
-    mail = await session.get(Mail, mail_id)
+    # Gleichzeitige Reservierungsversuche müssen denselben Stand prüfen.
+    mail = await session.get(Mail, mail_id, with_for_update=True)
     await _mailzugriff_erfordern(session, request, mail)
     if not mail.im_krautl_posteingang:
         raise HTTPException(status_code=409, detail="Mail ist bereits erledigt")

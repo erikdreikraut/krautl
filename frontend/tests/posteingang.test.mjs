@@ -4,12 +4,14 @@ import React from "react";
 import {act, create} from "react-test-renderer";
 import {createServer} from "vite";
 
-test("Erledigen am Listenende öffnet direkt die nächstälteste Mail", async t => {
+async function testEingang(t, {fensterAktiv = false} = {}) {
   const server = await createServer({server: {middlewareMode: true}, appType: "custom"});
   const vorher = {window: globalThis.window, document: globalThis.document};
   const media = Object.assign(new EventTarget(), {matches: false});
   globalThis.window = Object.assign(new EventTarget(), {matchMedia: () => media});
-  globalThis.document = Object.assign(new EventTarget(), {visibilityState: "hidden"});
+  globalThis.document = Object.assign(new EventTarget(), {
+    visibilityState: fensterAktiv ? "visible" : "hidden", hasFocus: () => fensterAktiv,
+  });
   let view;
   t.after(async () => {
     try { await act(async () => view?.unmount()); }
@@ -21,14 +23,23 @@ test("Erledigen am Listenende öffnet direkt die nächstälteste Mail", async t 
   const {PosteingangView} = await server.ssrLoadModule("/src/App.jsx");
   const {api} = await server.ssrLoadModule("/src/api.js");
   t.mock.method(api, "whatsappChats", async () => []);
-  const laden = t.mock.method(api, "mailHtml", async () => ({}));
-  const erledigen = t.mock.method(api, "mailErledigen", async () => ({status: "erledigt"}));
+  t.mock.method(api, "mailHtml", async () => ({}));
+  return {api, PosteingangView, mount: async element => {
+    await act(async () => { view = create(element); });
+    return view;
+  }};
+}
 
-  function mail(id, betreff, tag) {
-    return {id, betreff, empfangenAm: `2026-09-${tag}T12:00:00Z`, zeit: tag,
-      kat: "Test", katId: "TEST", absender: "Test", anhaenge: [], aufgaben: [], felder: {},
-      zuweisbareRollen: ["admin", "sachbearbeiter"], konfidenz: 1};
-  }
+function mail(id, betreff, tag) {
+  return {id, betreff, empfangenAm: `2026-09-${tag}T12:00:00Z`, zeit: tag,
+    kat: "Test", katId: "TEST", absender: "Test", anhaenge: [], aufgaben: [], felder: {},
+    zuweisbareRollen: ["admin", "sachbearbeiter"], konfidenz: 1};
+}
+
+test("Erledigen am Listenende öffnet direkt die nächstälteste Mail", async t => {
+  const {api, PosteingangView, mount} = await testEingang(t);
+  const laden = api.mailHtml;
+  const erledigen = t.mock.method(api, "mailErledigen", async () => ({status: "erledigt"}));
   const aelteste = mail(1, "Älteste Mail", "01");
   const mittlere = mail(2, "Nächste Mail", "01");
   const neueste = mail(3, "Neueste Mail", "03");
@@ -36,7 +47,7 @@ test("Erledigen am Listenende öffnet direkt die nächstälteste Mail", async t 
     mails, katalog: [], benutzer: {benutzername: "erik"}, alleMails: false,
     onReload: async () => view.update(eingang([mittlere, neueste])),
   });
-  await act(async () => { view = create(eingang([aelteste, mittlere, neueste])); });
+  const view = await mount(eingang([aelteste, mittlere, neueste]));
   const listenButton = betreff => view.root.findAllByType("button").find(button =>
     button.findAllByType("div").some(div => div.children.includes(betreff)));
   await act(async () => listenButton(aelteste.betreff).props.onClick());
@@ -50,4 +61,41 @@ test("Erledigen am Listenende öffnet direkt die nächstälteste Mail", async t 
   assert.equal(listenButton(mittlere.betreff).props["aria-current"], "true");
   assert.equal(view.root.findByType("h2").children[0], mittlere.betreff);
   assert.deepEqual(laden.mock.calls.slice(abrufeVorErledigen).map(call => call.arguments[0]), [mittlere.id]);
+});
+
+
+test("Nach einem 502 wird die Reservierung derselben offenen Mail erneut versucht", async t => {
+  const {api, PosteingangView, mount} = await testEingang(t, {fensterAktiv: true});
+  const zeitgeber = new Map();
+  let nummer = 0;
+  Object.assign(window, {
+    setTimeout(fn) { zeitgeber.set(++nummer, fn); return nummer; },
+    clearTimeout(id) { zeitgeber.delete(id); },
+    setInterval: t.mock.fn(),
+    clearInterval: t.mock.fn(),
+  });
+  t.mock.method(api, "mailReservierungFreigeben", async () => ({}));
+  let versuch = 0;
+  const reservieren = t.mock.method(api, "mailReservieren", async () => {
+    if (versuch++ === 0) throw Object.assign(new Error("Proxy nicht erreichbar"), {status: 502});
+    return {eigene: true, benutzername: "erik"};
+  });
+  const view = await mount(React.createElement(PosteingangView, {
+    mails: [mail(17, "Bleibt offen", "01")], katalog: [], benutzer: {benutzername: "erik"},
+    alleMails: false, onReload: async () => {},
+  }));
+  async function timerAusloesen() {
+    assert.equal(zeitgeber.size, 1);
+    const [[id, fn]] = zeitgeber;
+    zeitgeber.delete(id);
+    await act(async () => fn());
+  }
+  await timerAusloesen();
+  assert.equal(view.root.findAllByProps({role: "alert"}).length, 0);
+  await timerAusloesen();
+  assert.deepEqual(reservieren.mock.calls.map(call => call.arguments), [[17], [17]]);
+  assert.equal(view.root.findByType("h2").children[0], "Bleibt offen");
+  assert.equal(view.root.findAllByProps({role: "alert"}).length, 0);
+  assert.equal(zeitgeber.size, 0);
+  assert.equal(window.setInterval.mock.callCount(), 1);
 });
