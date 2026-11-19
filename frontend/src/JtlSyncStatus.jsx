@@ -47,6 +47,8 @@ export function JtlStatusAnzeige({ daten, abrufFehler }) {
           <p>Letzter Prüflauf: {zeit(daten.letzter_lauf)}</p>
           <p>Letzter erfolgreicher Prüflauf: {zeit(daten.letzter_erfolg)}</p>
           {daten.offene_artikel != null && <p>Offene Artikel aus dem letzten Prüflauf: {daten.offene_artikel} · Gesperrt: {daten.gesperrte_artikel}</p>}
+          {daten.ausgesetzte_artikel > 0 && <p>Vorübergehend ausgesetzte Artikel: {daten.ausgesetzte_artikel}</p>}
+          {daten.fehlende_quellen?.length > 0 && <p>FAQ wartet auf Artikel im Katalog: {daten.fehlende_quellen.join(", ")}</p>}
           {daten.fehler?.length > 0 && <ul style={{ paddingLeft: "20px", listStyle: "disc" }}>{daten.fehler.map((text, i) => <li key={i}>{text}</li>)}</ul>}
           {daten.status === "gesperrt" && <p>Ein Neustart löst die Sperre nicht auf. Den offenen Schreibvorgang prüfen lassen.</p>}
         </div>}

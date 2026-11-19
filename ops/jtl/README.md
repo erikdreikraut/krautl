@@ -665,11 +665,17 @@ Verkaufskanäle, gleicher API-Endpunkt). Nur Artikel mit `isActive=true` und
 können weiterhin FAQ-Quelle ihrer aktiven Kinder sein. Fehlende Statusfelder,
 mehrere Shops oder ein unvollständiger Katalog führen zum sichtbaren Abbruch.
 
-Bereits eingeplante, inzwischen inaktive Artikel bleiben als `ausgesetzt` im
-lokalen Stand erhalten; keine Löschung von Wawi-Attributen und kein vorgetäuschter
-Schreiberfolg. Bei Reaktivierung wird erneut rückgelesen. Unklare Schreibversuche
-werden unabhängig von der Aktivierung zuerst rückgelesen und niemals verworfen.
-Die Statusprüfung zählt ausgesetzte Ziele nicht als ausstehende Übertragung.
+Bereits eingeplante Ziele, die nicht shopaktiv sind oder im bestätigten Katalog
+fehlen, bleiben als `ausgesetzt` im lokalen Stand erhalten. Dasselbe gilt für
+alte Varianten-Ziele, deren Vater fehlt und für die es keine eigene FAQ gibt.
+Krautl ändert ihre Wawi-Werte während der Pause nicht. Der Lauf verarbeitet die
+übrigen Ziele und prüft beim nächsten Katalogabruf erneut. Freigegebene FAQ ohne
+den zugehörigen Wawi-Artikel warten auf diesen und bleiben in Krautl erhalten.
+Bei Rückkehr eines ausgesetzten Artikels wird erneut rückgelesen, auch bei
+unverändertem Soll. Ausgesetzte Ziele und fehlende Artikel für FAQ-Quellen stehen
+im FAQ-Status und zählen nicht als ausstehende Übertragung. Unklare
+Schreibversuche werden unabhängig von der Shop-Aktivierung zuerst rückgelesen
+und bleiben bis zur Klärung gesperrt.
 
 Anlass: 20560-100 ist laut Nutzer nicht im Shop aktiv. Sein Detailabruf und die
 Abrufe 20562-100/20562-50 scheitern mit SqlNullValueException/GetByte; bei allen

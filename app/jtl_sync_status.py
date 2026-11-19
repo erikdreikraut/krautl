@@ -23,6 +23,8 @@ def status_speichern(speicher, ergebnis, jetzt=None):
     daten = {"letzter_lauf": zeit, "letzter_erfolg": state.get("letzter_erfolg"),
              "offene_artikel": offen,
              "gesperrte_artikel": gesperrt,
+             "ausgesetzte_artikel": sum(bool(z.get("ausgesetzt")) for z in state["ziele"].values()),
+             "fehlende_quellen": ergebnis.get("fehlende_quellen", []),
              "fehler": ergebnis.get("fehler", []),
              "geschrieben": ergebnis.get("geschrieben", 0)}
     pfad = speicher.folder / "status.json"
@@ -49,7 +51,11 @@ def status_laden(folder=None, *, aktiviert=None, jetzt=None):
         alter = ((jetzt or datetime.now(timezone.utc)) - zeit).total_seconds()
         if not isinstance(daten["fehler"], list):
             raise ValueError("Ungültiger Fehlerstatus")
-        for key in ("offene_artikel", "gesperrte_artikel"):
+        daten.setdefault("ausgesetzte_artikel", 0)
+        quellen = daten.setdefault("fehlende_quellen", [])
+        if not isinstance(quellen, list) or not all(isinstance(sku, str) for sku in quellen):
+            raise ValueError("Ungültige Liste fehlender FAQ-Quellen")
+        for key in ("offene_artikel", "gesperrte_artikel", "ausgesetzte_artikel"):
             if not isinstance(daten[key], int) or daten[key] < 0:
                 raise ValueError("Ungültige Artikelanzahl")
     except (OSError, ValueError, KeyError, TypeError):

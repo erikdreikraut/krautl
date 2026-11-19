@@ -14,7 +14,7 @@ from app.jtl_faq_test import signatur, zielattribute
 from app.jtl_onprem import OnPremClient
 from app.jtl_sync_engine import (Speicher, abgleichen, zielplan, LEERES_ALTATTRIBUT,
     LEERER_KANALWERT, LEERER_KANALWERT_SALBEI, bekannte_leerwertabweichungen)
-from app.jtl_sync_service import quellen_bauen, INTERVALL
+from app.jtl_sync_service import quellen_bauen, vorschau, INTERVALL
 
 
 KATALOG = [{"id": "p", "sku": "VATER", "parent": None},
@@ -266,14 +266,78 @@ class SyncTests(unittest.IsolatedAsyncioTestCase):
             ist["values"][0]["salesChannelValues"][0]["values"] = []
             self.assertEqual(bekannte_leerwertabweichungen(vorher, soll, ist), [])
 
-    async def test_fehlende_sku_stoppt_vor_schreiben(self):
-        with self.assertRaises(JtlFehler):
-            await abgleichen(self.client, self.store, {"NICHTVORHANDEN": "FAQ"})
+    async def test_neue_faq_quelle_wartet_auf_artikel_und_blockiert_nicht(self):
+        self.client.katalog.return_value = KATALOG[:-1]
+        quellen = {"VATER": "FAQ", "FREMD": "Später verfügbar"}
+        result = await abgleichen(self.client, self.store, quellen)
+        self.assertEqual(result["fehlende_quellen"], ["FREMD"])
+        self.assertFalse(result["fehler"])
+        self.assertEqual(result["geschrieben"], 3)
+        self.client.katalog.return_value = KATALOG
+        self.client.schreiben.reset_mock()
+        result = await abgleichen(self.client, self.store, quellen)
+        self.assertEqual(result["fehlende_quellen"], [])
+        self.assertEqual(result["geschrieben"], 1)
+        self.assertEqual(self.client.schreiben.call_args.args[0], "x")
+
+    async def test_bisheriger_fehlender_artikel_bleibt_erhalten_und_kehrt_zurueck(self):
+        from app.jtl_sync_status import status_laden, status_speichern
+        await abgleichen(self.client, self.store, {"VATER": "FAQ alt", "FREMD": "FAQ bleibt"})
+        vorher = copy.deepcopy(self.bestand["x"])
+        self.client.katalog.return_value = KATALOG[:-1]
+        self.client.lesen.reset_mock()
+        result = await abgleichen(self.client, self.store, {"VATER": "FAQ neu"})
+        self.assertEqual(result["geschrieben"], 3)
+        self.assertFalse(result["fehler"])
+        self.assertEqual(self.store.state["ziele"]["x"]["html"], "FAQ bleibt")
+        self.assertTrue(self.store.state["ziele"]["x"]["ausgesetzt"])
+        self.assertEqual(self.bestand["x"], vorher)
+        self.assertNotIn("x", [c.args[0] for c in self.client.lesen.call_args_list])
+        status_speichern(self.store, result)
+        status = status_laden(self.tmp.name, aktiviert=True)
+        self.assertTrue(status["gesund"])
+        self.assertEqual(status["ausgesetzte_artikel"], 1)
+        self.client.katalog.return_value = KATALOG
+        self.client.lesen.reset_mock()
+        result = await abgleichen(self.client, self.store, {"VATER": "FAQ neu", "FREMD": "FAQ bleibt"})
+        self.client.lesen.assert_awaited_once_with("x", "FREMD")
+        self.assertEqual(result["bereits_gleich"], 1)
+        self.assertFalse(self.store.state["ziele"]["x"]["ausgesetzt"])
+
+    async def test_inaktiver_artikel_behaelt_werte_auch_ohne_aktuelle_freigabe(self):
+        await abgleichen(self.client, self.store, {"FREMD": "FAQ alt"})
+        rows = copy.deepcopy(KATALOG)
+        rows[-1]["isShopActive"] = False
+        self.client.katalog.return_value = rows
+        self.client.schreiben.reset_mock()
+        vorher = copy.deepcopy(self.bestand["x"])
+        await abgleichen(self.client, self.store, {})
+        self.client.schreiben.assert_not_called()
+        self.assertEqual(self.bestand["x"], vorher)
+        self.assertEqual(self.store.state["ziele"]["x"]["html"], "FAQ alt")
+
+    async def test_ausgefallener_vater_leert_aktive_varianten_nicht(self):
+        await abgleichen(self.client, self.store, {"VATER": "Familien-FAQ"})
+        self.client.katalog.return_value = KATALOG[1:]
+        self.client.lesen.reset_mock()
+        quellen = {"VATER": "Familien-FAQ", "FREMD": "Eigene FAQ"}
+        plan = await vorschau(self.client, self.store, quellen)
+        self.assertEqual([ziel["sku"] for ziel in plan], ["FREMD"])
+        result = await abgleichen(self.client, self.store, quellen)
+        self.assertEqual(result["geschrieben"], 1)
+        self.assertTrue(all(self.store.state["ziele"][ident]["ausgesetzt"] for ident in ("p", "c", "d")))
+        self.assertEqual({c.args[0] for c in self.client.lesen.call_args_list}, {"x"})
+
+    async def test_doppelte_quell_sku_bleibt_ein_abbruch(self):
+        self.client.katalog.return_value = KATALOG + [dict(KATALOG[0], id="p2")]
+        with self.assertRaisesRegex(JtlFehler, "nicht eindeutig"):
+            await abgleichen(self.client, self.store, {"VATER": "FAQ"})
         self.client.schreiben.assert_not_called()
 
     def test_keine_prefix_vererbung(self):
         katalog = KATALOG + [{"id": "falsch", "sku": "VATER-2", "parent": None, "isActive": True, "isShopActive": True}]
-        self.assertNotIn("falsch", zielplan({"VATER": "FAQ"}, katalog))
+        plan, _ = zielplan({"VATER": "FAQ"}, katalog, {})
+        self.assertNotIn("falsch", plan)
 
     def test_auswahl_google_und_entwurf_unabhaengig(self):
         p = SimpleNamespace(id=1, artikelnummer="VATER")

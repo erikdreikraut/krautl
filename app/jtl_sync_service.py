@@ -48,16 +48,15 @@ async def quellen_laden():
 
 
 async def vorschau(client, speicher, quellen):
-    from .jtl_sync_engine import aktive_shopartikel
     await client.shop_pruefen()
     katalog = await client.katalog()
-    aktive = aktive_shopartikel(katalog)
-    plan = zielplan(quellen, katalog)
-    for ident, alt in speicher.state["ziele"].items():
-        if ident in aktive:
-            plan.setdefault(ident, {"sku": alt["sku"], "html": ""})
+    plan, fehlende_quellen = zielplan(quellen, katalog, speicher.state["ziele"])
+    if fehlende_quellen:
+        logger.info("FAQ-Quellen warten auf JTL-Artikel: %s", ", ".join(fehlende_quellen))
     result = []
     for ident, ziel in plan.items():
+        if ziel.get("ausgesetzt"):
+            continue
         vorher = await client.lesen(ident, ziel["sku"])
         result.append({"sku": ziel["sku"], "artikel_id": ident,
             "html_zeichen": len(ziel["html"]),

@@ -48,28 +48,49 @@ def aktive_shopartikel(katalog):
     return {i["id"] for i in katalog if i["isActive"] and i["isShopActive"]}
 
 
-def zielplan(quellen, katalog):
-    """Own selected FAQ wins over parent FAQ; only actual parent IDs propagate."""
+def zielplan(quellen, katalog, bisherige_ziele):
+    """Plan aktivieren oder parken; eigene FAQ haben Vorrang vor dem Vater."""
     aktive = aktive_shopartikel(katalog)
-    by_sku = {}
+    nach_id = {item["id"]: item for item in katalog}
+    nach_sku = {}
     for item in katalog:
-        by_sku.setdefault(item["sku"], []).append(item)
+        nach_sku.setdefault(item["sku"], []).append(item)
     eigene = {}
+    fehlende_quellen = []
     for sku, html in quellen.items():
         if not html:
             continue
-        treffer = by_sku.get(sku, [])
+        treffer = nach_sku.get(sku, [])
+        if not treffer:
+            fehlende_quellen.append(sku)
+            continue
         if len(treffer) != 1:
             raise JtlFehler(f"JTL-SKU {sku}: nicht eindeutig gefunden; kein Schreiblauf.")
-        eigene[treffer[0]["id"]] = html
-    result = {}
-    for item in katalog:
-        html = eigene.get(item["id"], eigene.get(item["parent"]))
-        if html is not None and item["id"] in aktive:
+        eigene[treffer[0]["id"]] = (sku, html)
+    plan = {}
+    for ident, item in nach_id.items():
+        quelle = eigene.get(ident, eigene.get(item["parent"]))
+        if quelle is not None and ident in aktive:
             if not item["sku"]:
                 raise JtlFehler("Zielartikel ohne Artikelnummer.")
-            result[item["id"]] = {"sku": item["sku"], "html": html}
-    return result
+            quell_sku, html = quelle
+            plan[ident] = {"sku": item["sku"], "html": html, "quell_sku": quell_sku}
+    for ident, alt in bisherige_ziele.items():
+        if ident in plan:
+            continue
+        if ident not in nach_id:
+            grund = "fehlt_im_katalog"
+        elif ident not in aktive:
+            grund = "nicht_shopaktiv"
+        elif (alt.get("quell_sku") in fehlende_quellen
+              or (nach_id[ident]["parent"] and nach_id[ident]["parent"] not in nach_id)):
+            grund = "quelle_fehlt"
+        else:
+            # Aktiver, zuordenbarer Artikel, dessen letzte FAQ abgewählt wurde.
+            plan[ident] = {"sku": alt["sku"], "html": "", "quell_sku": None}
+            continue
+        plan[ident] = {**alt, "ausgesetzt": True, "ausgesetzt_grund": grund}
+    return plan, sorted(fehlende_quellen)
 
 
 # Only concrete empty-value shapes observed in this installation.
@@ -138,19 +159,14 @@ async def abgleichen(client, speicher, quellen):
     # Shop activation changes independently of FAQ content. Refresh every run.
     await client.shop_pruefen()
     katalog = await client.katalog()
-    aktive = aktive_shopartikel(katalog)
-    vorhanden = {i["id"] for i in katalog}
-    plan = zielplan(quellen, katalog)
-    for ident, alt in state["ziele"].items():
-        if ident not in vorhanden:
-            raise JtlFehler(f"FAQ-Shop-Auswahl: bisheriger Artikel {alt['sku']} fehlt im Katalog.")
-        if ident not in aktive:
-            plan[ident] = {**alt, "ausgesetzt": True}
-        elif ident not in plan:
-            plan[ident] = {"sku": alt["sku"], "html": ""}
+    plan, fehlende_quellen = zielplan(quellen, katalog, state["ziele"])
+    bericht["fehlende_quellen"] = fehlende_quellen
     for ident, ziel in plan.items():
+        if ziel.get("ausgesetzt"):
+            continue
         alt = state["ziele"].get(ident, {})
-        plan[ident] = {**alt, "ausgesetzt": False, **ziel}
+        plan[ident] = {**alt, **ziel, "ausgesetzt": False}
+        plan[ident].pop("ausgesetzt_grund", None)
         plan[ident]["erledigt"] = None if alt.get("ausgesetzt") else alt.get("erledigt")
     state["ziele"], state["quelle"] = plan, digest(quellen)
     speicher.speichern()
