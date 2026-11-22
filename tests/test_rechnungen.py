@@ -118,6 +118,29 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
         })
         self.assertEqual("unklar", daten["zahlungsstatus"])
 
+    def test_verbindliche_abbuchung_korrigiert_unklaren_modellstatus(self):
+        hinweis = (
+            'Seite 1: „We will automatically deduct the amount (€ 29.00) from your credit card '
+            'or bank account within 14 days. No action is needed.“ '
+            'Mail: „Es ist keine Zahlung fällig. Dies ist nur für Ihre Unterlagen.“'
+        )
+        for belegt in (hinweis, "Der Rechnungsbetrag wird mit Ihrem Guthaben verrechnet.",
+                       "Amount due: 29 EUR. The invoice amount will be debited from your bank account."):
+            with self.subTest(belegt=belegt):
+                daten = _zahlungsstatus_absichern({"zahlungsstatus": "unklar", "zahlungshinweis": belegt})
+                self.assertEqual("automatisch", daten["zahlungsstatus"])
+
+    def test_keine_automatik_ohne_eindeutige_zusage_oder_bei_widerspruch(self):
+        zusage = "We will automatically deduct the amount from your credit card."
+        for hinweis in ("Payment method: credit card. No action is needed.",
+                        "If you have enabled automatic payment, " + zusage,
+                        zusage.rstrip(".") + " if you opt in.",
+                        zusage + " The automatic payment failed. Please pay by bank transfer.",
+                        zusage + " Mail: Bitte überweisen."):
+            with self.subTest(hinweis=hinweis):
+                daten = _zahlungsstatus_absichern({"zahlungsstatus": "unklar", "zahlungshinweis": hinweis})
+                self.assertIn(daten["zahlungsstatus"], {"offen", "unklar"})
+
     def test_verneinte_abbuchung_macht_offene_rechnung_nicht_automatisch(self):
         daten = _zahlungsstatus_absichern({
             "zahlungsstatus": "offen",

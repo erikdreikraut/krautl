@@ -108,7 +108,9 @@ Die bloße Nennung einer möglichen Zahlungsart wie Kreditkarte oder SEPA
 belegt weder eine bereits erfolgte noch eine automatische Zahlung. Erst eine klare
 Aussage über Einzug, Belastung oder Zahlungseingang ist dafür ausreichend.
 Verneinte, abgelehnte oder noch nicht eingerichtete Zahlungsautomatiken sind niemals
-ein Automatik-Beleg. Formulierungen wie "Lastschrifteinzug bislang nicht umgesetzt",
+ein Automatik-Beleg. Das gilt auch für eine konkrete englische Abbuchungszusage
+wie "We will automatically deduct the amount from your credit card or bank account".
+Formulierungen wie "Lastschrifteinzug bislang nicht umgesetzt",
 "Lastschrift nicht eingerichtet" oder "Einzug fehlgeschlagen" bedeuten gerade das
 Gegenteil. Wird zugleich zum Begleichen oder Überweisen aufgefordert, ist der Status
 "offen" und nicht "automatisch" oder "unklar".
@@ -140,13 +142,14 @@ GUTSCHRIFT_BELEGE = (
     "gutschrift", "rückerstattung", "erstattung",
     "credit note", "refund", "credited",
 )
-OFFENE_ZAHLUNGSBELEGE = (
+MANUELLE_ZAHLUNGSAUFFORDERUNG = (
     "bitte überweisen", "bitte ueberweisen", "bitte leisten sie die zahlung",
     "leisten sie die zahlung", "zahlung erforderlich", "überweisung nötig",
     "ueberweisung noetig", "manuelle überweisung", "manuelle ueberweisung",
-    "zu begleichen",
-    "please pay", "payment is due", "payment due", "please remit",
-    "amount due", "balance due",
+    "please pay", "please remit", "please transfer", "manual bank transfer",
+)
+OFFENE_ZAHLUNGSBELEGE = MANUELLE_ZAHLUNGSAUFFORDERUNG + (
+    "zu begleichen", "payment is due", "payment due", "amount due", "balance due",
 )
 KEINE_RECHNUNG_BELEGE = (
     "keine eigentliche rechnung",
@@ -218,6 +221,36 @@ def _bereits_bezahlte_zahlart(hinweis: str) -> bool:
     ))
 
 
+VERBINDLICHER_EINZUG = re.compile(
+    r"\b(?:we will (?:automatically )?(?:deduct|debit|collect|charge) "
+    r"(?:the|this|your) (?:invoice amount|amount|payment|balance)"
+    r"(?: *\([^()]{1,45}\))? (?:from|to) (?:your|the) "
+    r"(?:credit card|debit card|bank account)"
+    r"|(?:the|this) (?:invoice amount|amount|payment|balance)(?: *\([^()]{1,45}\))? "
+    r"will be (?:automatically )?(?:deducted|debited|collected|charged) "
+    r"(?:from|to) (?:your|the) (?:credit card|debit card|bank account)"
+    r"|(?:rechnungsbetrag|betrag|gebühr) wird (?:automatisch )?"
+    r"(?:per (?:sepa[- ]?)?lastschrift (?:eingezogen|abgebucht)"
+    r"|(?:vom|von ihrem) (?:konto|bankkonto|guthaben|auszahlungsbetrag) (?:abgebucht|abgezogen|einbehalten)"
+    r"|mit (?:dem|ihrem) (?:guthaben|auszahlungsbetrag) (?:verrechnet|aufgerechnet)))\b"
+)
+EINZUG_WIDERSPRUCH = re.compile(
+    r"\b(?:(?:lastschrift|abbuchung|einzug|direct debit|automatic payment|card charge)"
+    r"[^.!?;]{0,70}\b(?:fehlgeschlagen|gescheitert|abgelehnt|failed|rejected|cancelled|canceled)"
+    r"|(?:nicht|not) (?:automatisch |automatically )?(?:abgebucht|eingezogen|verrechnet|deduct(?:ed)?|debit(?:ed)?|charg(?:e|ed)))\b"
+)
+
+
+def _belegt_verbindlichen_einzug(hinweis: str) -> bool:
+    text = " ".join(hinweis.split())
+    for treffer in VERBINDLICHER_EINZUG.finditer(text):
+        satzanfang = re.split(r"[.!?;]", text[max(0, treffer.start() - 120):treffer.start()])[-1]
+        satzende = re.split(r"[.!?;]", text[treffer.end():treffer.end() + 120], maxsplit=1)[0]
+        if not re.search(r"\b(?:falls|sofern|wenn|if|provided)\b", satzanfang + " " + satzende):
+            return True
+    return False
+
+
 def _zahlungsstatus_absichern(daten: dict) -> dict:
     """Verhindert, dass unbelegte Erledigt-Einstufungen unsichtbar werden."""
     daten = dict(daten)
@@ -231,7 +264,8 @@ def _zahlungsstatus_absichern(daten: dict) -> dict:
         daten["zahlungsstatus"] = "bezahlt"
         return daten
 
-    hat_automatik = _hat_positiven_beleg(hinweis, AUTOMATISCHE_ZAHLUNGSBELEGE)
+    konkreter_einzug = _belegt_verbindlichen_einzug(hinweis)
+    hat_automatik = konkreter_einzug or _hat_positiven_beleg(hinweis, AUTOMATISCHE_ZAHLUNGSBELEGE)
     hat_bezahlt = _hat_positiven_beleg(hinweis, BEZAHLT_BELEGE)
     hat_gutschrift = _hat_positiven_beleg(hinweis, GUTSCHRIFT_BELEGE)
     hat_offene_aufforderung = _hat_positiven_beleg(
@@ -243,6 +277,15 @@ def _zahlungsstatus_absichern(daten: dict) -> dict:
     # Zahlungen, ohne eine bloße PayPal-Zahlungsoption aufzuwerten.
     if hat_bezahlt:
         status = "bezahlt"
+    elif konkreter_einzug and status != "gutschrift":
+        widerspruch = (
+            EINZUG_WIDERSPRUCH.search(hinweis)
+            or _hat_positiven_beleg(hinweis, MANUELLE_ZAHLUNGSAUFFORDERUNG)
+        )
+        if not widerspruch:
+            status = "automatisch"
+        elif status != "offen":
+            status = "unklar"
     elif status == "offen" and hat_automatik:
         status = "automatisch"
     elif status == "automatisch" and not hat_automatik:
