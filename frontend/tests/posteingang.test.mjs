@@ -117,3 +117,42 @@ test("Wieder geöffneter Entwurf zeigt gespeicherte Prüffassung und bewusstes T
   await act(async () => senden.props.onClick());
   assert.deepEqual(freigeben.mock.calls[0].arguments, [426, "Gespeicherte Überarbeitung", [], true]);
 });
+
+
+test("Mailanhang lädt die Datei mit ihrem Namen herunter und meldet Abruffehler", async t => {
+  const {mount, PosteingangView} = await testEingang(t);
+  const listenname = "Auswertung.xlsx";
+  const dateiname = "Auswertung für November.xlsx";
+  const bytes = new Uint8Array([80, 75, 3, 4, 42]);
+  let headers = {"Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(dateiname)}`};
+  let fehlt = false;
+  const abruf = t.mock.method(globalThis, "fetch", async () => fehlt
+    ? Response.json({detail: "Anhang nicht mehr vorhanden."}, {status: 404})
+    : new Response(bytes, {headers}));
+  const downloads = [];
+  const anlegen = t.mock.method(URL, "createObjectURL", () => "blob:mailanhang");
+  window.setTimeout = () => {};
+  document.body = {append() {}};
+  document.createElement = tag => {
+    assert.equal(tag, "a");
+    return {click() { downloads.push({adresse: this.href, name: this.download}); }, remove() {}};
+  };
+  const view = await mount(React.createElement(PosteingangView, {
+    mails: [{...mail(17, "Mit Anhang", "01"), anhaenge: [listenname]}], katalog: [],
+    benutzer: {benutzername: "erik"}, alleMails: false, onReload: async () => {},
+  }));
+  const knopf = view.root.findByProps({title: `${listenname} herunterladen`});
+  await act(async () => knopf.props.onClick());
+  assert.equal(abruf.mock.calls[0].arguments[0], "/api/mails/17/anhaenge/0");
+  assert.deepEqual(downloads, [{adresse: "blob:mailanhang", name: dateiname}]);
+  assert.deepEqual(new Uint8Array(await anlegen.mock.calls[0].arguments[0].arrayBuffer()), bytes);
+
+  headers = {};
+  await act(async () => knopf.props.onClick());
+  assert.equal(downloads[1].name, listenname);
+
+  fehlt = true;
+  await act(async () => knopf.props.onClick());
+  assert.equal(downloads.length, 2);
+  assert.match(JSON.stringify(view.toJSON()), /Anhang nicht mehr vorhanden/);
+});

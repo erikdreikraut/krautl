@@ -1187,7 +1187,7 @@ async def mail_anhang_ansehen(
         media_type=medientyp,
         headers={
             "Content-Disposition": (
-                "inline; filename*=UTF-8''" + quote(dateiname, safe="")
+                "attachment; filename*=UTF-8''" + quote(dateiname, safe="")
             ),
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",

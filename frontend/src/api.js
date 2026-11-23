@@ -18,7 +18,7 @@ async function anfrage(pfad, optionen) {
   return antwort.json();
 }
 
-async function dateiAnfrage(pfad) {
+async function dateiAntwort(pfad) {
   const antwort = await fetch(`${BASIS}${pfad}`);
   if (!antwort.ok) {
     let detail = "Datei konnte nicht geöffnet werden.";
@@ -30,7 +30,11 @@ async function dateiAnfrage(pfad) {
     }
     throw new Error(detail);
   }
-  return antwort.blob();
+  return antwort;
+}
+
+async function dateiAnfrage(pfad) {
+  return (await dateiAntwort(pfad)).blob();
 }
 
 function postForm(pfad, params) {
@@ -121,8 +125,17 @@ export const api = {
     anfrage(`/mails/${mailId}/erledigen`, { method: "POST" }),
   mailLoeschen: (mailId) =>
     anfrage(`/mails/${mailId}`, { method: "DELETE" }),
-  mailAnhangLaden: (mailId, index) =>
-    dateiAnfrage(`/mails/${mailId}/anhaenge/${index}`),
+  mailAnhangLaden: async (mailId, index) => {
+    const antwort = await dateiAntwort(`/mails/${encodeURIComponent(mailId)}/anhaenge/${encodeURIComponent(index)}`);
+    const disposition = antwort.headers.get("Content-Disposition") || "";
+    const kodierterName = disposition.match(/(?:^|;) *filename\*=UTF-8''([^;]+)/i)?.[1];
+    let dateiname;
+    if (kodierterName) {
+      try { dateiname = decodeURIComponent(kodierterName); }
+      catch { /* Bei fehlerhaftem Header den in der Mail angezeigten Namen verwenden. */ }
+    }
+    return {datei: await antwort.blob(), dateiname};
+  },
   mailHtml: (mailId) => anfrage(`/mails/${mailId}/html`),
   mailZuweisen: (mailId, rolle) =>
     anfrage(`/mails/${mailId}/zustaendigkeit`, {

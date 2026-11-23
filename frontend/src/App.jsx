@@ -884,6 +884,21 @@ function MailInhalt({ mail }) {
   );
 }
 
+async function mailAnhangHerunterladen(mailId, index, listenname) {
+  const {datei, dateiname} = await api.mailAnhangLaden(mailId, index);
+  const url = URL.createObjectURL(datei);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = (dateiname || listenname || "Anhang").split(/[\\/]/).pop() || "Anhang";
+  document.body.append(link);
+  try {
+    link.click();
+  } finally {
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+}
+
 function nachrichtNebenAlterAuswahl(vorherigeIds, selectedId, sichtbareMails) {
   const index = vorherigeIds.indexOf(selectedId);
   if (index === -1) return null;
@@ -1203,21 +1218,11 @@ export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMail
     await onReload();
   }
 
-  async function anhangAnsehen(mailId, index) {
-    const fenster = window.open("about:blank", "_blank");
-    if (fenster) fenster.opener = null;
+  async function anhangHerunterladen(mailId, index, dateiname) {
     try {
-      const datei = await api.mailAnhangLaden(mailId, index);
-      const url = URL.createObjectURL(datei);
-      if (fenster) {
-        fenster.location.href = url;
-      } else {
-        window.open(url, "_blank", "noopener,noreferrer");
-      }
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      await mailAnhangHerunterladen(mailId, index, dateiname);
     } catch (fehler) {
-      if (fenster) fenster.close();
-      window.alert(fehler.message || "Anhang konnte nicht geöffnet werden.");
+      setStatusMeldung(fehler.message || "Anhang konnte nicht heruntergeladen werden.");
     }
   }
 
@@ -1467,7 +1472,7 @@ export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMail
             {selected.anhaenge.length > 0 && (
               <div className="px-6 py-4 flex flex-wrap gap-2 mail-anhaenge" style={{ borderBottom: `1px solid ${tokens.line}` }}>
                 {selected.anhaenge.map((dateiname, index) => (
-                  <button key={`${dateiname}-${index}`} onClick={() => anhangAnsehen(selected.id, index)}
+                  <button key={`${dateiname}-${index}`} onClick={() => anhangHerunterladen(selected.id, index, dateiname)} title={`${dateiname} herunterladen`}
                     className="flex items-center gap-1.5 px-2.5 py-1.5" style={{ ...fontUI, fontSize: "12.5px", color: tokens.ink, background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}>
                     <Paperclip size={12} style={{ color: tokens.inkMuted, flexShrink: 0 }} />
                     {dateiname}
@@ -2123,12 +2128,14 @@ function AktionslogMailDialog({ mailId, onSchliessen }) {
   const [mail, setMail] = useState(null);
   const [laedt, setLaedt] = useState(true);
   const [fehler, setFehler] = useState("");
+  const [anhangFehler, setAnhangFehler] = useState("");
 
   useEffect(() => {
     let aktiv = true;
     setMail(null);
     setLaedt(true);
     setFehler("");
+    setAnhangFehler("");
     api.aktionslogMail(mailId)
       .then((daten) => {
         if (aktiv) setMail(daten);
@@ -2150,18 +2157,12 @@ function AktionslogMailDialog({ mailId, onSchliessen }) {
     return () => document.removeEventListener("keydown", tastePruefen);
   }, [onSchliessen]);
 
-  async function anhangAnsehen(index) {
-    const fenster = window.open("about:blank", "_blank");
-    if (fenster) fenster.opener = null;
+  async function anhangHerunterladen(index, dateiname) {
+    setAnhangFehler("");
     try {
-      const datei = await api.mailAnhangLaden(mail.id, index);
-      const url = URL.createObjectURL(datei);
-      if (fenster) fenster.location.href = url;
-      else window.open(url, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      await mailAnhangHerunterladen(mail.id, index, dateiname);
     } catch (error) {
-      if (fenster) fenster.close();
-      setFehler(error.message || "Anhang konnte nicht geöffnet werden.");
+      setAnhangFehler(error.message || "Anhang konnte nicht heruntergeladen werden.");
     }
   }
 
@@ -2275,13 +2276,15 @@ function AktionslogMailDialog({ mailId, onSchliessen }) {
                 key={mail.id}
                 mail={{ id: mail.id, betreff: mail.betreff, snippet: mail.text_auszug }}
               />
+              {anhangFehler && <p role="alert" className="px-5 py-2" style={{ color: tokens.rust }}>{anhangFehler}</p>}
               {(mail.anhang_dateinamen || []).length > 0 && (
                 <div className="px-5 py-4 flex flex-wrap gap-2" style={{ borderTop: `1px solid ${tokens.line}` }}>
                   {mail.anhang_dateinamen.map((dateiname, index) => (
                     <button
                       type="button"
                       key={`${dateiname}-${index}`}
-                      onClick={() => anhangAnsehen(index)}
+                      onClick={() => anhangHerunterladen(index, dateiname)}
+                      title={`${dateiname} herunterladen`}
                       className="flex items-center gap-1.5 px-2.5 py-1.5"
                       style={{ ...fontUI, fontSize: "12px", color: tokens.ink, background: tokens.paperRaised, border: `1px solid ${tokens.line}`, borderRadius: "6px" }}
                     >
