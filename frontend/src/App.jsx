@@ -866,7 +866,7 @@ function MailInhalt({ mail }) {
       <div className="px-6 py-3">
         <iframe
           title={`HTML-Inhalt: ${mail.betreff}`}
-          sandbox=""
+          sandbox="allow-popups allow-popups-to-escape-sandbox"
           referrerPolicy="no-referrer"
           srcDoc={html}
           style={{

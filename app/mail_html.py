@@ -9,6 +9,7 @@ import re
 from email import message_from_bytes, policy
 from html import escape
 from html.parser import HTMLParser
+from urllib.parse import urlsplit
 
 
 _ERLAUBTE_TAGS = {
@@ -42,6 +43,22 @@ _ERLAUBTES_DATENBILD = re.compile(
     r"^data:image/(?:gif|jpe?g|png|webp);base64,[a-z0-9+/=\s]+$",
     re.IGNORECASE,
 )
+
+
+def _sicheres_webziel(wert: str) -> str | None:
+    """Nur absolute HTTP(S)-Adressen mit unverfälschtem Ziel zulassen."""
+    url = wert.strip()
+    if not re.match(r"https?://", url, flags=re.IGNORECASE):
+        return None
+    if any(zeichen.isspace() or ord(zeichen) < 32 or zeichen in "\\\x7f" for zeichen in url):
+        return None
+    try:
+        ziel = urlsplit(url)
+        if ziel.hostname and ziel.username is None:
+            return url
+    except ValueError:
+        pass  # Ungültige Hostangabe: Linktext bleibt sichtbar.
+    return None
 
 
 def _sicherer_stil(wert: str) -> str:
@@ -85,6 +102,15 @@ class _SicheresMailHTML(HTMLParser):
             if name == "src" and tag == "img":
                 if _ERLAUBTES_DATENBILD.fullmatch(wert.strip()):
                     sichere_attribute.append((name, wert.strip()))
+                continue
+            if name == "href" and tag == "a":
+                if any(attr == "href" for attr, _ in sichere_attribute):
+                    continue
+                ziel = _sicheres_webziel(wert)
+                if ziel:
+                    sichere_attribute.extend([
+                        ("href", ziel), ("target", "_blank"), ("rel", "noopener noreferrer"),
+                    ])
                 continue
             if name not in _ERLAUBTE_ATTRIBUTE:
                 continue

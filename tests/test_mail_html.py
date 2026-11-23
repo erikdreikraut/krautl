@@ -66,6 +66,36 @@ class MailHTMLTest(unittest.TestCase):
         self.assertNotIn("background-image", html)
         self.assertIn("default-src 'none'", html)
 
+    def test_absolute_web_links_oeffnen_geschuetzt_im_neuen_tab(self):
+        mail = EmailMessage()
+        mail.set_content("Portal")
+        mail.add_alternative(
+            '<a href="https://portal.example.test/a?x=1&amp;y=2" target="_top" '
+            'rel="opener" ping="https://tracker.example.test/" download>Portal</a>'
+            '<a href="http://example.test/">HTTP</a>', subtype="html",
+        )
+
+        html = html_teil_aus_mail(mail.as_bytes())
+
+        self.assertIn('<a href="https://portal.example.test/a?x=1&amp;y=2" '
+                      'target="_blank" rel="noopener noreferrer">Portal</a>', html)
+        self.assertIn('<a href="http://example.test/" target="_blank" '
+                      'rel="noopener noreferrer">HTTP</a>', html)
+        self.assertNotIn('tracker.example.test', html)
+        self.assertNotIn('target="_top"', html)
+        self.assertNotIn(' download', html)
+
+    def test_andere_linkziele_bleiben_text(self):
+        for ziel in ("java&#x09;script:alert(1)", "data:text/html,test", "file:///test",
+                     "//example.test", "/api/mails", "https:///example.test",
+                     "https://portal.example.test@other.example.test"):
+            with self.subTest(ziel=ziel):
+                mail = EmailMessage()
+                mail.set_content(f'<a href="{ziel}">Linktext</a>', subtype="html")
+                html = html_teil_aus_mail(mail.as_bytes())
+                self.assertIn("<a>Linktext</a>", html)
+                self.assertNotIn("href=", html)
+
     def test_reine_textmail_hat_keine_html_ansicht(self):
         mail = EmailMessage()
         mail.set_content("Nur Text")
