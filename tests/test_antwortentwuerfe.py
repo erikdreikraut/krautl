@@ -8,14 +8,15 @@ from unittest.mock import AsyncMock, patch
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_antwortentwuerfe.db")
 os.environ.setdefault("OPENAI_API_KEY", "test")
 
-from sqlalchemy import select
+from sqlalchemy import String, select
+from sqlalchemy.dialects.postgresql.asyncpg import PGDialect_asyncpg
 from sqlalchemy.orm import undefer
 from fastapi import HTTPException, UploadFile
 
 from app.db import SessionLocal, engine
 from app.antworten import PRUEFUNGS_SYSTEMPROMPT, pruefergebnis_absichern
 from app.main import (
-    EntwurfFreigabe, _antwortanhaenge_einlesen, aktionslog_mail_ansehen, entwurf_freigeben,
+    EntwurfFreigabe, _anzahl_antwortblockierungen, _antwortanhaenge_einlesen, aktionslog_mail_ansehen, entwurf_freigeben,
     entwurf_mit_anhaengen_freigeben, liste_entwuerfe,
     mail_antwort_beginnen, mail_antwortentwurf_erzeugen,
 )
@@ -517,6 +518,13 @@ class AntwortentwurfTest(unittest.IsolatedAsyncioTestCase):
 
 
 class AntwortpruefungTest(unittest.TestCase):
+    def test_freigabe_bindet_pruefmuster_in_postgresql_als_text(self):
+        abfrage = _anzahl_antwortblockierungen(21000, 556).compile(dialect=PGDialect_asyncpg())
+        text_parameter = [wert for name, wert in abfrage.params.items()
+                          if isinstance(abfrage.binds[name].type, String)]
+        self.assertIn("Entwurf #556:%", text_parameter)
+        self.assertTrue(all(isinstance(wert, str) for wert in text_parameter))
+
     def test_tippfehler_blockieren_nicht_aber_sinnentstellende_fehler_schon(self):
         text = "Guten Tag, vielen Dank für Ihre Nachrict."
         for typ, freigabe in [("sprachfehler", True), ("sinnentstellender_sprachfehler", False)]:

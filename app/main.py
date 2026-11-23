@@ -1501,10 +1501,16 @@ def _neueste_prueffassung_id(entwurf_id):
 
 
 def _anzahl_antwortblockierungen(mail_id, entwurf_id):
+    # Eine konkrete ID wird schon in Python formatiert. CAST auf VARCHAR
+    # bleibt der ID-Spalte vorbehalten, damit asyncpg keine Zahl als Text bindet.
+    if isinstance(entwurf_id, int):
+        muster = f"Entwurf #{entwurf_id}:%"
+    else:
+        muster = literal("Entwurf #") + cast(entwurf_id, String) + ":%"
     return select(func.count(Aktionslog.id)).where(
         Aktionslog.mail_id == mail_id,
         Aktionslog.ereignis == "antwort_pruefung_noetig",
-        Aktionslog.detail.like(literal("Entwurf #") + cast(entwurf_id, String) + ":%"),
+        Aktionslog.detail.like(muster),
     ).correlate(Entwurf)
 
 
