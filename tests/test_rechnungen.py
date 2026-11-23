@@ -13,11 +13,12 @@ from sqlalchemy import select
 from app.db import SessionLocal, engine
 from app.mail_parser import rechnungsanhaenge
 from app.main import liste_rechnungen
-from app.models import Base, Mail, Postfach, Rechnung
+from app.models import Aktionslog, Base, Mail, Postfach, Rechnung
 from app.rechnungen import (
     _bild_mime_type,
     _ist_rechnung_verwertbar,
-    _zahlungsstatus_absichern,
+    _zahlungsdaten_aus_befund,
+    _analysiere,
     rechnungsdatei_aus_mail_laden,
     rechnung_aus_rohdaten_verarbeiten,
     rechnung_verarbeiten,
@@ -104,144 +105,33 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("image/jpeg", _bild_mime_type(jpeg))
         self.assertEqual("image/png", _bild_mime_type(png))
 
-    def test_verrechnung_mit_guthaben_ist_nicht_offen(self):
-        daten = _zahlungsstatus_absichern({
-            "zahlungsstatus": "offen",
-            "zahlungshinweis": "Seite 2: Rechnungsbetrag wird vom Guthaben abgezogen; Rest wird ausgezahlt.",
-        })
-        self.assertEqual("automatisch", daten["zahlungsstatus"])
-
-    def test_unbelegte_automatik_bleibt_zur_pruefung_sichtbar(self):
-        daten = _zahlungsstatus_absichern({
-            "zahlungsstatus": "automatisch",
-            "zahlungshinweis": "Zahlbar innerhalb von 14 Tagen.",
-        })
-        self.assertEqual("unklar", daten["zahlungsstatus"])
-
-    def test_verbindliche_abbuchung_korrigiert_unklaren_modellstatus(self):
-        hinweis = (
-            'Seite 1: „We will automatically deduct the amount (€ 29.00) from your credit card '
-            'or bank account within 14 days. No action is needed.“ '
-            'Mail: „Es ist keine Zahlung fällig. Dies ist nur für Ihre Unterlagen.“'
-        )
-        for belegt in (hinweis, "Der Rechnungsbetrag wird mit Ihrem Guthaben verrechnet.",
-                       "Amount due: 29 EUR. The invoice amount will be debited from your bank account."):
-            with self.subTest(belegt=belegt):
-                daten = _zahlungsstatus_absichern({"zahlungsstatus": "unklar", "zahlungshinweis": belegt})
-                self.assertEqual("automatisch", daten["zahlungsstatus"])
-
-    def test_keine_automatik_ohne_eindeutige_zusage_oder_bei_widerspruch(self):
-        zusage = "We will automatically deduct the amount from your credit card."
-        for hinweis in ("Payment method: credit card. No action is needed.",
-                        "If you have enabled automatic payment, " + zusage,
-                        zusage.rstrip(".") + " if you opt in.",
-                        zusage + " The automatic payment failed. Please pay by bank transfer.",
-                        zusage + " Mail: Bitte überweisen."):
-            with self.subTest(hinweis=hinweis):
-                daten = _zahlungsstatus_absichern({"zahlungsstatus": "unklar", "zahlungshinweis": hinweis})
-                self.assertIn(daten["zahlungsstatus"], {"offen", "unklar"})
-
-    def test_verneinte_abbuchung_macht_offene_rechnung_nicht_automatisch(self):
-        daten = _zahlungsstatus_absichern({
-            "zahlungsstatus": "offen",
-            "zahlungshinweis": "Der Betrag wird nicht automatisch abgebucht. Bitte überweisen.",
-        })
-        self.assertEqual("offen", daten["zahlungsstatus"])
-
-    def test_nicht_umgesetzter_lastschrifteinzug_mit_aufforderung_ist_offen(self):
-        hinweis = (
-            "Mailtext (Biedermann, Geschäftsführer): Lastschrifteinzug durch "
-            "HVB und Postbank bislang nicht umgesetzt; explizite "
-            "Zahlungsaufforderung: bitte ich Sie die Rechnungen zu begleichen "
-            "per Überweisung. Rechnung enthält keine Zahlungsbestätigung."
-        )
-        for falscher_status in ("offen", "automatisch", "unklar"):
-            with self.subTest(status=falscher_status):
-                daten = _zahlungsstatus_absichern({
-                    "zahlungsstatus": falscher_status,
-                    "zahlungshinweis": hinweis,
-                })
-                self.assertEqual("offen", daten["zahlungsstatus"])
-
-    def test_paypal_als_zahlungsoption_ist_keine_erledigte_zahlung(self):
-        hinweis = (
-            "Mailtext und PDF (S. 1): Der Rechnungsbetrag ist spätestens zum "
-            "21.09.2026 fällig. Bitte leisten Sie die Zahlung von 595,00 EUR "
-            "mit einer der folgenden Zahlungsmöglichkeiten: Überweisung oder "
-            "PayPal-Zahlung. Kein Zahlungseingang oder Lastschriftmandat vermerkt."
-        )
-        for falscher_status in ("offen", "automatisch", "bezahlt"):
-            with self.subTest(status=falscher_status):
-                daten = _zahlungsstatus_absichern({
-                    "zahlungsstatus": falscher_status,
-                    "zahlungshinweis": hinweis,
-                })
-                self.assertEqual("offen", daten["zahlungsstatus"])
-
-    def test_paypal_zahlart_gilt_auch_ohne_zahlungsbestaetigung_als_bezahlt(self):
-        hinweise = [
-            'Rechnung nennt als Zahlart "PAYPAL" (Kopfbereich der Rechnung), '
-            'jedoch ohne Bestätigung einer bereits erfolgten Zahlung. '
-            'Bankverbindung (IBAN) ist ebenfalls angegeben.',
-            "Zahlungsart: PayPal. Bitte überweisen. Kein Zahlungsbeleg vorhanden.",
-            "Payment method: PayPal",
+    def test_zahlungsstatus_folgt_belegbefund_statt_schlagwoertern(self):
+        faelle = [
+            ("mahnung", "mahnung_offen", "offen", "Wir bitten Sie den offenen Betrag zu überweisen. Kein Hinweis auf eine automatische Zahlung."),
+            ("rechnung", "zahlung_gefordert", "offen", "Zahlungsart: PayPal oder Überweisung. Bitte überweisen."),
+            ("rechnung", "zahlung_gefordert", "offen", "Lastschrifteinzug nicht umgesetzt. Bitte per Überweisung begleichen."),
+            ("rechnung", "einzug_oder_verrechnung", "automatisch", "We will automatically deduct the amount from your credit card or bank account."),
+            ("rechnung", "einzug_oder_verrechnung", "automatisch", "Rechnungsbetrag wird vom Guthaben abgezogen."),
+            ("rechnung", "zahlung_bestaetigt", "bezahlt", "Payment received."),
+            ("rechnung", "paypal_ebay_gewaehlt", "bezahlt", "Zahlart: PayPal"),
+            ("gutschrift", "paypal_ebay_gewaehlt", "gutschrift", "Gutschrift. Zahlungsart: eBay."),
+            ("rechnung", "widerspruch", "unklar", "Bitte überweisen. | Ihr Konto wird belastet."),
+            ("rechnung", "kein_nachweis", "unklar", "Fällig am 18.11.2026. IBAN: ..."),
+            ("mahnung", "einzug_oder_verrechnung", "unklar", "Direct debit"),
         ]
-        for hinweis in hinweise:
-            for status in ("unklar", "offen", "automatisch", "bezahlt"):
-                with self.subTest(hinweis=hinweis, status=status):
-                    self.assertEqual("bezahlt", _zahlungsstatus_absichern({
-                        "zahlungsstatus": status, "zahlungshinweis": hinweis,
-                    })["zahlungsstatus"])
-        self.assertEqual("gutschrift", _zahlungsstatus_absichern({
-            "zahlungsstatus": "gutschrift",
-            "zahlungshinweis": "Gutschrift. Zahlungsart: PayPal",
-        })["zahlungsstatus"])
+        for art, befund, status, hinweis in faelle:
+            with self.subTest(art=art, befund=befund, hinweis=hinweis):
+                daten = _zahlungsdaten_aus_befund({"belegart": art, "zahlungsbefund": befund,
+                    "belegquelle": "anhang", "zahlungshinweis": hinweis})
+                self.assertEqual(status, daten["zahlungsstatus"])
+                self.assertEqual(hinweis, daten["zahlungshinweis"])
 
-    def test_ebay_zahlart_ist_bezahlt_aber_marktplatznennung_reicht_nicht(self):
-        for hinweis in ('Zahlart "ebay"', "Zahlungsart: EBAY", "Payment method: eBay"):
-            for status in ("unklar", "offen", "automatisch", "bezahlt"):
-                with self.subTest(hinweis=hinweis, status=status):
-                    self.assertEqual("bezahlt", _zahlungsstatus_absichern({
-                        "zahlungsstatus": status, "zahlungshinweis": hinweis,
-                    })["zahlungsstatus"])
-        self.assertEqual("offen", _zahlungsstatus_absichern({
-            "zahlungsstatus": "offen",
-            "zahlungshinweis": "Kauf auf eBay. Zahlart: Überweisung. Bitte überweisen.",
-        })["zahlungsstatus"])
-        self.assertEqual("gutschrift", _zahlungsstatus_absichern({
-            "zahlungsstatus": "gutschrift",
-            "zahlungshinweis": "Gutschrift. Zahlart: ebay",
-        })["zahlungsstatus"])
-
-    def test_bereits_per_paypal_abgewickelte_zahlung_ist_bezahlt(self):
-        hinweis = (
-            "Rechnung (Seite 1): Bezahlung durch: PayPal – Zahlung wurde "
-            "bereits per PayPal abgewickelt, kein manueller "
-            "Überweisungsauftrag erforderlich."
-        )
-        for falscher_status in ("offen", "automatisch", "bezahlt", "unklar"):
-            with self.subTest(status=falscher_status):
-                daten = _zahlungsstatus_absichern({
-                    "zahlungsstatus": falscher_status,
-                    "zahlungshinweis": hinweis,
-                })
-                self.assertEqual("bezahlt", daten["zahlungsstatus"])
-
-    def test_eindeutiger_paypal_einzug_bleibt_automatisch(self):
-        daten = _zahlungsstatus_absichern({
-            "zahlungsstatus": "automatisch",
-            "zahlungshinweis": (
-                "Der Rechnungsbetrag wurde automatisch über PayPal abgebucht."
-            ),
-        })
-        self.assertEqual("automatisch", daten["zahlungsstatus"])
-
-    def test_unpaid_ist_kein_beleg_fuer_bezahlt(self):
-        daten = _zahlungsstatus_absichern({
-            "zahlungsstatus": "bezahlt",
-            "zahlungshinweis": "The invoice is unpaid. Please pay the amount due.",
-        })
-        self.assertEqual("offen", daten["zahlungsstatus"])
+    def test_verdeckender_status_braucht_belegquelle_und_zitat(self):
+        for quelle, zitat in [("keine", "Betrag eingezogen"), ("anhang", "")]:
+            daten = _zahlungsdaten_aus_befund({"belegart": "rechnung",
+                "zahlungsbefund": "einzug_oder_verrechnung", "belegquelle": quelle,
+                "zahlungshinweis": zitat})
+            self.assertEqual("unklar", daten["zahlungsstatus"])
 
     async def test_rechnungsansicht_laed_original_aus_verschobener_mail(self):
         async with SessionLocal() as session:
@@ -275,7 +165,7 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
     async def test_rechnung_wird_abgelegt_und_dedupliziert(self):
         config = type("Config", (), {"user": "einkauf@dreikraut.de"})()
         analyse = {
-            "ist_rechnung": True, "aussteller": "Test GmbH", "rechnungsnummer": "4711",
+            "belegart": "rechnung", "aussteller": "Test GmbH", "rechnungsnummer": "4711",
             "rechnungsdatum": "2026-07-21", "faellig_am": "2026-08-04",
             "bruttobetrag": 119.0, "waehrung": "EUR", "zahlungsstatus": "offen",
             "zahlungshinweis": "Bitte überweisen",
@@ -306,7 +196,7 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_zwei_anhaenge_derselben_rechnung_werden_zusammengefuehrt(self):
         netto = {
-            "ist_rechnung": True, "aussteller": "VGL Publishing AG",
+            "belegart": "rechnung", "aussteller": "VGL Publishing AG",
             "rechnungsnummer": "S26-17875772483926",
             "rechnungsdatum": "2026-08-24", "faellig_am": "2026-09-07",
             "bruttobetrag": 219.07, "waehrung": "EUR", "zahlungsstatus": "offen",
@@ -340,7 +230,7 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_spaetere_mahnung_aktualisiert_automatik_dublette_auf_offen(self):
         rechnung = {
-            "ist_rechnung": True, "aussteller": "VGL Publishing AG",
+            "belegart": "rechnung", "aussteller": "VGL Publishing AG",
             "rechnungsnummer": "S26-17875772483926",
             "rechnungsdatum": "2026-08-24", "faellig_am": "2026-09-07",
             "bruttobetrag": 260.69, "waehrung": "EUR",
@@ -349,6 +239,9 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
         }
         mahnung = {
             **rechnung,
+            "belegart": "mahnung",
+            "rechnungsdatum": "",
+            "zahlungsbefund": "mahnung_offen",
             "zahlungsstatus": "offen",
             "zahlungshinweis": "Die Rechnung ist überfällig. Bitte überweisen Sie innerhalb von 7 Tagen.",
         }
@@ -371,9 +264,69 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("offen", gespeichert.zahlungsstatus)
         self.assertIn("überfällig", gespeichert.zahlungshinweis)
 
+    async def test_neuere_mahnung_widerspricht_bezahlt_ohne_neue_rechnung(self):
+        original = {"belegart": "rechnung", "aussteller": "Muster GmbH",
+                    "rechnungsnummer": "4711", "rechnungsdatum": "2026-10-10",
+                    "bruttobetrag": 229.08, "waehrung": "EUR",
+                    "zahlungsstatus": "offen", "zahlungshinweis": "Bitte überweisen."}
+        mahnung = _zahlungsdaten_aus_befund({**original, "belegart": "mahnung",
+                    "rechnungsdatum": "", "zahlungsbefund": "mahnung_offen",
+                    "belegquelle": "beide", "zahlungshinweis": "Wir haben noch keinen Zahlungseingang festgestellt. Bitte überweisen."})
+        dbx = MagicMock()
+        nur_mail = b"Subject: Mahnung\r\n\r\nKein Zahlungseingang. Bitte Rechnung 4711 ueberweisen."
+        with patch("app.rechnungen._analysiere", side_effect=[
+            original, mahnung, {**mahnung, "belegquelle": "mail"},
+        ]) as analysiere, \
+             patch("app.rechnungen._dropbox_client", return_value=dbx):
+            async with SessionLocal() as session:
+                mail = await session.get(Mail, self.mail_id)
+                await rechnung_aus_rohdaten_verarbeiten(session, mail, EML)
+                rechnung = await session.scalar(select(Rechnung))
+                rechnung.zahlungsstatus = "bezahlt"
+                session.add(Aktionslog(mail_id=mail.id, ereignis="rechnungsstatus_geaendert",
+                    erstellt_am=mail.empfangen_am + timedelta(days=1),
+                    detail="Rechnung 4711: offen → bezahlt; durch Test"))
+                mahnmail = Mail(message_id="<mahnung@test>", postfach_id=mail.postfach_id,
+                    absender_name="Muster GmbH", absender_adresse="muster@example.test",
+                    betreff="Mahnung zu 4711", text_auszug="Bitte jetzt zahlen.",
+                    empfangen_am=mail.empfangen_am + timedelta(days=2))
+                session.add(mahnmail)
+                await session.commit()
+                mahnmail_id = mahnmail.id
+            for rohmail in (EML, nur_mail):
+                async with SessionLocal() as session:
+                    mahnmail = await session.get(Mail, mahnmail_id)
+                    await rechnung_aus_rohdaten_verarbeiten(session, mahnmail, rohmail)
+                    await session.commit()
+            async with SessionLocal() as session:
+                rechnung = (await session.execute(select(Rechnung))).scalar_one()
+                self.assertEqual(rechnung.mail_id, self.mail_id)
+                self.assertEqual(rechnung.zahlungsstatus, "unklar")
+                self.assertIn("bisherigen Status Bezahlt", rechnung.zahlungshinweis)
+                protokoll = (await session.execute(select(Aktionslog).where(
+                    Aktionslog.ereignis == "rechnung_mahnung_zugeordnet"))).scalars().all()
+                self.assertEqual([eintrag.mail_id for eintrag in protokoll], [mahnmail_id])
+        self.assertIsNone(analysiere.call_args.args[0])
+        dbx.files_upload.assert_called_once()
+
+    def test_analyse_durchlaeuft_strukturierten_befund_fuer_anhang_und_mail(self):
+        mail = Mail(betreff="Mahnung", absender_adresse="test@example.test", text_auszug="Bitte überweisen.")
+        befund = {"belegart": "mahnung", "rechnungsnummer": "4711", "rechnungsdatum": "",
+                   "zahlungsbefund": "mahnung_offen", "belegquelle": "mail",
+                   "zahlungshinweis": "Bitte überweisen."}
+        antwort = SimpleNamespace(content=[SimpleNamespace(type="tool_use", input=befund)])
+        with patch("app.rechnungen.KIClient") as client:
+            client.return_value.erzeugen.return_value = antwort
+            daten = _analysiere(rechnungsanhaenge(EML)[0], mail)
+        request = client.return_value.erzeugen.call_args.kwargs
+        self.assertEqual("offen", daten["zahlungsstatus"])
+        self.assertEqual("", daten["rechnungsdatum"])
+        self.assertIn("Bitte überweisen.", request["messages"][0]["content"][0]["text"])
+        self.assertEqual("document", request["messages"][0]["content"][1]["type"])
+
     async def test_historischer_lauf_kann_direkten_eingangsordner_nutzen(self):
         analyse = {
-            "ist_rechnung": True, "aussteller": "Test GmbH", "rechnungsnummer": "4711",
+            "belegart": "rechnung", "aussteller": "Test GmbH", "rechnungsnummer": "4711",
             "rechnungsdatum": "2026-02-03", "faellig_am": "2026-02-17",
             "bruttobetrag": 119.0, "waehrung": "EUR", "zahlungsstatus": "offen",
             "zahlungshinweis": "Bitte überweisen",
@@ -399,7 +352,7 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_negativer_rechnungsbefund_benoetigt_keine_dropbox_verbindung(self):
-        analyse = {"ist_rechnung": False}
+        analyse = {"belegart": "kein_beleg"}
         dropbox_client = MagicMock(side_effect=RuntimeError("Dropbox nicht verbunden"))
         with patch("app.rechnungen._analysiere", return_value=analyse), \
              patch("app.rechnungen._dropbox_client", dropbox_client):
@@ -412,7 +365,7 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_ausdruecklich_erkannte_agb_werden_nicht_als_rechnung_angelegt(self):
         analyse = {
-            "ist_rechnung": True,
+            "belegart": "kein_beleg",
             "aussteller": "Hamburger Gewürz-Mühle Hermann Schulz GmbH",
             "rechnungsnummer": "260134",
             "rechnungsdatum": "",
@@ -442,7 +395,7 @@ class RechnungenTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_fehlendes_rechnungsdatum_nutzt_nachvollziehbar_eingangsdatum(self):
         analyse = {
-            "ist_rechnung": True, "aussteller": "Test GmbH", "rechnungsnummer": "99",
+            "belegart": "rechnung", "aussteller": "Test GmbH", "rechnungsnummer": "99",
             "rechnungsdatum": "", "faellig_am": "", "bruttobetrag": 10.0,
             "waehrung": "EUR", "zahlungsstatus": "offen",
             "zahlungshinweis": "Bitte ueberweisen",

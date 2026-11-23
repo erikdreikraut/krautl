@@ -178,6 +178,8 @@ const EREIGNIS_LABEL = {
   posteingang_bereinigt: "Posteingang bereinigt",
   verschoben: "Verschoben",
   verschieben_fehlgeschlagen: "Verschieben fehlgeschlagen",
+  rechnung_mahnung_zugeordnet: "Mahnung einer Rechnung zugeordnet",
+  rechnung_mahnung_widerspruch: "Mahnung widerspricht Zahlungsstatus",
   rechnung_verarbeitet: "Rechnung verarbeitet",
   rechnung_fehlgeschlagen: "Rechnung fehlgeschlagen",
   antwortvorschlag_erstellt: "Antwortvorschlag erstellt",

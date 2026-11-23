@@ -618,11 +618,18 @@ der Migration legt keine Dubletten an und überschreibt spätere redaktionelle
    einen echten Upload nach `/Rechnungen/{Jahr}/` prüfen.
 2. Nach Behebung der Dropbox-Anmeldung fehlgeschlagene Rechnungsaufgaben mit
    `python -m scripts.wiederhole_rechnungen` kontrolliert wiederholen.
-   Die Rechnungsauswertung prüft alle Dokumentseiten auch auf Lastschrift,
-   Verrechnung, Guthabenabzug und Einbehalt von Auszahlungen. Sämtliche
-   Zahlungsstati bleiben in der Rechnungsansicht sichtbar und können dort
-   redaktionell korrigiert werden; nur **offen** und **unklar** zählen als
-   Rechnungen mit Handlungsbedarf.
+   Die Rechnungsauswertung liest alle Dokumentseiten und den aktuellen Mailtext.
+   Aus Belegart, strukturiertem Zahlungsbefund und einem Originalzitat ergibt
+   sich der Status. Das Zitat bleibt zur Erklärung sichtbar. Zahlungsoptionen,
+   bloße Fälligkeit und unklare oder widersprüchliche Angaben sind kein Nachweis
+   für automatischen Einzug oder bereits erfolgte Zahlung.
+   Mahnungen referenzieren Nummer, Aussteller und gegebenenfalls das Datum der
+   Originalrechnung. Ein Mahndatum dient höchstens zur Ablage. Eine neuere
+   konkrete Mahnung kann eine angekündigte Automatik aufheben. Widerspricht sie
+   einem gespeicherten Status „Bezahlt“, wird die Rechnung zur Prüfung sichtbar.
+   Eine spätere manuelle Entscheidung bleibt maßgeblich. Alle Statuswerte können
+   in der Rechnungsansicht korrigiert werden. **Offen** und **unklar** bleiben
+   sichtbar.
 3. Die korrigierte postfachübergreifende Verschiebefunktion mit echten Mails
    prüfen: genau eine Kopie im Ziel, Entfernung aus dem Ursprungsordner und
    nachvollziehbarer Eintrag im Aktionslog.
