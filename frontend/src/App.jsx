@@ -419,6 +419,13 @@ function KategorieKorrektur({ mail, katalog, onKorrigiert, onMeldung, deaktivier
   );
 }
 
+function fehlenderRechnungsbeleg(aufgabenTyp, detail) {
+  return aufgabenTyp === "RECHNUNG_VERWALTEN" && (
+    detail === "Kein unterstützter Rechnungsanhang gefunden"
+    || detail === "Anhänge enthalten laut Auswertung keine Rechnung"
+  );
+}
+
 function ErledigtButton({ mail, onErledigt, onMeldung, deaktiviert = false }) {
   const [laeuft, setLaeuft] = useState(false);
 
@@ -428,7 +435,7 @@ function ErledigtButton({ mail, onErledigt, onMeldung, deaktiviert = false }) {
       const ergebnis = mail.bestaetigungErforderlich
         ? await api.mailBestaetigen(mail.id)
         : await api.mailErledigen(mail.id);
-      if (ergebnis.status === "fehlgeschlagen") {
+      if (ergebnis.status === "fehlgeschlagen" && !fehlenderRechnungsbeleg(ergebnis.aufgabe_typ, ergebnis.detail)) {
         onMeldung(`Automatik fehlgeschlagen: ${ergebnis.detail || "Unbekannter Fehler"}`);
       }
       await onErledigt(mail.id);
@@ -800,54 +807,74 @@ function AntwortAktionen({ mail, onErzeugt, deaktiviert = false }) {
   );
 }
 
-function MailInhalt({ mail }) {
-  const [html, setHtml] = useState(null);
+function Kalendertermine({ termine }) {
+  return termine.map((termin) => {
+    const zeitformat = new Intl.DateTimeFormat("de-DE", {
+      dateStyle: "full",
+      ...(termin.ganztag ? {} : {timeStyle: "short"}),
+      timeZone: termin.ganztag || termin.zeitzone ? "UTC" : "Europe/Berlin",
+    });
+    const beginn = new Date(termin.zeitzone ? termin.beginn + "Z" : termin.beginn);
+    const ende = termin.ende && new Date(termin.zeitzone ? termin.ende + "Z" : termin.ende);
+    const datum = ende && ende > beginn ? zeitformat.formatRange(beginn, ende) : zeitformat.format(beginn);
+    return (
+      <div key={JSON.stringify(termin)} className="px-6 py-3" style={{ ...fontUI, borderBottom: `1px solid ${tokens.line}` }}>
+        <div style={{ fontSize: "11px", color: tokens.inkMuted }}>
+          {termin.abgesagt ? "Abgesagter Kalendertermin" : "Kalendertermin"}
+        </div>
+        <div style={{ fontSize: "14px", fontWeight: 600 }}>
+          {datum}{termin.ganztag ? " · Ganztägig" : ` · ${termin.zeitzone || "Berliner Zeit"}`}
+        </div>
+      </div>
+    );
+  });
+}
+
+function MailInhalt({ mail, originalsprache, children }) {
+  const [ansicht, setAnsicht] = useState(null);
   const [textAnsicht, setTextAnsicht] = useState(false);
+  const html = ansicht?.html;
 
   useEffect(() => {
     let aktiv = true;
-    setHtml(null);
+    setAnsicht(null);
     setTextAnsicht(false);
 
     api.mailHtml(mail.id)
       .then((ergebnis) => {
-        if (aktiv) setHtml(ergebnis?.html || null);
+        if (aktiv) setAnsicht(ergebnis);
       })
       .catch(() => {
         // Die gespeicherte Textansicht bleibt ein belastbarer Fallback, wenn
         // die Originalmail nicht mehr per IMAP auffindbar ist.
-        if (aktiv) setHtml(null);
+        if (aktiv) setAnsicht(null);
       });
 
     return () => { aktiv = false; };
   }, [mail.id]);
 
-  if (!html || textAnsicht) {
-    return (
-      <div style={{ borderBottom: `1px solid ${tokens.line}` }}>
-        {html && (
-          <div className="px-6 pt-3 flex justify-end">
-            <button
-              type="button"
-              onClick={() => setTextAnsicht(false)}
-              className="px-2.5 py-1"
-              style={AUSWAHL_BUTTON_STIL}
-            >
-              HTML-ANSICHT
-            </button>
-          </div>
-        )}
-        <div
-          className="px-6 py-4 mail-body"
-          style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
-        >
-          {mail.snippet}
+  const inhalt = !html || textAnsicht ? (
+    <div style={{ borderBottom: `1px solid ${tokens.line}` }}>
+      {html && (
+        <div className="px-6 pt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setTextAnsicht(false)}
+            className="px-2.5 py-1"
+            style={AUSWAHL_BUTTON_STIL}
+          >
+            HTML-ANSICHT
+          </button>
         </div>
+      )}
+      <div
+        className="px-6 py-4 mail-body"
+        style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
+      >
+        {mail.snippet}
       </div>
-    );
-  }
-
-  return (
+    </div>
+  ) : (
     <div style={{ borderBottom: `1px solid ${tokens.line}` }}>
       <div className="px-6 pt-3 flex items-center justify-between gap-3">
         <span
@@ -883,6 +910,18 @@ function MailInhalt({ mail }) {
         />
       </div>
     </div>
+  );
+  return (
+    <>
+      <Kalendertermine termine={ansicht?.kalendertermine || []} />
+      {children}
+      {originalsprache ? (
+        <details className="mail-original-label">
+          <summary className="px-6 py-3 cursor-pointer" style={{...fontUI, fontSize: "12px", color: tokens.inkMuted}}>Deutsche Übersetzung · Originaltext ({originalsprache}) anzeigen</summary>
+          {inhalt}
+        </details>
+      ) : inhalt}
+    </>
   );
 }
 
@@ -1137,6 +1176,7 @@ export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMail
   useEffect(() => {
     const fehlgeschlagen = selected?.aufgaben?.find(
       (aufgabe) => aufgabe.status === "fehlgeschlagen"
+        && !fehlenderRechnungsbeleg(aufgabe.aufgabe_typ, aufgabe.fehler)
     );
     if (!fehlgeschlagen) return;
     const schluessel = [
@@ -1434,33 +1474,31 @@ export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMail
                 <AntwortAktionen mail={selected} onErzeugt={onReload} deaktiviert={vonAnderemReserviert} />
               </div>
             )}
-            {selected.uebersetzung ? (
-              <div className="px-6 py-4 mail-uebersetzung" style={{ background: tokens.mossPale, borderBottom: `1px solid ${tokens.line}` }}>
-                <div style={{ ...fontMono, fontSize: "10.5px", color: tokens.mossDeep, letterSpacing: "0.05em" }}>
-                  DEUTSCHE ARBEITSÜBERSETZUNG · ORIGINALSPRACHE: {selected.originalsprache.toUpperCase()}
+            <MailInhalt key={selected.id} mail={selected} originalsprache={selected.uebersetzung ? selected.originalsprache : null}>
+              {selected.uebersetzung ? (
+                <div className="px-6 py-4 mail-uebersetzung" style={{ background: tokens.mossPale, borderBottom: `1px solid ${tokens.line}` }}>
+                  <div style={{ ...fontMono, fontSize: "10.5px", color: tokens.mossDeep, letterSpacing: "0.05em" }}>
+                    DEUTSCHE ARBEITSÜBERSETZUNG · ORIGINALSPRACHE: {selected.originalsprache.toUpperCase()}
+                  </div>
+                  <div style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginTop: "8px" }}>
+                    {selected.uebersetzung}
+                  </div>
                 </div>
-                <div style={{ ...fontSerif, fontSize: "15px", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginTop: "8px" }}>
-                  {selected.uebersetzung}
+              ) : selected.uebersetzungFehlt ? (
+                <div className="px-6 py-3 flex flex-wrap items-center justify-between gap-3 mail-uebersetzung" style={{ background: tokens.amberPale, borderBottom: `1px solid ${tokens.line}` }}>
+                  <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
+                    {uebersetzungsstatus[selected.id]?.status === "fehler"
+                      ? uebersetzungsstatus[selected.id].fehler
+                      : "Deutsche Arbeitsübersetzung wird erstellt …"}
+                  </div>
+                  {uebersetzungsstatus[selected.id]?.status === "fehler" && (
+                    <button type="button" onClick={() => uebersetzungStarten(selected)} disabled={vonAnderemReserviert} className="px-2.5 py-1.5 disabled:opacity-50" style={AUSWAHL_BUTTON_STIL}>
+                      Erneut versuchen
+                    </button>
+                  )}
                 </div>
-              </div>
-            ) : selected.uebersetzungFehlt ? (
-              <div className="px-6 py-3 flex flex-wrap items-center justify-between gap-3 mail-uebersetzung" style={{ background: tokens.amberPale, borderBottom: `1px solid ${tokens.line}` }}>
-                <div style={{ ...fontUI, fontSize: "12.5px", color: tokens.inkMuted }}>
-                  {uebersetzungsstatus[selected.id]?.status === "fehler"
-                    ? uebersetzungsstatus[selected.id].fehler
-                    : "Deutsche Arbeitsübersetzung wird erstellt …"}
-                </div>
-                {uebersetzungsstatus[selected.id]?.status === "fehler" && (
-                  <button type="button" onClick={() => uebersetzungStarten(selected)} disabled={vonAnderemReserviert} className="px-2.5 py-1.5 disabled:opacity-50" style={AUSWAHL_BUTTON_STIL}>
-                    Erneut versuchen
-                  </button>
-                )}
-              </div>
-            ) : null}
-            {selected.uebersetzung ? <details key={`original-${selected.id}`} className="mail-original-label">
-              <summary className="px-6 py-3 cursor-pointer" style={{...fontUI, fontSize: "12px", color: tokens.inkMuted}}>Deutsche Übersetzung · Originaltext ({selected.originalsprache}) anzeigen</summary>
-              <MailInhalt key={selected.id} mail={selected} />
-            </details> : <MailInhalt key={selected.id} mail={selected} />}
+              ) : null}
+            </MailInhalt>
             {Object.keys(selected.felder).length > 0 && (
               <div className="px-6 py-4 grid grid-cols-2 gap-3 mail-fields" style={{ borderBottom: `1px solid ${tokens.line}` }}>
                 {Object.entries(selected.felder).map(([k, v]) => (

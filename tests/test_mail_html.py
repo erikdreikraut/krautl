@@ -1,7 +1,7 @@
 import unittest
 from email.message import EmailMessage
 
-from app.mail_html import html_teil_aus_mail
+from app.mail_html import html_teil_aus_mail, mail_ansicht_aus_rohdaten
 
 
 class MailHTMLTest(unittest.TestCase):
@@ -101,6 +101,46 @@ class MailHTMLTest(unittest.TestCase):
         mail.set_content("Nur Text")
 
         self.assertIsNone(html_teil_aus_mail(mail.as_bytes()))
+
+    def test_mailansicht_zeigt_eingebetteten_kalendertermin_mit_windows_zeitzone(self):
+        mail = EmailMessage()
+        mail.set_content("Gerne sende ich dir den Termin.")
+        mail.add_alternative("<p>Gerne sende ich dir den Termin.</p>", subtype="html")
+        mail.add_alternative(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\n"
+            "BEGIN:VEVENT\r\nUID:termin@example.test\r\n"
+            "DTSTART;TZID=W. Europe Standard Time:20261202T110000\r\n"
+            "DTEND;TZID=W. Europe Standard Time:20261202T113000\r\n"
+            "END:VEVENT\r\nEND:VCALENDAR\r\n",
+            subtype="calendar", params={"method": "REQUEST"},
+        )
+
+        ansicht = mail_ansicht_aus_rohdaten(mail.as_bytes())
+
+        self.assertIn("Gerne sende ich dir den Termin.", ansicht["html"])
+        self.assertEqual([{
+            "beginn": "2026-12-02T10:00:00+00:00", "ende": "2026-12-02T10:30:00+00:00",
+            "ganztag": False, "zeitzone": None, "abgesagt": False,
+        }], ansicht["kalendertermine"])
+
+    def test_ungueltiger_kalender_verdeckt_weder_mail_noch_gueltigen_anhang(self):
+        mail = EmailMessage()
+        mail.set_content("Termin im Anhang")
+        mail.add_attachment("kein Kalender", subtype="calendar")
+        mail.add_attachment(
+            b"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:CANCEL\r\n"
+            b"BEGIN:VEVENT\r\nUID:termin@example.test\r\nDTSTART;VALUE=DATE:20261202\r\n"
+            b"DTEND;VALUE=DATE:20261204\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+            maintype="application", subtype="octet-stream", filename="termin.ics",
+        )
+
+        ansicht = mail_ansicht_aus_rohdaten(mail.as_bytes())
+
+        self.assertIsNone(ansicht["html"])
+        self.assertEqual([{
+            "beginn": "2026-12-02", "ende": "2026-12-03",
+            "ganztag": True, "zeitzone": None, "abgesagt": True,
+        }], ansicht["kalendertermine"])
 
 
 if __name__ == "__main__":

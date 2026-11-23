@@ -49,7 +49,7 @@ from .rechnungen import (
     rechnungsdatei_aus_mail_laden,
 )
 from .mail_anhaenge import anhang_aus_mail_laden, mail_rohdaten_aus_ablage_laden
-from .mail_html import html_teil_aus_mail
+from .mail_html import mail_ansicht_aus_rohdaten
 from .uebersetzungen import (
     antwort_in_originalsprache_uebersetzen, ist_deutsche_sprache,
     uebersetzung_fuer_mail_sicherstellen,
@@ -1117,7 +1117,7 @@ async def mail_html_ansehen(
             zielpostfach,
             zielordner,
         )
-        html = await asyncio.to_thread(html_teil_aus_mail, eml)
+        ansicht = await asyncio.to_thread(mail_ansicht_aus_rohdaten, eml)
     except RuntimeError as exc:
         logger.warning("HTML-Teil von Mail %s nicht abrufbar: %s", mail_id, exc)
         raise HTTPException(
@@ -1129,7 +1129,7 @@ async def mail_html_ansehen(
         ) from exc
 
     return JSONResponse(
-        content={"html": html},
+        content=ansicht,
         headers={"Cache-Control": "private, no-store"},
     )
 

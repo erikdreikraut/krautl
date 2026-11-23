@@ -133,7 +133,7 @@ async def wartende_aufgaben_ausfuehren(
                     ausgeloest_von=ausgeloest_von, detail=str(exc),
                 ))
                 await session.commit()
-                return {"status": "fehlgeschlagen", "detail": str(exc)}
+                return {"status": "fehlgeschlagen", "aufgabe_typ": RECHNUNG_VERWALTEN, "detail": str(exc)}
             wartend.status = "erledigt"
             wartend.erledigt_am = datetime.now(timezone.utc)
             wartend.fehler = None

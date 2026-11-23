@@ -11,6 +11,8 @@ from html import escape
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
+from .mail_kalender import kalendertermine_aus_mail
+
 
 _ERLAUBTE_TAGS = {
     "a", "abbr", "address", "article", "aside", "b", "big", "blockquote",
@@ -150,7 +152,15 @@ class _SicheresMailHTML(HTMLParser):
 
 def html_teil_aus_mail(raw: bytes) -> str | None:
     """Liefert den bereinigten HTML-Teil oder None bei reinen Textmails."""
+    return _html_teil(message_from_bytes(raw, policy=policy.default))
+
+
+def mail_ansicht_aus_rohdaten(raw: bytes) -> dict:
     nachricht = message_from_bytes(raw, policy=policy.default)
+    return {"html": _html_teil(nachricht), "kalendertermine": kalendertermine_aus_mail(nachricht)}
+
+
+def _html_teil(nachricht) -> str | None:
     teil = nachricht.get_body(preferencelist=("html",))
     if teil is None or teil.get_content_type() != "text/html":
         return None

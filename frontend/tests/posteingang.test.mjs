@@ -36,6 +36,46 @@ function mail(id, betreff, tag) {
     zuweisbareRollen: ["admin", "sachbearbeiter"], konfidenz: 1};
 }
 
+test("Fehlende Belege erzeugen keinen Hinweis im Posteingang", async t => {
+  const {api, PosteingangView, mount} = await testEingang(t);
+  const aufgabe_typ = "RECHNUNG_VERWALTEN";
+  const bestaetigen = t.mock.method(api, "mailBestaetigen", async () => ({
+    status: "fehlgeschlagen", aufgabe_typ, detail: "Anhänge enthalten laut Auswertung keine Rechnung",
+  }));
+  const ohneBeleg = {...mail(1, "Ohne Beleg", "03"), bestaetigungErforderlich: true,
+    aufgaben: [{id: 1, status: "fehlgeschlagen", aufgabe_typ, fehler: "Kein unterstützter Rechnungsanhang gefunden"}]};
+  const mitFehler = {...mail(2, "Ablagefehler", "02"),
+    aufgaben: [{id: 2, status: "fehlgeschlagen", aufgabe_typ, fehler: "Dropbox nicht erreichbar"}]};
+  const view = await mount(React.createElement(PosteingangView, {
+    mails: [ohneBeleg, mitFehler], katalog: [], benutzer: {benutzername: "erik"},
+    alleMails: false, onReload: async () => {},
+  }));
+  const mailWaehlen = betreff => view.root.findAllByType("button").find(button =>
+    button.findAllByType("div").some(div => div.children.includes(betreff))).props.onClick();
+  await act(async () => mailWaehlen("Ohne Beleg"));
+  assert.equal(view.root.findAllByProps({role: "alert"}).length, 0);
+  const fertig = view.root.findAllByType("button").find(button => button.children.includes("Erledigt"));
+  await act(async () => fertig.props.onClick());
+  assert.equal(bestaetigen.mock.callCount(), 1);
+  assert.doesNotMatch(JSON.stringify(view.toJSON()), /Anhänge enthalten laut Auswertung keine Rechnung/);
+  assert.match(JSON.stringify(view.toJSON()), /Dropbox nicht erreichbar/);
+});
+
+test("Ein Termin wird auch bei übersetzter Mail oberhalb des Originaltexts angezeigt", async t => {
+  const {api, PosteingangView, mount} = await testEingang(t);
+  api.mailHtml.mock.mockImplementation(async () => ({html: "<p>Meeting invitation</p>", kalendertermine: [{
+    beginn: "2026-12-02T10:00:00+00:00", ende: "2026-12-02T10:30:00+00:00",
+    ganztag: false, zeitzone: null, abgesagt: false,
+  }]}));
+  const view = await mount(React.createElement(PosteingangView, {
+    mails: [{...mail(3, "Einladung", "03"), uebersetzung: "Einladung auf Deutsch", originalsprache: "Englisch"}],
+    katalog: [], benutzer: {benutzername: "erik"}, alleMails: false, onReload: async () => {},
+  }));
+  const anzeige = JSON.stringify(view.toJSON());
+  assert.match(anzeige, /Kalendertermin.*2\. Dezember 2026.*11:00.*11:30/);
+  assert.doesNotMatch(JSON.stringify(view.root.findByType("details").findAllByType("div").map(el => el.children.join(" "))), /Kalendertermin/);
+});
+
 test("Erledigen am Listenende öffnet direkt die nächstälteste Mail", async t => {
   const {api, PosteingangView, mount} = await testEingang(t);
   const laden = api.mailHtml;
