@@ -145,6 +145,14 @@ class Mail(Base):
     )
 
 
+class MailWiedervorlage(Base):
+    __tablename__ = "mail_wiedervorlage"
+    mail_id: Mapped[int] = mapped_column(
+        ForeignKey("mail.id", ondelete="CASCADE"), primary_key=True
+    )
+    bis: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class MailReservierung(Base):
     """Kurzlebige, automatisch erneuerte Bearbeitungsreservierung einer Mail."""
     __tablename__ = "mail_reservierung"

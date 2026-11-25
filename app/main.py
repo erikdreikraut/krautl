@@ -1,10 +1,11 @@
 import asyncio
 import logging
 import mimetypes
+from calendar import monthrange
 from contextlib import suppress
 from datetime import date, datetime, timedelta, timezone
 from pathlib import PurePosixPath
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 from fastapi import (
@@ -16,7 +17,7 @@ from sqlalchemy import String, and_, case, cast, delete, func, literal, or_, sel
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .db import get_session, engine, SessionLocal
+from .db import get_session, engine, schema_anlegen, SessionLocal
 from .google_product_qa import FEED_PFAD, GoogleProductQaFeed
 from .aufgaben import aufgaben_fuer_mail_anlegen, bestaetigung_erfassen, wartende_aufgaben_ausfuehren
 from .antworten import (
@@ -35,7 +36,7 @@ from .berechtigungen import (
     verweigerte_klassifikationen, zustaendigkeitsfilter,
 )
 from .models import (
-    Aktionslog, Base, Mail, MailAufgabe, MailNotiz, MailReservierung, Postfach, Rechnung,
+    Aktionslog, Mail, MailAufgabe, MailNotiz, MailReservierung, MailWiedervorlage, Postfach, Rechnung,
     FaqEintrag, FaqVorschlag,
     Entwurf, EntwurfPrueffassung, Versandkopie, Korrektur, Klassifikation, KlassifikationAufgabe, SystemStatus,
     Produkt, Produktfamilie, RollenMailzugriff, Wissenseintrag, WissensVorschlag,
@@ -168,6 +169,16 @@ class MailZuweisung(BaseModel):
 
 class MailNotizAenderung(BaseModel):
     text: str = Field(default="", max_length=10000)
+
+
+class WiedervorlageEntwurf(BaseModel):
+    id: int
+    text: str
+
+
+class WiedervorlageAenderung(BaseModel):
+    dauer: Literal["12h", "1d", "2d", "3d", "1w", "1m"]
+    entwurf: WiedervorlageEntwurf | None = None
 
 
 class Anmeldung(BaseModel):
@@ -324,6 +335,32 @@ async def _mailzugriff_erfordern(session, request: Request, mail: Mail | None):
         raise HTTPException(status_code=403, detail="Kein Zugriff auf diese Mailart")
 
 
+def _wiedervorlage_bis(jetzt: datetime, dauer: str) -> datetime:
+    if dauer == "12h":
+        return jetzt + timedelta(hours=12)
+    lokal = jetzt.astimezone(ZoneInfo("Europe/Berlin"))
+    if dauer == "1m":
+        jahr = lokal.year + (lokal.month == 12)
+        monat = lokal.month % 12 + 1
+        ziel = lokal.replace(year=jahr, month=monat, day=min(lokal.day, monthrange(jahr, monat)[1]))
+    else:
+        ziel = lokal + timedelta(days={"1d": 1, "2d": 2, "3d": 3, "1w": 7}[dauer])
+    return ziel.astimezone(timezone.utc)
+
+
+def _aktive_wiedervorlage(mail_id, jetzt: datetime):
+    return select(MailWiedervorlage.bis).where(
+        MailWiedervorlage.mail_id == mail_id, MailWiedervorlage.bis > jetzt,
+    )
+
+
+def _sichtbarer_maileingang():
+    return and_(
+        Mail.im_krautl_posteingang.is_(True),
+        ~_aktive_wiedervorlage(Mail.id, datetime.now(timezone.utc)).exists(),
+    )
+
+
 def _reservierung_ist_aktiv(
     reservierung: MailReservierung,
     jetzt: datetime | None = None,
@@ -369,7 +406,7 @@ async def on_startup():
     # Für den Start reicht create_all. Sobald das Schema sich weiterentwickelt,
     # auf Alembic-Migrationen umsteigen (siehe README).
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await schema_anlegen(conn)
         from scripts.migrate_google_product_qa import migriere
         await migriere(conn)
     try:
@@ -501,7 +538,7 @@ async def liste_mails(
             selectinload(Mail.postfach),
             selectinload(Mail.notiz),
         )
-        .where(Mail.im_krautl_posteingang.is_(True))
+        .where(_sichtbarer_maileingang())
         .order_by(
             case(
                 (func.lower(Klassifikation.standard_prio) == "hoch", 0),
@@ -570,7 +607,7 @@ async def mail_zaehler(
     if "*" in verweigert:
         return {"meine": 0, "alle": 0}
 
-    bedingungen = [Mail.im_krautl_posteingang.is_(True)]
+    bedingungen = [_sichtbarer_maileingang()]
     if verweigert:
         bedingungen.append(or_(
             Mail.klassifikation_id.is_(None),
@@ -608,6 +645,8 @@ async def mail_reservieren(
         raise HTTPException(status_code=409, detail="Mail ist bereits erledigt")
 
     jetzt = datetime.now(timezone.utc)
+    if await session.scalar(_aktive_wiedervorlage(mail_id, jetzt)) is not None:
+        raise HTTPException(status_code=409, detail="Mail ist auf Wiedervorlage")
     benutzer = request.state.benutzer
     reservierung = await session.get(MailReservierung, mail_id)
     if (
@@ -656,6 +695,67 @@ async def mail_reservierung_freigeben(
     )
     await session.commit()
     return {"status": "freigegeben"}
+
+
+@app.put("/mails/{mail_id}/wiedervorlage")
+async def mail_wiedervorlegen(
+    mail_id: int,
+    aenderung: WiedervorlageAenderung,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    # Wie die Freigabe zuerst den Entwurf sperren, falls eine neue Fassung mitkommt.
+    entwurf = None
+    if aenderung.entwurf is not None:
+        entwurf = await session.scalar(select(Entwurf).where(
+            Entwurf.id == aenderung.entwurf.id, Entwurf.mail_id == mail_id,
+        ).with_for_update())
+    mail = await session.get(Mail, mail_id, with_for_update=True)
+    await _mailzugriff_erfordern(session, request, mail)
+    if not mail.im_krautl_posteingang:
+        raise HTTPException(status_code=409, detail="Mail ist bereits erledigt")
+
+    jetzt = datetime.now(timezone.utc)
+    benutzer = request.state.benutzer
+    reservierung = await session.get(MailReservierung, mail_id)
+    if (
+        reservierung is not None
+        and _reservierung_ist_aktiv(reservierung, jetzt)
+        and reservierung.benutzername != benutzer["benutzername"]
+    ):
+        raise HTTPException(status_code=409, detail="Mail wird gerade von einer anderen Person bearbeitet")
+
+    aktiv_bis = await session.scalar(_aktive_wiedervorlage(mail_id, jetzt))
+    if aenderung.entwurf is not None:
+        if entwurf is None or entwurf.status != "wartet":
+            raise HTTPException(status_code=409, detail="Antwortentwurf ist nicht mehr offen")
+        letzte_fassung = await session.scalar(select(EntwurfPrueffassung.text).where(
+            EntwurfPrueffassung.id == _neueste_prueffassung_id(entwurf.id).scalar_subquery(),
+        ))
+        bisheriger_text = entwurf.text_ki if letzte_fassung is None else letzte_fassung
+        if aenderung.entwurf.text != bisheriger_text:
+            if aktiv_bis is not None:
+                raise HTTPException(status_code=409, detail="Mail liegt bereits auf Wiedervorlage")
+            session.add(EntwurfPrueffassung(entwurf_id=entwurf.id, text=aenderung.entwurf.text))
+    if aktiv_bis is not None:
+        return {"bis": aktiv_bis if aktiv_bis.tzinfo else aktiv_bis.replace(tzinfo=timezone.utc)}
+
+    bis = _wiedervorlage_bis(jetzt, aenderung.dauer)
+    vormerkung = await session.get(MailWiedervorlage, mail_id)
+    if vormerkung is None:
+        session.add(MailWiedervorlage(mail_id=mail_id, bis=bis))
+    else:
+        vormerkung.bis = bis
+    await _eigene_mailreservierung_freigeben(session, mail_id, benutzer["benutzername"])
+    lokal = bis.astimezone(ZoneInfo("Europe/Berlin"))
+    session.add(Aktionslog(
+        mail_id=mail_id,
+        ereignis="mail_wiedervorlage",
+        ausgeloest_von=benutzer["name"],
+        detail=f"Auf Wiedervorlage bis {lokal:%d.%m.%Y, %H:%M} Uhr",
+    ))
+    await session.commit()
+    return {"bis": bis}
 
 
 @app.put("/mails/{mail_id}/notiz")
@@ -2234,7 +2334,7 @@ async def liste_entwuerfe(
         Entwurf.mail_id, Entwurf.id).scalar_subquery())
         .join(Mail, Entwurf.mail_id == Mail.id)
         .outerjoin(EntwurfPrueffassung, EntwurfPrueffassung.id == _neueste_prueffassung_id(Entwurf.id).scalar_subquery())
-        .where(Entwurf.status == "wartet", Mail.im_krautl_posteingang.is_(True)))
+        .where(Entwurf.status == "wartet", _sichtbarer_maileingang()))
     if verweigert:
         abfrage = abfrage.where(or_(
             Mail.klassifikation_id.is_(None),

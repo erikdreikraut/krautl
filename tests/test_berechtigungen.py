@@ -1,6 +1,6 @@
 import os
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from fastapi import HTTPException
@@ -11,13 +11,15 @@ os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_berechtigungen
 from app.berechtigungen import darf_mail_sehen
 from app.db import SessionLocal, engine
 from app.main import (
-    KlassifikationAenderung, MailZuweisung, RollenMailzugriffAenderung,
+    KlassifikationAenderung, MailZuweisung, RollenMailzugriffAenderung, WiedervorlageAenderung,
+    _wiedervorlage_bis,
     aktionslog_mail_ansehen, klassifikation_aktualisieren, liste_aktionslog, liste_entwuerfe,
-    liste_klassifikationen, liste_mails, mail_antwortentwurf_erzeugen, mail_zaehler,
+    liste_klassifikationen, liste_mails, mail_antwortentwurf_erzeugen, mail_reservieren,
+    mail_wiedervorlegen, mail_zaehler,
     mail_zustaendigkeit_aendern, rollen_mailzugriff_speichern,
 )
 from app.models import (
-    Aktionslog, Base, Entwurf, Klassifikation, Mail, MailNotiz, Postfach,
+    Aktionslog, Base, Entwurf, Klassifikation, Mail, MailNotiz, MailWiedervorlage, Postfach,
     RollenMailzugriff,
 )
 
@@ -76,6 +78,55 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
         async with SessionLocal() as session:
             mails = (await session.execute(select(Mail))).scalars().all()
             self.assertTrue(all([await darf_mail_sehen(session, ADMIN, mail) for mail in mails]))
+
+    async def test_wiedervorlage_blendet_mail_und_entwurf_bis_zum_ablauf_aus(self):
+        admin = request_fuer({**ADMIN, "benutzername": "erik"})
+        sachbearbeiter = request_fuer({**SACHBEARBEITER, "benutzername": "gursewak"})
+        async with SessionLocal() as session:
+            mail = await session.scalar(select(Mail).where(Mail.betreff == "Erlaubt"))
+            entwurf = Entwurf(mail_id=mail.id, text_ki="Alter Text", status="wartet")
+            session.add(entwurf)
+            await session.commit()
+            mail_id, entwurf_id = mail.id, entwurf.id
+            await mail_reservieren(mail_id, sachbearbeiter, session)
+
+        async with SessionLocal() as session:
+            with self.assertRaises(HTTPException) as konflikt:
+                await mail_wiedervorlegen(mail_id, WiedervorlageAenderung(dauer="12h"), admin, session)
+            self.assertEqual(409, konflikt.exception.status_code)
+
+        async with SessionLocal() as session:
+            aenderung = WiedervorlageAenderung(
+                dauer="12h", entwurf={"id": entwurf_id, "text": "Überarbeiteter Text"},
+            )
+            erste = await mail_wiedervorlegen(mail_id, aenderung, sachbearbeiter, session)
+            self.assertEqual(erste, await mail_wiedervorlegen(mail_id, aenderung, sachbearbeiter, session))
+            with self.assertRaises(HTTPException) as verborgen:
+                await mail_reservieren(mail_id, sachbearbeiter, session)
+            self.assertEqual(409, verborgen.exception.status_code)
+
+        async with SessionLocal() as session:
+            self.assertEqual(["Gesperrt"], [m["betreff"] for m in await liste_mails(admin, session)])
+            self.assertEqual({"meine": 1, "alle": 0}, await mail_zaehler(admin, session))
+            self.assertEqual([], await liste_mails(sachbearbeiter, session))
+            self.assertEqual([], await liste_entwuerfe(admin, session))
+            mail = await session.get(Mail, mail_id)
+            self.assertTrue(mail.im_krautl_posteingang)
+            vormerkung = await session.get(MailWiedervorlage, mail_id)
+            vormerkung.bis = datetime.now(timezone.utc) - timedelta(seconds=1)
+            await session.commit()
+
+        async with SessionLocal() as session:
+            self.assertEqual(["Gesperrt", "Erlaubt"], [m["betreff"] for m in await liste_mails(admin, session)])
+            self.assertEqual({"meine": 2, "alle": 0}, await mail_zaehler(admin, session))
+            self.assertEqual("Überarbeiteter Text", (await liste_entwuerfe(admin, session))[0]["arbeitsfassung"])
+            self.assertTrue((await mail_reservieren(mail_id, sachbearbeiter, session))["eigene"])
+
+    def test_wiedervorlage_monat_und_sommerzeit(self):
+        januar = datetime(2027, 1, 31, 9, tzinfo=timezone.utc)
+        self.assertEqual(datetime(2027, 2, 28, 9, tzinfo=timezone.utc), _wiedervorlage_bis(januar, "1m"))
+        vor_sommerzeit = datetime(2027, 3, 27, 9, tzinfo=timezone.utc)
+        self.assertEqual(datetime(2027, 3, 28, 8, tzinfo=timezone.utc), _wiedervorlage_bis(vor_sommerzeit, "1d"))
 
     async def test_sachbearbeiter_sieht_nur_freigegebene_mailarten(self):
         async with SessionLocal() as session:

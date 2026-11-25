@@ -5,8 +5,8 @@ import os
 import time
 from datetime import datetime, timezone
 
-from .db import SessionLocal, engine
-from .models import Base, SystemStatus
+from .db import SessionLocal, engine, schema_anlegen
+from .models import SystemStatus
 from .worker import alle_postfaecher_abrufen
 
 logging.basicConfig(
@@ -71,7 +71,7 @@ def _status_fuer_ergebnis(ergebnis: dict) -> dict:
 
 async def main() -> None:
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await schema_anlegen(conn)
 
     logger.info("Mail-Worker gestartet; Abrufintervall %d Sekunden", POLL_INTERVALL)
     await _status_speichern("startet", detail="Worker gestartet")

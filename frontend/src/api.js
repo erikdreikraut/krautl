@@ -123,6 +123,12 @@ export const api = {
     anfrage(`/mails/${mailId}/bestaetigen`, { method: "POST" }),
   mailErledigen: (mailId) =>
     anfrage(`/mails/${mailId}/erledigen`, { method: "POST" }),
+  mailWiedervorlegen: (mailId, dauer, entwurf) =>
+    anfrage(`/mails/${mailId}/wiedervorlage`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dauer, entwurf }),
+    }),
   mailLoeschen: (mailId) =>
     anfrage(`/mails/${mailId}`, { method: "DELETE" }),
   mailAnhangLaden: async (mailId, index) => {

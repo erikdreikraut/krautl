@@ -36,6 +36,29 @@ function mail(id, betreff, tag) {
     zuweisbareRollen: ["admin", "sachbearbeiter"], konfidenz: 1};
 }
 
+test("Wiedervorlage übernimmt den bearbeiteten Entwurf und blendet die Mail sofort aus", async t => {
+  const {api, PosteingangView, mount} = await testEingang(t);
+  const wiedervorlegen = t.mock.method(api, "mailWiedervorlegen", async () => ({bis: "2026-09-06T12:00:00Z"}));
+  const erste = {...mail(1, "Zuerst ausblenden", "03"), entwurf: {id: 4, text: "Alter Text"}};
+  const zweite = mail(2, "Weiter bearbeiten", "02");
+  const eingang = mails => React.createElement(PosteingangView, {
+    mails, katalog: [], benutzer: {benutzername: "erik"}, alleMails: false,
+    onReload: async () => view.update(eingang([zweite])),
+  });
+  const view = await mount(eingang([erste, zweite]));
+  await act(async () => view.root.findByType("textarea").props.onChange({target: {value: "Überarbeiteter Text"}}));
+  const knopf = view.root.findAllByType("button").find(button => button.children.includes("Wiedervorlage"));
+  await act(async () => knopf.props.onClick());
+  const optionen = view.root.findAllByProps({role: "menuitem"});
+  assert.deepEqual(optionen.map(option => option.findByType("span").children[0]),
+    ["12 Stunden", "1 Tag", "2 Tage", "3 Tage", "1 Woche", "1 Monat"]);
+  await act(async () => optionen[3].props.onClick());
+  assert.deepEqual(wiedervorlegen.mock.calls[0].arguments, [erste.id, "3d", {id: 4, text: "Überarbeiteter Text"}]);
+  assert.equal(view.root.findByType("h2").children[0], zweite.betreff);
+  await act(async () => view.update(eingang([erste, zweite])));
+  assert.match(JSON.stringify(view.toJSON()), /Zuerst ausblenden/);
+});
+
 test("Fehlende Belege erzeugen keinen Hinweis im Posteingang", async t => {
   const {api, PosteingangView, mount} = await testEingang(t);
   const aufgabe_typ = "RECHNUNG_VERWALTEN";

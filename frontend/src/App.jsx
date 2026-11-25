@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useImperativeHandle, useMemo, useState, useRef } from "react";
 import {
   Search, ChevronDown, CheckCircle2, PenLine, Paperclip, X,
   Inbox as InboxIcon, Archive, Receipt, BookOpen, Check, FolderCog, Sparkles, Settings,
@@ -204,6 +204,7 @@ const EREIGNIS_LABEL = {
   mail_uebersetzt: "Deutsche Arbeitsübersetzung erstellt",
   antwort_uebersetzung_fehlgeschlagen: "Antwortübersetzung fehlgeschlagen",
   mail_manuell_erledigt: "Manuell erledigt",
+  mail_wiedervorlage: "Auf Wiedervorlage",
   mail_notiz_gespeichert: "Mailnotiz gespeichert",
   mail_notiz_geloescht: "Mailnotiz gelöscht",
   mail_geloescht: "Mail gelöscht",
@@ -386,6 +387,15 @@ function AuswahlMenue({ label, title, icon: Icon, wert, optionen, onWaehlen, dea
     </div>
   );
 }
+
+const WIEDERVORLAGE_OPTIONEN = [
+  { value: "12h", label: "12 Stunden" },
+  { value: "1d", label: "1 Tag" },
+  { value: "2d", label: "2 Tage" },
+  { value: "3d", label: "3 Tage" },
+  { value: "1w", label: "1 Woche" },
+  { value: "1m", label: "1 Monat" },
+];
 
 function KategorieKorrektur({ mail, katalog, onKorrigiert, onMeldung, deaktiviert = false }) {
   const [wird_gesendet, setWirdGesendet] = useState(false);
@@ -987,6 +997,8 @@ export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMail
   const gemeldeteAufgabenfehler = useRef(new Set());
   const eigeneReservierungMailId = useRef(null);
   const aktiveMailId = useRef(null);
+  const entwurfstand = useRef(null);
+  const [wiedervorlageMailId, setWiedervorlageMailId] = useState(null);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
@@ -1246,18 +1258,30 @@ export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMail
     await onReload();
   }
 
-  async function erledigenAbschliessen(mailId) {
+  async function mailAusblenden(mailId) {
     reservierungFreigeben(mailId);
     setLokalAusgeblendeteMailIds((alt) => new Set([...alt, mailId]));
     setMobileDetailOffen(false);
     await onReload();
   }
 
-  async function loeschenAbschliessen(mailId) {
-    reservierungFreigeben(mailId);
-    setLokalAusgeblendeteMailIds((alt) => new Set([...alt, mailId]));
-    setMobileDetailOffen(false);
-    await onReload();
+  async function wiedervorlegen(mailId, dauer) {
+    const stand = entwurfstand.current;
+    if (stand?.prueft || stand?.hatAnhaenge) {
+      setStatusMeldung(stand.prueft
+        ? "Bitte warte, bis die Antwortverarbeitung abgeschlossen ist."
+        : "Bitte entferne die noch nicht gespeicherten Antwortanhänge vor der Wiedervorlage.");
+      return;
+    }
+    setWiedervorlageMailId(mailId);
+    try {
+      await api.mailWiedervorlegen(mailId, dauer, stand?.geaenderterEntwurf);
+      await mailAusblenden(mailId);
+    } catch (e) {
+      setStatusMeldung(`Wiedervorlage konnte nicht gespeichert werden: ${e.message}`);
+    } finally {
+      setWiedervorlageMailId(null);
+    }
   }
 
   async function anhangHerunterladen(mailId, index, dateiname) {
@@ -1390,7 +1414,7 @@ export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMail
                 <div className="flex flex-wrap items-center justify-end gap-2 mail-detail-actions">
                   <ErledigtButton
                     mail={selected}
-                    onErledigt={erledigenAbschliessen}
+                    onErledigt={mailAusblenden}
                     onMeldung={setStatusMeldung}
                     deaktiviert={vonAnderemReserviert}
                   />
@@ -1403,7 +1427,15 @@ export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMail
                     onMeldung={setStatusMeldung}
                     deaktiviert={vonAnderemReserviert}
                   />
-                  <MailLoeschenButton mail={selected} onGeloescht={loeschenAbschliessen} deaktiviert={vonAnderemReserviert} />
+                  <AuswahlMenue
+                    label="Wiedervorlage"
+                    title="Mail bis zur Wiedervorlage aus dem Eingang ausblenden"
+                    optionen={WIEDERVORLAGE_OPTIONEN}
+                    onWaehlen={(dauer) => wiedervorlegen(selected.id, dauer)}
+                    deaktiviert={vonAnderemReserviert || wiedervorlageMailId !== null}
+                    breite="150px"
+                  />
+                  <MailLoeschenButton mail={selected} onGeloescht={mailAusblenden} deaktiviert={vonAnderemReserviert} />
                 </div>
               </div>
               <h2 style={{ ...fontDisplay, fontSize: "19px", marginTop: "12px" }}>{selected.betreffDeutsch || selected.betreff}</h2>
@@ -1454,7 +1486,8 @@ export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMail
                   ...alt,
                   [selected.id]: ergebnis,
                 }))}
-                deaktiviert={vonAnderemReserviert}
+                deaktiviert={vonAnderemReserviert || wiedervorlageMailId === selected.id}
+                entwurfstand={entwurfstand}
               />
             ) : versandbestaetigungen[selected.id] ? (
               <div className="px-6 py-4" style={{ borderBottom: `1px solid ${tokens.line}` }}>
@@ -1540,7 +1573,7 @@ export function PosteingangView({ mails: emailMails, katalog, benutzer, alleMail
 
 export function EntwurfPanel({
   entwurf, kiPruefung, originalsprache, onErledigt, onVersendet, onGeprueft,
-  deaktiviert = false,
+  deaktiviert = false, entwurfstand,
 }) {
   const [lokalerText, setText] = useState(null);
   const [anhaenge, setAnhaenge] = useState([]);
@@ -1550,6 +1583,11 @@ export function EntwurfPanel({
   const [versanderfolg, setVersanderfolg] = useState(null);
   const dateiEingabe = useRef(null);
   const text = lokalerText ?? entwurf.text;
+  useImperativeHandle(entwurfstand, () => ({
+    prueft,
+    hatAnhaenge: anhaenge.length > 0,
+    geaenderterEntwurf: text === entwurf.text ? undefined : { id: entwurf.id, text },
+  }), [prueft, anhaenge.length, entwurf.id, entwurf.text, text]);
   const probleme = pruefhinweise(pruefergebnis?.probleme ?? entwurf.pruefprobleme ?? []);
   const naechsterOhnePruefung = kiPruefung && Boolean(
     pruefergebnis?.naechster_versuch_ohne_pruefung ?? entwurf.naechsterOhnePruefung,
