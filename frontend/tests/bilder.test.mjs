@@ -25,6 +25,7 @@ test("Bilder gruppiert echte Vater/Kinder und filtert ausgeblendete Artikel und 
   t.after(() => act(() => view.unmount()));
   assert.equal(view.root.findAllByType("img").length, 1);
   assert.equal(view.root.findByType("img").props.loading, "lazy");
+  assert.equal(view.root.findByType("img").props.draggable, false);
   const child = view.root.findAllByType("button").find(b=>b.children.includes("Kräuter 100 g"));
   await act(async()=>child.props.onClick());
   assert.equal(selected, "child");
@@ -101,6 +102,25 @@ test("Fehlendes Bild bleibt als Platzhalter mit Position sichtbar und wird nach 
   await act(async()=>view.update(React.createElement(BilderListe,{artikel})));
   assert.equal(view.root.findAllByType("img").length,2);
   assert.doesNotMatch(JSON.stringify(view.toJSON()),/HTTP 400|Fehlerdetails/);
+});
+
+test("Offene Aufträge bleiben beim Öffnen eingeklappt und lassen sich einzeln prüfen", async t => {
+  const server = await createServer({server:{middlewareMode:true, hmr:false}, appType:"custom"});
+  t.after(() => server.close());
+  const { BilderView } = await server.ssrLoadModule("/src/BilderView.jsx");
+  const { api } = await server.ssrLoadModule("/src/api.js");
+  const bildauftraege = [{id:"eins", artikel:"parent", sku:"10", status:"unklar", meldung:"Auftrag prüfen"}];
+  t.mock.method(api, "bilder", async () => ({artikel: rows, status: "ok", bildauftraege}));
+  const pruefen = t.mock.method(api, "bilderAuftragPruefen", async () => { bildauftraege.pop(); });
+  let view;
+  await act(async () => { view = create(React.createElement(BilderView)); });
+  t.after(() => act(() => view.unmount()));
+  const abschnitt = view.root.findAllByType("details").find(el => el.findByType("summary").children.includes("1 offener Bildauftrag"));
+  assert.ok(abschnitt && !abschnitt.props.open);
+  assert.ok(view.root.findByProps({"aria-label":"Shop-Artikel und Bilder"}));
+  await act(async () => abschnitt.findByType("button").props.onClick());
+  assert.deepEqual(pruefen.mock.calls[0].arguments, ["eins"]);
+  assert.doesNotMatch(JSON.stringify(view.toJSON()), /1 offener Bildauftrag/);
 });
 
 test("Ein Status trennt Artikelabbruch und Bildfehler; Filter erhält Ausblendungen", async t => {
@@ -288,7 +308,7 @@ test("Geänderter Bildbestand sperrt Reihenfolgeentwurf statt ihn zu überschrei
   const a={...rows[0],bilder:[{id:"a",position:1,hauptbild:true},{id:"b",position:2,hauptbild:false}]};
   let view;
   await act(async()=>{view=create(React.createElement(BildReihe,{a}));});t.after(()=>act(()=>view.unmount()));
-  await act(async()=>view.root.findByProps({"aria-label":"Bild 2 verschieben: Pfeil links oder rechts"}).props.onKeyDown({key:"ArrowLeft",preventDefault(){}}));
+  await act(async()=>view.root.findByProps({"aria-label":"Bild 2 nach links verschieben"}).props.onClick());
   await act(async()=>view.update(React.createElement(BildReihe,{a:{...a,bilder:[...a.bilder,{id:"c",position:3,hauptbild:false}]}})));
   assert.equal(view.root.findAllByType("button").find(b=>b.children.includes("Reihenfolge speichern")).props.disabled,true);
   assert.match(JSON.stringify(view.toJSON()),/Bildbestand wurde geändert/);
@@ -321,7 +341,7 @@ test("Abgelehnte Reihenfolge stellt gespeicherten Stand wieder her und markiert 
   let view;await act(async()=>{view=create(render(jobs));});t.after(()=>act(()=>view.unmount()));
   const tags=()=>view.root.findAll(n=>n.type==="span"&&n.props.title).map(n=>n.children.join(""));
   assert.deepEqual(tags(),["✓","✓"]);
-  await act(async()=>view.root.findByProps({"aria-label":"Bild 2 verschieben: Pfeil links oder rechts"}).props.onKeyDown({key:"ArrowLeft",preventDefault(){}}));
+  await act(async()=>view.root.findByProps({"aria-label":"Bild 2 nach links verschieben"}).props.onKeyDown({key:"ArrowLeft",preventDefault(){}}));
   assert.deepEqual(tags(),["…","…"]);
   await act(async()=>view.root.findAllByType("button").find(b=>b.children.includes("Reihenfolge speichern")).props.onClick());
   assert.equal(view.root.findAllByType("img")[0].props.src.endsWith("/x"),true);
@@ -331,6 +351,7 @@ test("Abgelehnte Reihenfolge stellt gespeicherten Stand wieder her und markiert 
   await act(async()=>view.update(render([{...jobs[0],status:"unklar",meldung:"Ausgang ungeklärt"}])));
   assert.deepEqual(tags(),["…","…"]);
   assert.equal(view.root.findByProps({"aria-label":"Bild zu 10 hinzufügen"}).props.disabled,true);
+  assert.match(JSON.stringify(view.toJSON()), /Bearbeitung wartet auf die Klärung des Bildauftrags/);
 });
 
 test("Grüner Haken bestätigt nur Wawi unabhängig vom Shop; ein Entwurf hat Vorrang",async t=>{
@@ -340,7 +361,7 @@ test("Grüner Haken bestätigt nur Wawi unabhängig vom Shop; ein Entwurf hat Vo
   let view;await act(async()=>{view=create(React.createElement(BildReihe,{a,auftraege:[{artikel:a.id,status:"wawi"}]}));});t.after(()=>act(()=>view.unmount()));
   const tags=()=>view.root.findAll(n=>n.type==="span"&&n.props.title).map(n=>n.children.join(""));
   assert.deepEqual(tags(),["✓","✓"]);
-  await act(async()=>view.root.findByProps({"aria-label":"Bild 2 verschieben: Pfeil links oder rechts"}).props.onKeyDown({key:"ArrowLeft",preventDefault(){}}));
+  await act(async()=>view.root.findByProps({"aria-label":"Bild 2 nach links verschieben"}).props.onKeyDown({key:"ArrowLeft",preventDefault(){}}));
   assert.deepEqual(tags(),["…","…"]);
   await act(async()=>view.root.findAllByType("button").find(b=>b.children.includes("Verwerfen")).props.onClick());
   await act(async()=>view.update(React.createElement(BildReihe,{a:{...a,shop_pruefung:{status:"wartet",meldung:"Shop noch abweichend"}}})));

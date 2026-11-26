@@ -23,6 +23,10 @@ class BildFehler(JtlFehler):
     """An individual unavailable/invalid image; catalogue and access errors stay fatal."""
 
 
+class ArtikelBildzuordnungFehler(JtlFehler):
+    """Dieser Artikel kann wegen einer fehlenden Bildkennung nicht sicher übernommen werden."""
+
+
 
 def ident(wert):
     try:
@@ -186,8 +190,14 @@ def shop_bilder(detail, katalogzeile=None, einzelshop=False):
         raise JtlFehler("Ungültige Shop-Bildliste.")
     ids = set()
     for bild in bilder:
-        bild_id = ident(bild.get("blobIdentifier"))
-        if bild_id in ids or not isinstance(bild.get("sortNumber"), int):
+        position = bild.get("sortNumber")
+        if not isinstance(position, int):
+            raise JtlFehler("Uneindeutige Bild-ID oder Bildreihenfolge.")
+        try:
+            bild_id = ident(bild.get("blobIdentifier"))
+        except JtlFehler:
+            raise ArtikelBildzuordnungFehler(f"Shop-Bild an Position {position} ohne gültige Bild-ID.") from None
+        if bild_id in ids:
             raise JtlFehler("Uneindeutige Bild-ID oder Bildreihenfolge.")
         ids.add(bild_id)
     return sorted(bilder, key=lambda b: (b["sortNumber"], b["blobIdentifier"]))
@@ -267,28 +277,28 @@ async def abgleichen(client):
         speicher.status_setzen(fortschritt=f"Artikel {nr} von {len(rows)}: {sku}")
         try:
             detail = await lesen_mit_wiederholung(client, "/v2/items/" + key, f"Artikel {sku} (Details)")
-        except ArtikelServerFehler as exc:
+            if detail.get("id") != key or detail.get("identifiers", {}).get("sku") != sku:
+                raise JtlFehler("Artikel-ID oder Artikelnummer passt nicht zum Katalog.")
+            if not speicher.freigegeben(key, rev):
+                continue
+            if detail.get("salesChannels") is None and not einzelshop:
+                einzelshop = await einzelshop_pruefen(client.url)
+            v1_bestand = None
+            if alt.get("bild_api") == "v1" or any(b.get("v1_id") for b in alt.get("bilder", [])):
+                from .bilder_ersetzen import bestand
+                import copy
+                v1_bestand = await bestand(client, alt, fehlertolerant=True)
+                detail = copy.deepcopy(detail)
+                detail.setdefault("images", {})["saleschannelImages"] = [{"saleschannelId": SHOP, "images": [
+                    {"blobIdentifier": b["id"], "sortNumber": b["position"], "isMainImage": b["hauptbild"]}
+                    for b in v1_bestand]}]
+            bilder = shop_bilder(detail, row, einzelshop)
+        except (ArtikelServerFehler, ArtikelBildzuordnungFehler) as exc:
             if speicher.freigegeben(key, rev):
                 ungeprueft[key] = {"id": key, "sku": sku, "name": name, "fehler": str(exc),
                                   "vorhanden": bool(alt)}
                 speicher.status_setzen(ungeprueft=list(ungeprueft.values()), teilstand=True)
             continue
-        if detail.get("id") != key or detail.get("identifiers", {}).get("sku") != sku:
-            raise JtlFehler("Artikel-ID oder Artikelnummer passt nicht zum Katalog.")
-        if not speicher.freigegeben(key, rev):
-            continue
-        if detail.get("salesChannels") is None and not einzelshop:
-            einzelshop = await einzelshop_pruefen(client.url)
-        v1_bestand = None
-        if alt.get("bild_api") == "v1" or any(b.get("v1_id") for b in alt.get("bilder", [])):
-            from .bilder_ersetzen import bestand
-            import copy
-            v1_bestand = await bestand(client, alt, fehlertolerant=True)
-            detail = copy.deepcopy(detail)
-            detail.setdefault("images", {})["saleschannelImages"] = [{"saleschannelId": SHOP, "images": [
-                {"blobIdentifier": b["id"], "sortNumber": b["position"], "isMainImage": b["hauptbild"]}
-                for b in v1_bestand]}]
-        bilder = shop_bilder(detail, row, einzelshop)
         if bilder is None:
             continue
         artikel_kategorien, kategorie_fehler = await kategorien.artikel(detail)

@@ -151,6 +151,21 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(store.lesen()["teilstand"])
         self.assertEqual(store.lesen()["letzter_erfolg"], old["letzter_erfolg"])
 
+    async def test_fehlende_bild_id_sperrt_nur_betroffenen_artikel(self):
+        await self.run_sync()
+        vorher = store.lesen()
+        self.details[uid(1)] = detail(1, images=[{"sortNumber": 2, "isMainImage": True}])
+        self.rows[1]["name"] = "Danach verarbeitet"
+        await self.run_sync()
+
+        stand = store.lesen()
+        self.assertEqual(stand["status"], "warnung")
+        self.assertEqual(stand["letzter_erfolg"], vorher["letzter_erfolg"])
+        self.assertEqual(stand["artikel"][0], vorher["artikel"][0])
+        self.assertEqual(stand["artikel"][1]["name"], "Danach verarbeitet")
+        self.assertEqual([a["sku"] for a in stand["ungeprueft"]], ["A-1"])
+        self.assertIn("Position 2", stand["ungeprueft"][0]["fehler"])
+
     async def test_legacy_single_shop_checked_each_run_and_hidden_skipped(self):
         for d in self.details.values():
             d.pop("salesChannels")

@@ -41,7 +41,7 @@ def sichern(job, datei=None):
 
 
 def oeffentlich(job):
-    return {k: job.get(k) for k in ("id", "artikel", "bild_id", "neu_id", "status", "meldung", "erstellt", "position", "art", "reihenfolge")}
+    return {k: job.get(k) for k in ("id", "artikel", "sku", "bild_id", "neu_id", "status", "meldung", "erstellt", "position", "art", "reihenfolge")}
 
 
 def ablehnungsdetails(response):

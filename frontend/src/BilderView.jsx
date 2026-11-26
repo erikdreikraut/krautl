@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Image, RefreshCw, Search, X, EyeOff } from "lucide-react";
+import { ChevronLeft, ChevronRight, Image, RefreshCw, Search, X, EyeOff } from "lucide-react";
 import { BildEntfernenDialog } from "./BildEntfernenDialog.jsx";
 import { BildDialog } from "./BildDialog.jsx";
 import { api } from "./api.js";
@@ -79,7 +79,7 @@ function Thumbnail({ artikel, bild, position, onBild, auftrag, ungeprueft }) {
     <button type="button" aria-label={`Bild ${bild.position ?? position+1} von ${artikel.sku} vergrößern`} onClick={()=>onBild?.(artikel,bild)} style={{position:"relative",display:"block"}}>
 
     {(fehler || !bild.thumb) ? <div role="img" aria-label={`Bildposition ${bild.position ?? position + 1}: ${meldung}`} title={meldung} className="flex items-center justify-center" style={{ ...box, height: "90px", fontSize: "11px", textAlign: "center"  , color: "#9A4332", padding: "6px" }}>Bild nicht verfügbar</div> : <img
-      src={`/api/bilder/${encodeURIComponent(artikel.id)}/thumb/${bild.thumb}`} loading="lazy" decoding="async"
+      src={`/api/bilder/${encodeURIComponent(artikel.id)}/thumb/${bild.thumb}`} loading="lazy" decoding="async" draggable={false}
       width="120" height="90" alt={`${artikel.name} – Bild ${position + 1}`} onError={() => setFehler(true)}
       style={{ ...box, objectFit: "contain", width: "120px", height: "90px", background: "white" }} />}
     <span title={status[1]} aria-label={status[1]} style={{position:"absolute",right:3,bottom:3,borderRadius:3,width:14,height:14,display:"flex",alignItems:"center",justifyContent:"center",background:status[2],color:"white",fontWeight:700,fontSize:10,lineHeight:1}}>{status[0]}</span>
@@ -95,7 +95,8 @@ export function BildReihe({a, onBild, auftraege=[], gesperrt=false, ungeprueft=f
   const [entwurf,setEntwurf]=useState(null), [sendet,setSendet]=useState(false), [info,setInfo]=useState("");
   const [entfernen,setEntfernen]=useState(null);
   const drag=useRef(null), klickSperre=useRef(0), auftrag=useRef(null);
-  const blockiert=gesperrt||ungeprueft||a.ausgeblendet||sendet||auftraege.some(j=>j.artikel===a.id&&["sendet","unklar"].includes(j.status));
+  const offenerAuftrag = auftraege.find(j => j.artikel === a.id && ["sendet", "unklar"].includes(j.status));
+  const blockiert = gesperrt || ungeprueft || a.ausgeblendet || sendet || Boolean(offenerAuftrag);
   const veraltet=entwurf&&entwurf.stand!==bildStand(a);
   const liste=entwurf&&!veraltet ? entwurf.ids.map(id=>a.bilder.find(b=>b.id===id)) : a.bilder;
   const bewegen=(von,nach)=>{
@@ -118,6 +119,9 @@ export function BildReihe({a, onBild, auftraege=[], gesperrt=false, ungeprueft=f
     finally {setSendet(false);await aktualisiert();}
   };
   return <div className="min-w-0 flex-1">
+    {offenerAuftrag && <p className="mb-1" style={{ color: "#986c14", fontSize: "11px" }}>
+      {offenerAuftrag.status === "sendet" ? "Bildauftrag läuft." : "Bearbeitung wartet auf die Klärung des Bildauftrags."}
+    </p>}
     <div className="flex items-start gap-3 overflow-x-auto pb-1">
       {liste.map((original,n)=>{
         const bild=entwurf&&!veraltet ? {...original,position:n+1,hauptbild:n===0} : original;
@@ -130,9 +134,22 @@ export function BildReihe({a, onBild, auftraege=[], gesperrt=false, ungeprueft=f
           onClickCapture={e=>{if(Date.now()<klickSperre.current){e.preventDefault();e.stopPropagation();}}}>
           <Thumbnail artikel={a} bild={bild} position={n} onBild={entwurf ? undefined : onBild} ungeprueft={ungeprueft}
             auftrag={entwurf ? {status:"entwurf",meldung:"Reihenfolge noch nicht gespeichert"} : job}/>
-          {liste.length>1&&<button type="button" aria-label={`Bild ${n+1} verschieben: Pfeil links oder rechts`} title="Ziehen oder mit den Pfeiltasten verschieben" disabled={blockiert||!!veraltet}
-            onKeyDown={e=>{const ziel=e.key==="ArrowLeft"?n-1:e.key==="ArrowRight"?n+1:-1;if(ziel>=0&&ziel<liste.length){e.preventDefault();bewegen(bild.id,liste[ziel].id);}}}
-            style={{fontSize:11,color:"#6C6F5F",cursor:"grab"}}>↔</button>}
+          {liste.length > 1 && <div className="flex justify-center gap-1">
+            {[{ schritt: -1, richtung: "links", Icon: ChevronLeft }, { schritt: 1, richtung: "rechts", Icon: ChevronRight }].map(({ schritt, richtung, Icon }) => {
+              const nachbar = liste[n + schritt];
+              return <button type="button" key={richtung}
+                aria-label={`Bild ${n + 1} nach ${richtung} verschieben`}
+                title={`Nach ${richtung} verschieben`}
+                disabled={blockiert || !!veraltet || !nachbar}
+                onClick={() => nachbar && bewegen(bild.id, nachbar.id)}
+                onKeyDown={e => {
+                  const ziel = liste[n + (e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0)];
+                  if (ziel && ziel.id !== bild.id) { e.preventDefault(); bewegen(bild.id, ziel.id); }
+                }}
+                className="p-1 disabled:opacity-40"
+                style={{ color: "#6C6F5F" }}><Icon size={15} /></button>;
+            })}
+          </div>}
         </div>;
       })}
       <button type="button" aria-label={`Bild zu ${a.sku} hinzufügen`} title="Bild hinzufügen" onClick={()=>onBild?.(a,null)} disabled={blockiert||!!entwurf} className="shrink-0" style={{...box,width:120,height:90,fontSize:32,color:"#2C5A18"}}>+</button>
@@ -209,6 +226,54 @@ export function BilderStatus({ daten, fehler }) {
   </details>;
 }
 
+function OffeneBildauftraege({ auftraege, artikel, abgleichLaeuft, onGeprueft }) {
+  const [prueft, setPrueft] = useState(null);
+  const [fehler, setFehler] = useState(null);
+  const offen = auftraege.filter(auftrag => ["sendet", "unklar"].includes(auftrag.status));
+  if (!offen.length) return null;
+
+  async function pruefen(auftrag) {
+    setPrueft(auftrag.id);
+    setFehler(null);
+    try {
+      await api.bilderAuftragPruefen(auftrag.id);
+      await onGeprueft();
+    } catch (e) {
+      setFehler({ id: auftrag.id, text: e.message });
+    } finally {
+      setPrueft(null);
+    }
+  }
+
+  return (
+    <details className="mb-3 px-3 py-2" style={box}>
+      <summary className="cursor-pointer">
+        {offen.length === 1 ? "1 offener Bildauftrag" : `${offen.length} offene Bildaufträge`}
+      </summary>
+      <ul className="mt-2 max-h-64 overflow-y-auto divide-y" style={{ borderColor: "#DDD9C4" }}>
+        {offen.map(auftrag => (
+          <li key={auftrag.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+            <div>
+              <strong>{auftrag.sku || artikel.find(a => a.id === auftrag.artikel)?.sku || "Artikel"}</strong>
+              <p>{auftrag.meldung}</p>
+              {fehler?.id === auftrag.id && <p role="alert" style={{ color: "#9A4332" }}>{fehler.text}</p>}
+            </div>
+            <button
+              type="button"
+              disabled={abgleichLaeuft || prueft !== null}
+              className="disabled:opacity-50"
+              style={button}
+              onClick={() => pruefen(auftrag)}
+            >
+              {prueft === auftrag.id ? "Wawi-Stand wird geprüft …" : "Wawi-Stand prüfen"}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 export async function importiereVorschaudatei(text, senden, fortschritt = () => {}) {
   const data = JSON.parse(text);
   if (data.format !== "krautl-shopvorschau-2") {
@@ -252,7 +317,6 @@ export async function importiereVorschaudatei(text, senden, fortschritt = () => 
 export function BilderView() {
   const [daten, setDaten] = useState(null);
   const [bildAuswahl,setBildAuswahl] = useState(null);
-  const [auftragFehler,setAuftragFehler] = useState("");
   const [fehler, setFehler] = useState("");
   const [suche, setSuche] = useState("");
   const [ausgeblendete, setAusgeblendete] = useState(false);
@@ -301,8 +365,7 @@ export function BilderView() {
       <label className="flex items-center gap-2 px-3 py-2" style={box}><Search size={15} /><input type="search" aria-label="Artikelname oder Artikelnummer suchen" placeholder="Name oder Artikelnummer …" value={suche} onChange={e => setSuche(e.target.value)} style={{ background: "transparent", outline: "none" }} /></label>
       <label className="flex items-center gap-2"><input type="checkbox" checked={ausgeblendete} onChange={e => setAusgeblendete(e.target.checked)} /> Ausgeblendete anzeigen</label>
     </div>
-    {(daten?.bildauftraege||[]).filter(j=>["sendet","unklar"].includes(j.status)).map(j=><div key={j.id} className="mb-2 p-2" style={box}><p>{daten?.artikel.find(a=>a.id===j.artikel)?.sku}: {j.meldung}</p><button onClick={async()=>{setAuftragFehler("");try{await api.bilderAuftragPruefen(j.id);await laden();}catch(e){setAuftragFehler(e.message);}}}>Wawi-Stand prüfen</button></div>)}
-    {auftragFehler&&<p role="alert">{auftragFehler}</p>}
+    {daten && <OffeneBildauftraege auftraege={daten.bildauftraege || []} artikel={daten.artikel} abgleichLaeuft={laeuft} onGeprueft={laden} />}
     <BilderStatus daten={daten} fehler={fehler} />
     {!daten && !fehler && <p>Lade Bilderübersicht …</p>}
     {daten && !daten.letzter_erfolg && !daten.artikel.length ? <p className="py-12 text-center" style={{ color: "#6C6F5F" }}>Mit „Aktualisieren“ lädst du die Shop-Artikel und ihre Bilder erstmals aus der Wawi.</p> : daten && <BilderListe aktualisiert={laden} onBild={(artikel,bild)=>setBildAuswahl({artikel,bild})} auftraege={daten.bildauftraege||[]} gesperrt={laeuft} ungeprueft={daten.ungeprueft || []} artikel={daten.artikel} ausgeblendete={ausgeblendete} suche={suche} onArtikel={id => { setDialogFehler(""); setAuswahl(id); }} />}
