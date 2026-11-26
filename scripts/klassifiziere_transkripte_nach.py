@@ -16,7 +16,7 @@ from app.agent import klassifiziere
 from app.aufgaben import aufgaben_fuer_mail_anlegen, wartende_aufgaben_ausfuehren
 from app.berechtigungen import standard_zustaendigkeit
 from app.db import SessionLocal
-from app.models import Aktionslog, Mail
+from app.models import Aktionslog, Mail, Postfach
 from app.uebersetzungen import mail_ins_deutsche_uebersetzen
 from app.worker import (
     _beispiele_laden,
@@ -46,18 +46,18 @@ async def nachklassifizieren(session) -> dict:
     katalog = await _katalog_laden(session)
     beispiele = await _beispiele_laden(session)
     mails = (await session.execute(
-        select(Mail).where(
+        select(Mail, Postfach.adresse).join(Postfach, Postfach.id == Mail.postfach_id).where(
             Mail.message_id.like("<krautl-audio-%@dreikraut.de>"),
             Mail.klassifikation_id.is_(None),
             Mail.im_krautl_posteingang.is_(False),
         ).order_by(Mail.id)
-    )).scalars().all()
+    )).all()
 
     sichtbar_gemacht = 0
     klassifiziert = 0
     fehler = 0
     mail_ids = []
-    for mail in mails:
+    for mail, postfach_adresse in mails:
         maildaten, transkript_katalog = klassifizierungsdaten_fuer_transkript(
             _maildaten(mail), katalog
         )
@@ -96,9 +96,10 @@ async def nachklassifizieren(session) -> dict:
         except Exception:
             logger.exception("Übersetzung fehlgeschlagen für %s", mail.message_id)
 
-        zustaendig_admin, zustaendig_sachbearbeiter = await standard_zustaendigkeit(
-            session, klassifikation_id
-        )
+        if not mail.zustaendigkeit_manuell:
+            mail.zustaendig_admin, mail.zustaendig_sachbearbeiter = await standard_zustaendigkeit(
+                session, klassifikation_id, postfach_adresse,
+            )
         mail.klassifikation_id = klassifikation_id
         mail.konfidenz = ergebnis.get("sicherheit", 0.0)
         mail.aktion_erforderlich = ergebnis.get("aktion_erforderlich", False)
@@ -108,8 +109,6 @@ async def nachklassifizieren(session) -> dict:
         mail.originalsprache = sprachdaten["originalsprache"]
         mail.betreff_deutsch = sprachdaten["betreff_deutsch"]
         mail.text_deutsch = sprachdaten["text_deutsch"]
-        mail.zustaendig_admin = zustaendig_admin
-        mail.zustaendig_sachbearbeiter = zustaendig_sachbearbeiter
         mail.im_krautl_posteingang = True
         await aufgaben_fuer_mail_anlegen(session, mail)
         session.add(Aktionslog(

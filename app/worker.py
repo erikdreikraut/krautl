@@ -180,7 +180,7 @@ async def postfach_abrufen_und_klassifizieren(
                 klassifikation_id = None
 
             zustaendig_admin, zustaendig_sachbearbeiter = await standard_zustaendigkeit(
-                session, klassifikation_id
+                session, klassifikation_id, postfach.adresse,
             )
 
             sprachdaten = {

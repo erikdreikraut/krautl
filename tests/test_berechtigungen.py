@@ -13,7 +13,7 @@ from app.db import SessionLocal, engine
 from app.main import (
     KlassifikationAenderung, MailZuweisung, RollenMailzugriffAenderung, WiedervorlageAenderung,
     _wiedervorlage_bis,
-    aktionslog_mail_ansehen, klassifikation_aktualisieren, liste_aktionslog, liste_entwuerfe,
+    aktionslog_mail_ansehen, klassifikation_aktualisieren, korrigiere_klassifikation, liste_aktionslog, liste_entwuerfe,
     liste_klassifikationen, liste_mails, mail_antwortentwurf_erzeugen, mail_reservieren,
     mail_wiedervorlegen, mail_zaehler,
     mail_zustaendigkeit_aendern, rollen_mailzugriff_speichern,
@@ -292,6 +292,30 @@ class BerechtigungenTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(1, ergebnis["freigegeben"])
         self.assertEqual({"KUNDE_TEST": True, "RECHT_TEST": False}, rechte)
         self.assertEqual({"KUNDE_TEST": True, "RECHT_TEST": False}, mails)
+
+    async def test_eriks_postfach_bleibt_bei_erik_bis_zur_manuellen_weitergabe(self):
+        admin = request_fuer(ADMIN)
+        team = request_fuer(SACHBEARBEITER)
+        async with SessionLocal() as session:
+            postfach = Postfach(adresse="Erik@dreikraut.de", funktion="admin", imap_host="imap.test")
+            session.add(postfach)
+            await session.flush()
+            mail = await session.scalar(select(Mail).where(Mail.betreff == "Erlaubt"))
+            mail.postfach_id = postfach.id
+            await session.commit()
+            await korrigiere_klassifikation(mail.id, admin, "KUNDE_TEST", session=session)
+            await rollen_mailzugriff_speichern(
+                "sachbearbeiter", RollenMailzugriffAenderung(klassifikation_ids=["KUNDE_TEST"]), admin, session,
+            )
+            self.assertTrue(mail.zustaendig_admin)
+            self.assertFalse(mail.zustaendig_sachbearbeiter)
+            self.assertIn(mail.id, [eintrag["id"] for eintrag in await liste_mails(admin, session)])
+            self.assertEqual([], await liste_mails(team, session))
+            self.assertEqual([], await liste_mails(team, session, alle=True))
+            self.assertEqual({"meine": 0, "alle": 0}, await mail_zaehler(team, session))
+
+            await mail_zustaendigkeit_aendern(mail.id, MailZuweisung(rolle="sachbearbeiter"), admin, session)
+            self.assertEqual(["Erlaubt"], [m["betreff"] for m in await liste_mails(team, session)])
 
     async def test_zuweisung_an_sachbearbeiter_entfernt_mail_aus_allen_sammellisten(self):
         async with SessionLocal() as session:

@@ -122,6 +122,28 @@ class WorkerInterneMailTest(unittest.IsolatedAsyncioTestCase):
             klassifizierungsdaten_fuer_transkript(mail, katalog),
         )
 
+    async def test_mail_aus_eriks_postfach_wird_admin_zugewiesen(self):
+        nachricht = EmailMessage()
+        nachricht["Message-ID"] = "<persoenlich@example.test>"
+        nachricht["From"] = "Kunde <kunde@example.test>"
+        nachricht["To"] = "Erik <erik@dreikraut.de>"
+        nachricht["Subject"] = "Test"
+        nachricht.set_content("Testnachricht")
+        config = PostfachConfig("admin", "imap.example.test", "Erik@dreikraut.de", "pw")
+
+        with patch("app.worker.neue_mails_abrufen", return_value=[{
+            "uid": 42, "postfach": "admin", "eml": nachricht.as_bytes(),
+        }]), patch("app.worker.mail_ins_deutsche_uebersetzen", return_value={
+            "originalsprache": "Deutsch", "betreff_deutsch": None, "text_deutsch": None,
+        }):
+            self.assertEqual(1, await postfach_abrufen_und_klassifizieren(config))
+
+        async with SessionLocal() as session:
+            mail = await session.scalar(select(Mail))
+            self.assertTrue(mail.zustaendig_admin)
+            self.assertFalse(mail.zustaendig_sachbearbeiter)
+            self.assertFalse(mail.zustaendigkeit_manuell)
+
     async def test_verbotene_audio_antwort_des_modells_startet_keine_schleife(self):
         nachricht = EmailMessage()
         nachricht["Message-ID"] = "<krautl-audio-18@dreikraut.de>"

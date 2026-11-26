@@ -31,7 +31,7 @@ from .auth import (
     sitzung_erstellen, sitzung_lesen, darf_endpunkt_nutzen,
 )
 from .berechtigungen import (
-    ROLLE_SACHBEARBEITER, darf_klassifikation_sehen, darf_mail_sehen,
+    ROLLE_SACHBEARBEITER, aus_eriks_postfach, darf_klassifikation_sehen, darf_mail_sehen,
     ist_admin, mailzugriffsfilter, standard_zustaendigkeit,
     verweigerte_klassifikationen, zustaendigkeitsfilter,
 )
@@ -1008,6 +1008,7 @@ async def rollen_mailzugriff_speichern(
         update(Mail)
         .where(
             Mail.zustaendigkeit_manuell.is_(False),
+            ~aus_eriks_postfach(),
             or_(
                 Mail.klassifikation_id.is_(None),
                 Mail.klassifikation_id.in_(ausgewaehlt),
@@ -1019,6 +1020,7 @@ async def rollen_mailzugriff_speichern(
         update(Mail)
         .where(
             Mail.zustaendigkeit_manuell.is_(False),
+            ~aus_eriks_postfach(),
             Mail.klassifikation_id.is_not(None),
             ~Mail.klassifikation_id.in_(ausgewaehlt),
         )
@@ -1703,10 +1705,13 @@ async def korrigiere_klassifikation(
     mail.klassifikation_id = neue_klassifikation_id
     mail.pruefstatus = "geprueft"
     if not mail.zustaendigkeit_manuell:
+        postfach = await session.get(Postfach, mail.postfach_id)
         (
             mail.zustaendig_admin,
             mail.zustaendig_sachbearbeiter,
-        ) = await standard_zustaendigkeit(session, neue_klassifikation_id)
+        ) = await standard_zustaendigkeit(
+            session, neue_klassifikation_id, postfach.adresse if postfach else None,
+        )
     elif mail.zustaendig_sachbearbeiter and not await darf_klassifikation_sehen(
         session, {"rolle": ROLLE_SACHBEARBEITER}, neue_klassifikation_id
     ):

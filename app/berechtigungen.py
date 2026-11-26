@@ -1,12 +1,19 @@
 """Rollenbasierte Zugriffsprüfung für eingehende Mails."""
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 
-from .models import Mail, RollenMailzugriff
+from .models import Mail, Postfach, RollenMailzugriff
 
 
 ROLLE_ADMIN = "admin"
 ROLLE_SACHBEARBEITER = "sachbearbeiter"
+ERIK_POSTFACH = "erik@dreikraut.de"
+
+
+def aus_eriks_postfach():
+    return Mail.postfach_id.in_(select(Postfach.id).where(
+        func.lower(func.trim(Postfach.adresse)) == ERIK_POSTFACH,
+    ))
 
 
 def ist_admin(benutzer: dict) -> bool:
@@ -99,22 +106,18 @@ def zustaendigkeitsfilter(benutzer: dict, alle: bool = False):
         return and_(
             Mail.zustaendigkeit_manuell.is_(False),
             Mail.zustaendig_sachbearbeiter.is_(False),
+            ~aus_eriks_postfach(),
         )
     # Für unbekannte Rollen ist die Bedingung absichtlich unerfüllbar.
     return Mail.id.is_(None)
 
 
 async def standard_zustaendigkeit(
-    session, klassifikation_id: str | None
+    session, klassifikation_id: str | None, postfach_adresse: str | None,
 ) -> tuple[bool, bool]:
-    """Leitet die anfängliche Arbeitsverteilung aus der Rollen-Matrix ab.
-
-    Admin ist standardmäßig NICHT zuständig — sonst wäre jede Mail von
-    Anfang an "MEINE" für den Admin, und der MEINE/ALLE-Schalter sowie das
-    manuelle Zuweisen könnten nie etwas sichtbar verändern. Admin wird nur
-    durch explizites Zuweisen (oder den Sicherheits-Fallback beim
-    Reklassifizieren, siehe main.py) zuständig.
-    """
+    """Leitet die Anfangszuständigkeit aus Quellpostfach und Rollen-Matrix ab."""
+    if (postfach_adresse or "").strip().casefold() == ERIK_POSTFACH:
+        return True, False
     sachbearbeiter = await darf_klassifikation_sehen(
         session,
         {"rolle": ROLLE_SACHBEARBEITER},

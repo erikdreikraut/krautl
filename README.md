@@ -439,9 +439,10 @@ getrennt und versucht zusätzlich, die Nachricht dauerhaft aus IMAP zu löschen.
   dürfen. Die Prüfung erfolgt auch im Backend für Posteingang, Bestätigungen,
   Kategoriekorrekturen, Antwortentwürfe, zugehörige Rechnungen und aus Mails
   abgeleitete Wissensvorschläge. Admins haben stets Zugriff auf alle Mailarten.
-- Die Rollen-Matrix bestimmt zugleich die anfängliche Zuständigkeit neuer
-  Mails. Über **Zuweisen** kann eine Mail anschließend exklusiv Erik als Admin
-  oder der gemeinsamen Sachbearbeitungsgruppe Guri, Ludwig und Aneta zugeordnet
+- Neue Mails aus dem IMAP-Postfach `erik@dreikraut.de` erscheinen direkt in
+  Eriks Arbeitsliste. Für die übrigen Postfächer bestimmt die Rollen-Matrix
+  die anfängliche Zuständigkeit. Über **Zuweisen** kann eine Mail anschließend
+  exklusiv Erik als Admin oder der Sachbearbeitungsgruppe Guri, Ludwig und Aneta zugeordnet
   werden. Admins sehen standardmäßig nur ihre eigene Arbeitsliste und können
   zur Kontrolle auf **Alle Mails** wechseln. Zuweisungen werden im Aktionslog
   mit dem auslösenden Nutzer festgehalten.
