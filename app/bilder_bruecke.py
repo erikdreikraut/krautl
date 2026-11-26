@@ -177,7 +177,10 @@ async def ergebnis(body: Ergebnis):
                 raise HTTPException(409, 'Auftrag wurde beendet.')
             fortsetzung = job.get('bruecke_fortsetzen')
             if fortsetzung and not fortsetzung.get('gemeldet'):
-                if body.protokoll < REPARATUR_PROTOKOLL or not fortsetzung.get('ausgeliefert'):
+                # The first protocol-3 worker announced its version only when polling.
+                # Delivery to this same worker was already gated by the protocol check.
+                if (not fortsetzung.get('ausgeliefert') or
+                        ('protokoll' in body.model_fields_set and body.protokoll < REPARATUR_PROTOKOLL)):
                     raise HTTPException(409, 'Fortsetzung noch nicht an den aktualisierten Dienst ausgeliefert.')
                 fortsetzung['gemeldet'] = store.jetzt()
             if not body.erfolgreich:

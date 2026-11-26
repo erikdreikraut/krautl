@@ -117,8 +117,11 @@ class QueueTest(unittest.TestCase):
         self.assertEqual(409, self.client.post('/bilder-bruecke/ergebnis', headers=self.headers, json=body).status_code)
         r = self.client.post('/bilder-bruecke/poll', headers=self.headers, json={'worker': WORKER, 'protokoll': 3})
         self.assertTrue(r.json()['auftrag']['nur_fortsetzen'])
-        self.assertEqual(200, self.client.post('/bilder-bruecke/ergebnis', headers=self.headers,
-                         json={**body, 'protokoll': 3}).status_code)
+        self.assertEqual(409, self.client.post('/bilder-bruecke/ergebnis', headers=self.headers,
+                         json={**body, 'worker': OTHER}).status_code)
+        self.assertEqual(409, self.client.post('/bilder-bruecke/ergebnis', headers=self.headers,
+                         json={**body, 'protokoll': 2}).status_code)
+        self.assertEqual(200, self.client.post('/bilder-bruecke/ergebnis', headers=self.headers, json=body).status_code)
         self.assertIsNone(self.client.post('/bilder-bruecke/poll', headers=self.headers,
                           json={'worker': WORKER, 'protokoll': 3}).json()['auftrag'])
 

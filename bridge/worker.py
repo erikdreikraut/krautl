@@ -227,7 +227,7 @@ def main():
                             print('Auftrag', job['id'], 'nicht bestaetigt:', reason, flush=True)
                             result = {'erfolgreich': False}
                         response = remote.post(base + '/api/bilder-bruecke/ergebnis',
-                            json={'worker': worker, 'auftrag': job['id'], **result})
+                            json={'worker': worker, 'auftrag': job['id'], 'protokoll': PROTOCOL_VERSION, **result})
                         response.raise_for_status()
                         print('Auftrag', job['id'], 'Rueckmeldung:', response.json()['status'], flush=True)
                 except Exception as exc:
