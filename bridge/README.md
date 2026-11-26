@@ -622,3 +622,22 @@ docker compose up -d --no-deps --force-recreate app frontend
 ```
 Kein Windows-Update, keine Migration. Bestehende Auftraege nicht neu normalisieren
 oder erneut schreiben. Neue Auftraege verwenden die neue Groessenpruefung.
+
+### Wiederverwendete Bilddateien und Fortsetzung ab Protokoll 3
+
+Wawi kann beim Import identische Bilddateien artikelübergreifend unter der
+vorhandenen Bildnummer verknüpfen. Der Bilddienst akzeptiert das bei exakt
+identischen Dateibytes und eindeutigen neuen Shop-/Standardzuordnungen am
+gewählten Artikel. Die SQL-Transaktion ersetzt die Bildreferenzen und entfernt
+nur die zusätzlichen Zuordnungen dieses Imports. Gemeinsam genutzte Bilddateien
+und Verknüpfungen anderer Artikel bleiben erhalten.
+
+Bereits importierte Aufträge einzeln anhand ihrer UUID im App-Container über
+`python -m scripts.stelle_bildfortsetzungen_bereit UUID …` vormerken. Das Skript
+prüft Wawi ausschließlich lesend. Der Admin-Download `/api/admin/bilddienst-update`
+aktualisiert auf dem Wawi-Rechner die vorhandene Windows-Aufgabe. Er prüft
+laufende Aufträge vor dem Stopp und sichert die Programmdateien. Konfiguration,
+Dienstkonto und Auftragsjournal bleiben erhalten. Protokoll 3 benötigt für eine
+Fortsetzung das passende lokale Journal und einen protokollierten Import. Eine
+bereits versuchte SQL-Transaktion wird nur rückgelesen. Krautl schließt den
+Auftrag nach SQL-Quittung und unabhängiger Bestätigung der Wawi-Zuordnungen.

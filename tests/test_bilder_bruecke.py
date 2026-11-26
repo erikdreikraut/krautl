@@ -102,6 +102,26 @@ class QueueTest(unittest.TestCase):
         self.assertEqual(r.json()['status'], 'unklar')
         self.assertIsNotNone(self.poll().json()['auftrag'])
 
+    def test_geplante_fortsetzung_nur_an_aktualisierten_urspruenglichen_worker(self):
+        self.poll()
+        job = auftraege()[0]
+        job.update(status='unklar', bruecke_fortsetzen={'geplant': 'jetzt'})
+        sichern(job)
+        update = self.client.post('/bilder-bruecke/update-vorbereiten', headers=self.headers,
+                                  json={'worker': WORKER, 'protokoll': 2})
+        self.assertEqual(200, update.status_code)
+        self.assertIsNone(self.poll().json()['auftrag'])
+        self.assertIsNone(self.client.post('/bilder-bruecke/poll', headers=self.headers,
+                           json={'worker': OTHER, 'protokoll': 3}).json()['auftrag'])
+        body = {'worker': WORKER, 'auftrag': ID, 'erfolgreich': False}
+        self.assertEqual(409, self.client.post('/bilder-bruecke/ergebnis', headers=self.headers, json=body).status_code)
+        r = self.client.post('/bilder-bruecke/poll', headers=self.headers, json={'worker': WORKER, 'protokoll': 3})
+        self.assertTrue(r.json()['auftrag']['nur_fortsetzen'])
+        self.assertEqual(200, self.client.post('/bilder-bruecke/ergebnis', headers=self.headers,
+                         json={**body, 'protokoll': 3}).status_code)
+        self.assertIsNone(self.client.post('/bilder-bruecke/poll', headers=self.headers,
+                          json={'worker': WORKER, 'protokoll': 3}).json()['auftrag'])
+
 
 class WorkerTest(unittest.TestCase):
     def setUp(self):
@@ -139,6 +159,46 @@ class WorkerTest(unittest.TestCase):
         self.sql.discover.side_effect = None
         self.assertTrue(self.runjob()['erfolgreich'])
         self.api.upload.assert_called_once()
+
+    def test_fortsetzung_verwendet_lokales_journal_und_sendet_keinen_upload(self):
+        self.sql.discover.side_effect = ValueError('Kein eindeutig neues Shopbild')
+        with self.assertRaises(ValueError):
+            self.runjob()
+        self.job.update(nur_fortsetzen=True, bruecke_lieferungen=2)
+        self.sql.discover.side_effect = None
+        self.assertTrue(self.runjob()['erfolgreich'])
+        self.assertTrue(self.runjob()['erfolgreich'])
+        self.assertTrue(self.sql.discover.call_args.kwargs['reparatur'])
+        self.api.upload.assert_called_once()
+        self.sql.replace.assert_called_once()
+
+    def test_fortsetzung_ohne_lokales_journal_laedt_nichts_hoch(self):
+        self.job['nur_fortsetzen'] = True
+        with self.assertRaisesRegex(ValueError, 'Importphase'):
+            self.runjob()
+        self.api.upload.assert_not_called()
+        self.sql.replace.assert_not_called()
+
+    def test_sql_findet_bytegleich_wiederverwendetes_bild_nur_in_neuen_zuordnungen(self):
+        adapter = Database({})
+        db = Mock()
+        adapter.connect = Mock(return_value=db)
+        vorher = [[1, 40, 2488, 2, 1, 0, 1, 0, 'original', 'alte_version']]
+        original = copy.deepcopy(vorher)
+        original[0][-1] = 'neue_version'
+        zusatz = [[2, 40, 2000, 2, 1, 0, 2, 0, '', 'v'],
+                  [3, 40, 2000, 1, 0, 0, 1, 0, '', 'v']]
+        adapter.rows = Mock(return_value=original + zusatz)
+        adapter.seo = Mock(return_value=[])
+        adapter.data = Mock(side_effect=lambda _, im: b'alte Datei' if im == 2488 else image())
+        ausgang = {'article': 40, 'rows': vorher, 'max_image': 2500, 'seo': [],
+                   'original': base64.b64encode(b'alte Datei').decode()}
+        ergebnis = adapter.discover({'v1_id': 2488}, ausgang, image(), reparatur=True)
+        self.assertTrue(ergebnis['reused'])
+        self.assertEqual(zusatz, ergebnis['added'])
+        self.assertEqual(original, ergebnis['gepruefter_ausgang']['rows'])
+        with self.assertRaisesRegex(ValueError, 'Auftragsdatei'):
+            adapter.discover({'v1_id': 2488}, ausgang, b'andere Datei', reparatur=True)
 
     def test_lost_sql_commit_only_reads_on_resume(self):
         self.sql.replace.side_effect = ConnectionError('commit response lost')

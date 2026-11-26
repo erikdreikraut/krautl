@@ -68,7 +68,7 @@ def api_rows(api):
 
 
 def execute(config, journal):
-    if PROTOCOL_VERSION != 2 or config.get('enable_writes') is not False or config.get('allowed_skus') != ['1036']:
+    if PROTOCOL_VERSION < 2 or config.get('enable_writes') is not False or config.get('allowed_skus') != ['1036']:
         raise ValueError('Protokoll 2, ausgeschalteter Dienst und Freigabe nur 1036 erforderlich')
     sql = RollbackDatabase(config)
     sql.preflight()

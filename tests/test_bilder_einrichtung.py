@@ -92,6 +92,23 @@ class SetupTest(unittest.TestCase):
         self.assertEqual(base64.b64decode(embedded),(setup.ROOT/'bridge/service_runner.py').read_bytes())
         for script in re.findall(r'= @"\n(.*?)\n"@',r.text,re.S):compile(script,'embedded-check','exec')
 
+    def test_bilddienst_update_schuetzt_admin_download_und_enthaelt_nur_programmdateien(self):
+        import base64, re
+        for user in [None, 'micha', 'erik']:
+            self.client.cookies.clear()
+            if user:
+                self.client.cookies.set(COOKIE_NAME, sitzung_erstellen(user))
+            antwort = self.client.get('/admin/bilddienst-update')
+            self.assertEqual(200 if user == 'erik' else 403, antwort.status_code)
+        self.assertIn('no-store', antwort.headers['cache-control'])
+        self.assertNotIn('test-api-key', antwort.text)
+        self.assertNotIn('test-bridge-token-', antwort.text)
+        for name in ('worker.py', 'sql.py'):
+            payload = re.search(rf"'{re.escape(name)}' = '([^']+)'", antwort.text).group(1)
+            self.assertEqual((setup.ROOT / 'bridge' / name).read_bytes(), base64.b64decode(payload))
+        for code in re.findall(r"= @'\n(.*?)\n'@", antwort.text, re.S):
+            compile(code, 'embedded-check', 'exec')
+
     def test_missing_settings_and_invalid_tls_fail_without_secret_output(self):
         self.client.cookies.set(COOKIE_NAME,sitzung_erstellen('erik'))
         for settings in [{'BILDER_BRUECKE_TOKEN':''},{'JTL_LOCAL_URL':'http://wawi.test/api/eazybusiness'},

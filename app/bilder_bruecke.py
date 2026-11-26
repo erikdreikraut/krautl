@@ -13,7 +13,8 @@ from pydantic import BaseModel, StrictBool, StrictInt
 from . import bilder_speicher as store
 from .bilder_upload import auftraege, sichern, oeffentlich, tabelle, lokal
 
-PATHS = frozenset({'/bilder-bruecke/poll', '/bilder-bruecke/ergebnis'})
+PATHS = frozenset({'/bilder-bruecke/poll', '/bilder-bruecke/ergebnis', '/bilder-bruecke/update-vorbereiten'})
+REPARATUR_PROTOKOLL = 3
 
 
 def aktiv():
@@ -63,6 +64,23 @@ class Ergebnis(Poll):
     bild: StrictInt | None = None
 
 
+@router.post('/update-vorbereiten')
+def update_vorbereiten(body: Poll):
+    """Drain the old worker before updating its existing Windows task."""
+    with store.datenbank() as db:
+        tabelle(db)
+        db.execute('CREATE TABLE IF NOT EXISTS bildbruecke_wartung (id INTEGER PRIMARY KEY, bis REAL NOT NULL)')
+        db.execute('BEGIN IMMEDIATE')
+        jobs = [json.loads(row[0]) for row in db.execute('SELECT daten FROM bildauftraege')]
+        if any(j.get('bruecke') and j['status'] == 'sendet' for j in jobs):
+            raise HTTPException(409, 'Ein Bildauftrag läuft. Update nach Abschluss erneut starten.')
+        if not any(j.get('bruecke_worker') == str(body.worker) and j.get('bruecke_fortsetzen')
+                   and not j['bruecke_fortsetzen'].get('gemeldet') for j in jobs):
+            raise HTTPException(409, 'Für diesen Bilddienst ist keine Fortsetzung vorbereitet.')
+        db.execute('INSERT OR REPLACE INTO bildbruecke_wartung VALUES (1, ?)', (time.time() + 180,))
+    return {'status': 'wartung'}
+
+
 @router.post('/poll')
 def poll(body: Poll, response: Response):
     response.headers['Cache-Control'] = 'no-store'
@@ -73,10 +91,18 @@ def poll(body: Poll, response: Response):
         db.execute('INSERT OR REPLACE INTO bildbruecke VALUES (1, ?)', (time.time(),))
         db.execute('CREATE TABLE IF NOT EXISTS bildbruecke_version (id INTEGER PRIMARY KEY, zeit REAL NOT NULL, protokoll INTEGER NOT NULL)')
         db.execute('INSERT OR REPLACE INTO bildbruecke_version VALUES (1,?,?)',(time.time(),body.protokoll))
+        db.execute('CREATE TABLE IF NOT EXISTS bildbruecke_wartung (id INTEGER PRIMARY KEY, bis REAL NOT NULL)')
+        wartung = db.execute('SELECT bis FROM bildbruecke_wartung WHERE id=1').fetchone()
+        if wartung and body.protokoll < REPARATUR_PROTOKOLL and wartung[0] > time.time():
+            return {'auftrag': None}
         for value, raw in db.execute('SELECT daten,datei FROM bildauftraege ORDER BY rowid'):
             job = json.loads(value)
+            fortsetzung = job.get('bruecke_fortsetzen')
+            nur_fortsetzen = bool(fortsetzung and not fortsetzung.get('gemeldet') and job['status'] == 'unklar')
+            if nur_fortsetzen and body.protokoll < REPARATUR_PROTOKOLL:
+                continue
             if not job.get('bruecke') or not (job['status'] == 'sendet' or
-                    (job['status'] == 'unklar' and job.get('bruecke_bestaetigt'))):
+                    (job['status'] == 'unklar' and job.get('bruecke_bestaetigt')) or nur_fortsetzen):
                 continue
             if job.get('operation') == 'entfernen_shop' and body.protokoll < 2:
                 continue
@@ -85,14 +111,20 @@ def poll(body: Poll, response: Response):
             row = db.execute('SELECT ausgeblendet,revision FROM artikel WHERE id=?', (job['artikel'],)).fetchone()
             if row != (0, job['revision']):
                 job.update(status='unklar', meldung='Artikel während des Bildauftrags geändert; Prüfung erforderlich.')
+                if nur_fortsetzen:
+                    fortsetzung['gemeldet'] = store.jetzt()
                 db.execute('UPDATE bildauftraege SET daten=? WHERE id=?', (json.dumps(job), job['id']))
                 continue
             job['bruecke_worker'] = str(body.worker)
             job['bruecke_lieferungen'] = job.get('bruecke_lieferungen', 0) + 1
+            if nur_fortsetzen:
+                fortsetzung['ausgeliefert'] = store.jetzt()
             db.execute('UPDATE bildauftraege SET daten=? WHERE id=?', (json.dumps(job), job['id']))
             return {'auftrag': {**{k: job[k] for k in ('id','artikel','sku','api_ziel','v1_id',
                 'v1_vorher','vorher_vorschau','dateiname','bruecke_lieferungen')},
-                **({'operation':job['operation']} if job.get('operation') else {}), 'datei': base64.b64encode(raw).decode()}}
+                **({'operation':job['operation']} if job.get('operation') else {}),
+                **({'nur_fortsetzen': True} if nur_fortsetzen else {}),
+                'datei': base64.b64encode(raw).decode()}}
     return {'auftrag': None}
 
 
@@ -143,6 +175,11 @@ async def ergebnis(body: Ergebnis):
                 return oeffentlich(job)
             if job.get('ruecksetzung') or job['status'] == 'abgelehnt':
                 raise HTTPException(409, 'Auftrag wurde beendet.')
+            fortsetzung = job.get('bruecke_fortsetzen')
+            if fortsetzung and not fortsetzung.get('gemeldet'):
+                if body.protokoll < REPARATUR_PROTOKOLL or not fortsetzung.get('ausgeliefert'):
+                    raise HTTPException(409, 'Fortsetzung noch nicht an den aktualisierten Dienst ausgeliefert.')
+                fortsetzung['gemeldet'] = store.jetzt()
             if not body.erfolgreich:
                 job.update(status='unklar', meldung='Bilddienst konnte die Änderung nicht bestätigen. Kein erneuter Schreibversuch; Administrator prüft das Auftragsjournal.')
                 sichern(job)

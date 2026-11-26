@@ -50,6 +50,20 @@ def production_download(request: Request):
         'Cache-Control': 'no-store, private', 'X-Content-Type-Options': 'nosniff'})
 
 
+@router.get('/admin/bilddienst-update')
+def update_download(request: Request):
+    user = getattr(request.state, 'benutzer', None)
+    if not user or not ist_admin(user):
+        raise HTTPException(403, 'Nur fuer Administratoren')
+    pfad = ROOT / 'bridge'
+    script = (pfad / 'update.ps1').read_text(encoding='utf-8-sig')
+    for platzhalter, name in (('__WORKER_BASE64__', 'worker.py'), ('__SQL_BASE64__', 'sql.py')):
+        script = script.replace(platzhalter, base64.b64encode((pfad / name).read_bytes()).decode('ascii'))
+    return Response(script.encode('utf-8-sig'), media_type='text/plain', headers={
+        'Content-Disposition': 'attachment; filename="Krautl-Bilddienst-Update.ps1"',
+        'Cache-Control': 'no-store, private', 'X-Content-Type-Options': 'nosniff'})
+
+
 def paket():
     token = os.getenv('BILDER_BRUECKE_TOKEN', '')
     key = os.getenv('JTL_LOCAL_API_KEY', '')

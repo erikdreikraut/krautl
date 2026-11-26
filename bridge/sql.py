@@ -105,35 +105,54 @@ class Database:
             db.rollback()
             db.close()
 
-    def discover(self, job, before, raw):
+    def discover(self, job, before, raw, *, reparatur=False):
         db = self.connect()
         try:
             c = db.cursor()
             rows = self.rows(c, before['article'])
             ids = {r[0] for r in before['rows']}
-            if [r for r in rows if r[0] in ids] != before['rows']:
+            original = [r for r in rows if r[0] in ids]
+            if reparatur:
+                if (shape(original) != shape(before['rows'])
+                        or self.seo(c, before['article']) != before['seo']
+                        or self.data(c, job['v1_id']) != base64.b64decode(before['original'])):
+                    raise ValueError('Ausgangsbestand seit dem Import geaendert')
+            elif original != before['rows']:
                 raise ValueError('Zuordnungen beim Import geaendert')
             added = [r for r in rows if r[0] not in ids]
             images = {r[2] for r in added}
             if len(images) != 1:
                 raise ValueError('Neues Bild noch nicht eindeutig; kein weiterer Upload')
             image = next(iter(images))
-            if image <= before['max_image'] or not any(r[3:5] == [2, 1] for r in added):
+            if image in {r[2] for r in original} or not any(r[3:6] == [2, 1, 0] for r in added):
                 raise ValueError('Kein eindeutig neues Shopbild')
+            reuse = image <= before['max_image']
+            if len({tuple(r[3:6]) for r in added}) != len(added):
+                raise ValueError('Import hat mehrfach demselben Kanal zugeordnet')
             for r in added:
                 if (r[3], r[4], r[5]) not in ((1, 0, 0), (2, 1, 0)):
                     raise ValueError('Import hat unerwartete Kanaele angelegt')
                 oldmax = max((b[6] for b in before['rows'] if b[3:6] == r[3:6]), default=0)
                 if r[6] != oldmax + 1:
                     raise ValueError('Import nicht am Listenende')
-            c.execute('SELECT COUNT(*) FROM dbo.tArtikelbildPlattform WHERE kBild=?', image)
-            if c.fetchone()[0] != len(added) or not pixels(preview(self.data(c, image)), preview(raw)):
-                raise ValueError('Importinhalt oder Verwendung nicht eindeutig')
-            c.execute('SELECT cQuelle FROM dbo.tBild WHERE kBild=?', image)
-            name = str(c.fetchone()[0]).replace('\\', '/').rsplit('/', 1)[-1]
-            if name != job['dateiname']:
-                raise ValueError('Importdatei nicht eindeutig diesem Auftrag zugeordnet')
-            return {'image': image, 'rows': rows, 'added': added}
+            daten = self.data(c, image)
+            if reuse:
+                # Wawi kann identische Dateien artikelübergreifend wiederverwenden.
+                # Nur diese neuen Zuordnungen zum aktuellen Artikel sind temporär.
+                if daten != raw:
+                    raise ValueError('Wiederverwendetes Bild weicht von der Auftragsdatei ab')
+            else:
+                c.execute('SELECT COUNT(*) FROM dbo.tArtikelbildPlattform WHERE kBild=?', image)
+                if c.fetchone()[0] != len(added) or not pixels(preview(daten), preview(raw)):
+                    raise ValueError('Importinhalt oder Verwendung nicht eindeutig')
+                c.execute('SELECT cQuelle FROM dbo.tBild WHERE kBild=?', image)
+                name = str(c.fetchone()[0]).replace('\\', '/').rsplit('/', 1)[-1]
+                if name != job['dateiname']:
+                    raise ValueError('Importdatei nicht eindeutig diesem Auftrag zugeordnet')
+            result = {'image': image, 'rows': rows, 'added': added, 'reused': reuse}
+            if reparatur:
+                result['gepruefter_ausgang'] = {**before, 'rows': original}
+            return result
         finally:
             db.rollback()
             db.close()
@@ -161,7 +180,7 @@ class Database:
                 raise ValueError('Originaldaten wurden geaendert')
             if self.seo(c, before['article']) != before['seo']:
                 raise ValueError('SEO-Daten wurden geaendert')
-            if not pixels(preview(self.data(c, imported['image'])), preview(base64.b64decode(job['datei']))):
+            if not self.importdaten_gleich(c, imported, base64.b64decode(job['datei'])):
                 raise ValueError('Importdaten wurden geaendert')
             # Only disposable new import rows; never delete a tBild or original relation.
             for r in imported['added']:
@@ -203,13 +222,17 @@ class Database:
                 raise ValueError('Transaktion einschliesslich Kanalaktualisierung nicht quittiert')
             if shape(self.rows(c, before['article'])) != shape(self.expected(job, before, imported)):
                 raise ValueError('SQL-Ergebnis nicht bestaetigt; kein erneutes Schreiben')
-            if not pixels(preview(self.data(c, imported['image'])), preview(raw)):
+            if not self.importdaten_gleich(c, imported, raw):
                 raise ValueError('Bildinhalt nach Austausch nicht bestaetigt')
             if self.seo(c, before['article']) != before['seo']:
                 raise ValueError('SEO-Daten nach Austausch nicht bestaetigt')
         finally:
             db.rollback()
             db.close()
+
+    def importdaten_gleich(self, cursor, imported, raw):
+        daten = self.data(cursor, imported['image'])
+        return daten == raw if imported.get('reused') else pixels(preview(daten), preview(raw))
 
 
     def removal_expected(self, job, before):

@@ -18,7 +18,7 @@ from bridge.worker import single_worker, PROTOCOL_VERSION
 from bridge.sql import Database
 p=Path('bridge/config.json')
 c=json.loads(p.read_text(encoding='utf-8-sig'))
-assert PROTOCOL_VERSION==2, 'Bilddienst-Update fehlt'
+assert PROTOCOL_VERSION>=2, 'Bilddienst-Update fehlt'
 assert c.get('allowed_skus') in (['1036'],['*']), 'Unerwartete Artikelfreigabe'
 with single_worker(Path(c['journal_dir'])):
     Database(c).preflight()

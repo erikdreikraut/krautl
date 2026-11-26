@@ -17,7 +17,7 @@ import httpx
 from PIL import Image, ImageOps
 
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 
 
 def preview(raw):
@@ -89,9 +89,15 @@ def run_job(job, sql, api, journal, allowed_skus):
     ident = str(UUID(job['id']))
     if job['sku'] not in allowed_skus and '*' not in allowed_skus:
         raise ValueError('Artikel nicht fuer diesen Bilddienst freigegeben')
-    payload = {k: v for k, v in job.items() if k != 'bruecke_lieferungen'}
+    payload = {k: v for k, v in job.items() if k not in {'bruecke_lieferungen', 'nur_fortsetzen'}}
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
     state = journal.get(ident)
+    nur_fortsetzen = job.get('nur_fortsetzen') is True
+    if nur_fortsetzen and (
+        not state or state.get('phase') not in {'import_versucht', 'sql_versucht', 'bestaetigt'}
+        or job.get('operation', 'ersetzen') != 'ersetzen'
+    ):
+        raise ValueError('Keine passende gespeicherte Importphase; kein erneuter Upload')
     if state is None:
         if job['bruecke_lieferungen'] != 1:
             raise ValueError('Lokales Journal fehlt fuer bereits ausgelieferten Auftrag')
@@ -130,17 +136,21 @@ def run_job(job, sql, api, journal, allowed_skus):
         except httpx.HTTPError:
             pass  # Unknown outcome: discover below, never upload twice.
     if state['phase'] == 'import_versucht':
-        imported = sql.discover(job, state['before'], raw)
+        if nur_fortsetzen:
+            imported = sql.discover(job, state['before'], raw, reparatur=True)
+        else:
+            imported = sql.discover(job, state['before'], raw)
         state['imported'] = imported
         state['phase'] = 'sql_versucht'
         journal.save(ident, state)
+        gepruefter_ausgang = imported.get('gepruefter_ausgang', state['before'])
         try:
-            sql.replace(job, state['before'], imported)
+            sql.replace(job, gepruefter_ausgang, imported)
         except Exception:
             # A lost commit reply is checked through the transactional receipt only.
-            sql.confirm(job, state['before'], imported, raw)
+            sql.confirm(job, gepruefter_ausgang, imported, raw)
     # Also used after a lost SQL commit response: read only.
-    sql.confirm(job, state['before'], state['imported'], raw)
+    sql.confirm(job, state['imported'].get('gepruefter_ausgang', state['before']), state['imported'], raw)
     state['result'] = {'erfolgreich': True, 'bild': state['imported']['image']}
     state['phase'] = 'bestaetigt'
     journal.save(ident, state)
