@@ -45,7 +45,7 @@ def pixelgleich(a,b):
         return left.size==right.size and left.convert('RGBA').tobytes()==right.convert('RGBA').tobytes()
 
 
-async def sichern_original(c, job_id, image_id, preview):
+async def _originaldatei(c, image_id):
     async with c.http.stream('GET',c.url+'/v1/items/imagedata/'+str(image_id)) as r:
         r.raise_for_status()
         data=bytearray()
@@ -57,7 +57,14 @@ async def sichern_original(c, job_id, image_id, preview):
             if not isinstance(value,str): raise ValueError('Ungültige Originalbildantwort.')
             raw=base64.b64decode(value,validate=True)
         else: raw=bytes(data)
-    if len(raw)>20*1024*1024 or not pixelgleich(vorschaubild(raw),preview):
+    if len(raw)>20*1024*1024:
+        raise ValueError('Originalbild zu groß für die Sicherung.')
+    return raw
+
+
+async def sichern_original(c, job_id, image_id, preview):
+    raw = await _originaldatei(c, image_id)
+    if not pixelgleich(vorschaubild(raw),preview):
         raise ValueError('Originalbild während der Vorbereitung verändert.')
     with store.datenbank() as db:
         db.execute('CREATE TABLE IF NOT EXISTS bildsicherungen (auftrag TEXT PRIMARY KEY, daten BLOB NOT NULL)')
@@ -72,7 +79,7 @@ def lokale_id(article, image):
 async def bestand(c, a, rows=None, fehlertolerant=False):
     rows = await liste(c,a['id']) if rows is None else rows
     pairs = sorted({(r['SortNumber'],r['ImageId']) for r in rows if r['SalesChannelId']==SHOP})
-    if [p for p,i in pairs] != list(range(1,len(pairs)+1)) or len({i for p,i in pairs})!=len(pairs):
+    if len({p for p, _ in pairs}) != len(pairs) or len({i for _, i in pairs}) != len(pairs):
         raise ValueError('Shop-Positionen in v1 sind nicht eindeutig.')
     result=[]
     for pos, image in pairs:
@@ -333,22 +340,41 @@ async def reihenfolge(c, article, revision, request_id, order, before, user):
          'status':'sendet','meldung':'Shop-Reihenfolge wird übertragen.','reihenfolge':order,'v1_vorher':initial,'v1_ziel':target}
     if not store.freigegeben(article,revision):raise ValueError('Artikelrevision verändert.')
     sichern(job,b'')
-    expected=initial
+    return await _reihenfolge_schreiben(c, job, initial)
+
+
+def _sortierschritt_v1(stand, bild_id, position):
+    """Wawi tauscht bei belegter Zielposition die beiden Shop-Plätze."""
+    bisher = next(r[4] for r in stand if r[2] == SHOP and r[1] == bild_id)
+    schritt = copy.deepcopy(stand)
+    for row in schritt:
+        if row[2] != SHOP:
+            continue
+        if row[1] == bild_id:
+            row[4] = position
+        elif row[4] == position:
+            row[4] = bisher
+    return sorted(schritt)
+
+
+async def _reihenfolge_schreiben(c, job, expected):
+    from .bilder_upload import sichern, oeffentlich
+    article = job['artikel']
+    revision = job['revision']
+    ziel = sorted((r[4], r[1]) for r in job['v1_ziel'] if r[2] == SHOP)
     try:
-        for position,image_id in enumerate(target_ids,1):
+        for position, image_id in ziel:
             live=zuordnungen(await liste(c,article))
             if live!=expected or not store.freigegeben(article,revision):raise ValueError('Bestand während der Sortierung verändert.')
-            oldpos=next(r[4] for r in expected if r[2]==SHOP and r[1]==image_id)
-            if oldpos==position:continue
-            step=copy.deepcopy(expected)
-            for r in step:
-                if r[2]!=SHOP:continue
-                if r[1]==image_id:r[4]=position
-                elif position<=r[4]<oldpos:r[4]+=1
-            step.sort()
-            job.setdefault('sortierschritte',[]).append({'bild':image_id,'position':position,'zeit':store.jetzt()})
+            step = _sortierschritt_v1(expected, image_id, position)
+            if step == expected:
+                continue
+            protokoll = {'bild': image_id, 'position': position, 'zeit': store.jetzt()}
+            job.setdefault('sortierschritte', []).append(protokoll)
             sichern(job)
             response=await c.http.patch(c.url+'/v1/items/'+article+'/images/'+str(image_id),json={'SalesChannelId':SHOP,'SortNumber':position})
+            protokoll['http_status'] = response.status_code
+            sichern(job)
             if response.status_code not in (200,201):raise ValueError('Wawi hat den Sortierschritt nicht bestätigt.')
             if zuordnungen(await liste(c,article))!=step:raise ValueError('Wawi-Sortierschritt weicht vom Ziel ab.')
             expected=step
@@ -356,6 +382,37 @@ async def reihenfolge(c, article, revision, request_id, order, before, user):
     except (httpx.HTTPError,JtlFehler,ValueError):
         job.update(status='unklar',meldung='Reihenfolge noch nicht bestätigt. Nur Wawi-Stand prüfen; kein automatischer Neuversuch.')
         sichern(job);return oeffentlich(job)
+
+
+async def reihenfolge_fortsetzen(c, job):
+    """Schließt einen Altauftrag nach bewiesenem Platztausch mit neuen Schritten ab."""
+    from .bilder_upload import lokal, detail_lesen, sichern
+    if job.get('art') != 'reihenfolge_v1' or job.get('ruecksetzung') or c.url != job['api_ziel']:
+        raise ValueError('Kein passender v1-Reihenfolgeauftrag.')
+    if job['status'] == 'wawi' or job.get('sortierreparatur'):
+        return await reihenfolge_pruefen(c, job)
+    if job['status'] != 'unklar' or len(job.get('sortierschritte', [])) != 1:
+        raise ValueError('Kein einzelner nachweisbarer Alt-Sortierschritt.')
+    article = job['artikel']
+    lokal(article, job['revision'])
+    await detail_lesen(c, article, job['sku'])
+    aktuell = zuordnungen(await liste(c, article))
+    if aktuell == job['v1_ziel']:
+        return await reihenfolge_pruefen(c, job)
+
+    vorher = job['v1_vorher']
+    ziel = job['v1_ziel']
+    if (
+        [r for r in vorher if r[2] != SHOP] != [r for r in ziel if r[2] != SHOP]
+        or sorted(r[:4] for r in vorher if r[2] == SHOP) != sorted(r[:4] for r in ziel if r[2] == SHOP)
+    ):
+        raise ValueError('Ziel verändert mehr als die Shop-Reihenfolge.')
+    erster = job['sortierschritte'][0]
+    if aktuell == vorher or aktuell != _sortierschritt_v1(vorher, erster['bild'], erster['position']):
+        raise ValueError('Bisheriger Platztausch ist nicht nachgewiesen.')
+    job['sortierreparatur'] = store.jetzt()
+    sichern(job)
+    return await _reihenfolge_schreiben(c, job, aktuell)
 
 
 async def reihenfolge_pruefen(c,job):
@@ -411,6 +468,21 @@ async def hinzufuegen_pruefen(c,job):
     await detail_lesen(c,job['artikel'],job['sku'])
     rows=await liste(c,job['artikel']);after=zuordnungen(rows);before=job['v1_ausgang']
     newids={r[1] for r in after}-{r[1] for r in before}
+    if after == before:
+        with store.datenbank() as db:
+            raw = db.execute("SELECT datei FROM bildauftraege WHERE id=?", (job['id'],)).fetchone()[0]
+        if not raw or hashlib.sha256(vorschaubild(raw)).hexdigest() != job['thumb_hash']:
+            raise ValueError('Auftragsdatei kann nicht überprüft werden.')
+        passende = []
+        for image in {r[1] for r in after if r[2] == SHOP}:
+            if await bildinhalt_passt(c, job, image, raw):
+                passende.append(image)
+        if len(passende) != 1 or zuordnungen(await liste(c, job['artikel'])) != after:
+            raise ValueError('Neues Bild nicht eindeutig identifiziert.')
+        job.update(status='wawi', neu_id=lokale_id(job['artikel'], passende[0]),
+                   meldung='Das Bild ist bereits pixelgleich an diesem Shopartikel vorhanden.')
+        sichern(job)
+        return oeffentlich(job)
     if len(newids)!=1:raise ValueError('Neues Bild nicht eindeutig identifiziert.')
     image=next(iter(newids));added=[r for r in after if r[1]==image]
     if [r for r in after if r[1]!=image]!=before or any(r[2] not in (SHOP,'1-1-1') for r in added):
@@ -420,3 +492,9 @@ async def hinzufuegen_pruefen(c,job):
     if not bildinhalt_bestaetigt(job,await bild(c,image)):raise ValueError('Neuer Bildinhalt nicht bestätigt.')
     job.update(v1_id=image,v1_vorher=after);sichern(job)
     return await pruefen(c,job)
+
+
+async def bildinhalt_passt(c, job, image, auftragsdatei):
+    from .bilder_upload import bildinhalt_bestaetigt
+    return (bildinhalt_bestaetigt(job, await bild(c, image))
+            and pixelgleich(auftragsdatei, await _originaldatei(c, image)))

@@ -3,7 +3,7 @@ import json
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 import httpx
 from app import bilder_speicher as store
 from app.bilder_upload import sichern, auftraege
@@ -83,6 +83,36 @@ class V1OrderTest(unittest.IsolatedAsyncioTestCase):
         self.rows.append({"ItemId":227,"ImageId":999,"SalesChannelId":"2-2-1","SortNumber":2})
         with self.assertRaises(ValueError):await self.run_step()
         self.assertNotIn("PATCH",self.calls)
+
+    async def test_bestaetigter_platztausch_wird_ohne_wiederholung_fortgesetzt(self):
+        from app.bilder_ersetzen import reihenfolge_fortsetzen, zuordnungen
+        vorher = zuordnungen(self.rows)
+        ziel = copy.deepcopy(vorher)
+        for zuordnung, position in zip(ziel, (2, 3, 1)):
+            zuordnung[4] = position
+        self.rows[0]["SortNumber"], self.rows[2]["SortNumber"] = 3, 1
+        job = {**self.job, "art": "reihenfolge_v1", "v1_vorher": vorher, "v1_ziel": ziel,
+               "sortierschritte": [{"bild": 103, "position": 1}]}
+        sichern(job)
+        patches = []
+
+        def transport(req):
+            if req.method == "GET":
+                return self.transport(req)
+            bild = int(req.url.path.rsplit("/", 1)[1])
+            zielposition = json.loads(req.content)["SortNumber"]
+            patches.append((bild, zielposition))
+            quelle = next(r for r in self.rows if r["ImageId"] == bild)
+            nachbar = next(r for r in self.rows if r["SortNumber"] == zielposition)
+            quelle["SortNumber"], nachbar["SortNumber"] = nachbar["SortNumber"], quelle["SortNumber"]
+            return httpx.Response(201, json={})
+
+        async with OnPremClient(URL, "secret", transport=httpx.MockTransport(transport)) as c:
+            with patch("app.bilder_ersetzen.bild", new_callable=AsyncMock, return_value=b"Vorschau"):
+                self.assertEqual("wawi", (await reihenfolge_fortsetzen(c, job))["status"])
+                self.assertEqual("wawi", (await reihenfolge_fortsetzen(c, auftraege()[0]))["status"])
+        self.assertEqual([(101, 2)], patches)
+        self.assertEqual(ziel, zuordnungen(self.rows))
 
     def test_main_image_change_and_unrelated_channel_changes_rejected(self):
         target=copy.deepcopy(self.target)

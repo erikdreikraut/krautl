@@ -21,7 +21,7 @@ class AddV1Test(unittest.IsolatedAsyncioTestCase):
         self.tmp=tempfile.TemporaryDirectory()
         self.env=patch.dict(os.environ,{"BILDER_DIR":self.tmp.name});self.env.start()
         b=BytesIO();Image.new("RGB",(300,250),"red").save(b,"PNG");self.raw=b.getvalue()
-        self.rows=[];self.posts=0;self.foreign=False
+        self.rows=[];self.posts=0;self.foreign=False;self.kein_neues_bild=False
         store.zwischenstand({"id":A,"sku":"X","bilder":[]},0,URL)
 
     async def asyncTearDown(self):
@@ -38,6 +38,8 @@ class AddV1Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(req.method,"POST")
         self.assertEqual(len(auftraege()),1)
         self.posts+=1
+        if self.kein_neues_bild:
+            return httpx.Response(201,json={})
         pos=1+max((r["SortNumber"] for r in self.rows if r["SalesChannelId"]=="2-2-1"),default=0)
         # Existing global image ID, e.g. already used by the parent: no new blob ID required.
         self.rows += [{"ItemId":42,"ImageId":2734,"SalesChannelId":ch,"SortNumber":pos} for ch in ("2-2-1","1-1-1")]
@@ -67,6 +69,17 @@ class AddV1Test(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.run_upload())["status"],"unklar")
         await self.run_upload()
         self.assertEqual(self.posts,1)
+
+    async def test_unveraenderte_zuordnung_mit_pixelgleichem_original_wird_bestaetigt(self):
+        self.kein_neues_bild = True
+        self.rows = [{"ItemId": 42, "ImageId": 2734, "SalesChannelId": "2-2-1", "SortNumber": 1}]
+        store.zwischenstand({"id": A, "sku": "X", "bild_api": "v1",
+                            "bilder": [{"id": "old", "v1_id": 2734, "position": 1, "hauptbild": True}]}, 0, URL)
+        ergebnis = await self.run_upload()
+        self.assertEqual("wawi", ergebnis["status"])
+        self.assertIn("bereits", ergebnis["meldung"])
+        self.assertEqual(1, self.posts)
+        self.assertEqual(1, len(self.rows))
 
     def test_empty_list_allowed_but_mixed_items_rejected(self):
         self.assertEqual(zuordnungen([]),[])

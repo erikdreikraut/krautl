@@ -69,6 +69,8 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(200, json={"items": self.rows, "pageNumber": 1, "hasNextPage": False, "totalItems": len(self.rows)})
         if path.startswith("/v2/items/image-data/"):
             return httpx.Response(200, json=base64.b64encode(png()).decode())
+        if path.startswith("/v1/items/"):
+            return httpx.Response(404)
         key = path.rsplit("/", 1)[1]
         if key == self.hide_on_detail:
             store.ausblenden(key, True, 0, "micha")
@@ -156,7 +158,8 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
         vorher = store.lesen()
         self.details[uid(1)] = detail(1, images=[{"sortNumber": 2, "isMainImage": True}])
         self.rows[1]["name"] = "Danach verarbeitet"
-        await self.run_sync()
+        with patch("app.bilder_ersetzen.liste", new_callable=AsyncMock, return_value=[]):
+            await self.run_sync()
 
         stand = store.lesen()
         self.assertEqual(stand["status"], "warnung")
@@ -164,7 +167,38 @@ class BilderTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stand["artikel"][0], vorher["artikel"][0])
         self.assertEqual(stand["artikel"][1]["name"], "Danach verarbeitet")
         self.assertEqual([a["sku"] for a in stand["ungeprueft"]], ["A-1"])
-        self.assertIn("Position 2", stand["ungeprueft"][0]["fehler"])
+        self.assertIn("Hauptbild", stand["ungeprueft"][0]["fehler"])
+
+    async def test_fehlende_blob_id_wird_aus_passenden_v1_shop_positionen_aufgeloest(self):
+        self.details[uid(1)] = detail(1, images=[
+            {"sortNumber": 1, "isMainImage": True}, {"sortNumber": 4, "isMainImage": False},
+        ])
+        v1 = [{"ItemId": 10, "ImageId": 101 + pos, "SortNumber": pos, "SalesChannelId": "2-2-1"}
+              for pos in (1, 4)]
+        with patch("app.bilder_ersetzen.liste", new_callable=AsyncMock, return_value=v1), \
+             patch("app.bilder_ersetzen.bild", new_callable=AsyncMock, return_value=b"Vorschau"):
+            await self.run_sync()
+        stand = store.lesen()
+        self.assertEqual("ok", stand["status"])
+        self.assertEqual("v1", stand["artikel"][0]["bild_api"])
+        self.assertEqual([(1, 102), (4, 105)], [
+            (b["position"], b["v1_id"]) for b in stand["artikel"][0]["bilder"]
+        ])
+
+    async def test_fehlende_vorschau_wird_aus_bestaetigtem_v1_shopbestand_geladen(self):
+        self.details[uid(1)] = detail(1, images=[
+            {"blobIdentifier": uid(101), "sortNumber": 1, "isMainImage": True},
+        ])
+        self.fail_path = "/v2/items/image-data/" + uid(101)
+        self.fail_status = 400
+        v1 = [{"ItemId": 10, "ImageId": 101, "SortNumber": 1, "SalesChannelId": "2-2-1"}]
+        with patch("app.bilder_ersetzen.liste", new_callable=AsyncMock, return_value=v1), \
+             patch("app.bilder_ersetzen.bild", new_callable=AsyncMock, return_value=b"Vorschau"):
+            await self.run_sync()
+        a = store.lesen()["artikel"][0]
+        self.assertEqual("v1", a["bild_api"])
+        self.assertIsNone(a["bilder"][0]["fehler"])
+        self.assertIsNotNone(a["bilder"][0]["thumb"])
 
     async def test_legacy_single_shop_checked_each_run_and_hidden_skipped(self):
         for d in self.details.values():

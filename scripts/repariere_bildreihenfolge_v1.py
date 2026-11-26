@@ -93,22 +93,32 @@ async def ausfuehren(c, job, ausgabe=print):
     return result
 
 
-async def main(sku):
+async def main(sku, offene_v1_fortsetzen=False):
+    from app.bilder_ersetzen import reihenfolge_fortsetzen
     with store.Laufsperre():
-        jobs = sorted((j for j in auftraege() if j.get("sku")==sku and j.get("art")=="reihenfolge"),
+        art = "reihenfolge_v1" if offene_v1_fortsetzen else "reihenfolge"
+        jobs = sorted((j for j in auftraege() if j.get("sku")==sku and j.get("art")==art and not j.get("ruecksetzung")),
                       key=lambda j:j.get("erstellt", ""))
         if not jobs:
             raise ValueError("Kein vorhandener Reihenfolgeauftrag für diesen Artikel.")
         async with OnPremClient.aus_umgebung() as client:
-            await ausfuehren(client,jobs[-1])
+            if offene_v1_fortsetzen:
+                result = await reihenfolge_fortsetzen(client, jobs[-1])
+                print(f'{sku}: {result["status"]}. {result["meldung"]}')
+                if result["status"] != "wawi":
+                    raise ValueError("Reihenfolge weiterhin ungeklärt.")
+            else:
+                await ausfuehren(client, jobs[-1])
 
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("sku")
+    parser.add_argument("--offene-v1-fortsetzen", action="store_true",
+                        help="Bereits bestätigten Wawi-Platztausch prüfen und fehlende Schritte ergänzen.")
     args=parser.parse_args()
     try:
-        asyncio.run(main(args.sku))
+        asyncio.run(main(args.sku, args.offene_v1_fortsetzen))
     except Exception as exc:
         print("Abbruch:", str(exc) if isinstance(exc,ValueError) else type(exc).__name__)
         raise SystemExit(1)

@@ -158,7 +158,7 @@ async def einzelshop_pruefen(api_url):
     return einzelshop_bestaetigen(kanaele)
 
 
-def shop_bilder(detail, katalogzeile=None, einzelshop=False):
+def shop_bilder(detail, katalogzeile=None, einzelshop=False, *, ids_pruefen=True):
     kanalblock = detail.get("salesChannels")
     if kanalblock is None:
         if einzelshop is not True:
@@ -193,6 +193,8 @@ def shop_bilder(detail, katalogzeile=None, einzelshop=False):
         position = bild.get("sortNumber")
         if not isinstance(position, int):
             raise JtlFehler("Uneindeutige Bild-ID oder Bildreihenfolge.")
+        if not ids_pruefen:
+            continue
         try:
             bild_id = ident(bild.get("blobIdentifier"))
         except JtlFehler:
@@ -200,7 +202,28 @@ def shop_bilder(detail, katalogzeile=None, einzelshop=False):
         if bild_id in ids:
             raise JtlFehler("Uneindeutige Bild-ID oder Bildreihenfolge.")
         ids.add(bild_id)
-    return sorted(bilder, key=lambda b: (b["sortNumber"], b["blobIdentifier"]))
+    return sorted(bilder, key=lambda b: (b["sortNumber"], b["blobIdentifier"] if ids_pruefen else ""))
+
+
+async def _v1_shopbestand(client, artikel_id, bilder):
+    """Nutze v1 nur bei genau denselben eindeutigen Shop-Positionen."""
+    from .bilder_ersetzen import bestand, liste, zuordnungen
+    positionen = [b["sortNumber"] for b in bilder]
+    if len(set(positionen)) != len(positionen) or any(
+        b.get("isMainImage") is not (b["sortNumber"] == 1) for b in bilder
+    ):
+        raise ArtikelBildzuordnungFehler("Shop-Positionen oder Hauptbild sind in v2 uneindeutig.")
+    try:
+        rows = await liste(client, artikel_id)
+        vorher = zuordnungen(rows)
+        if sorted(r[4] for r in vorher if r[2] == SHOP) != positionen:
+            raise ValueError("Shop-Positionen stimmen nicht zwischen v1 und v2 überein.")
+        bilder_v1 = await bestand(client, {"id": artikel_id}, rows, fehlertolerant=True)
+        if zuordnungen(await liste(client, artikel_id)) != vorher:
+            raise ValueError("Bildbestand während des Lesens verändert.")
+        return bilder_v1
+    except ValueError as exc:
+        raise ArtikelBildzuordnungFehler(str(exc)) from None
 
 
 class ArtikelServerFehler(JtlFehler):
@@ -292,7 +315,11 @@ async def abgleichen(client):
                 detail.setdefault("images", {})["saleschannelImages"] = [{"saleschannelId": SHOP, "images": [
                     {"blobIdentifier": b["id"], "sortNumber": b["position"], "isMainImage": b["hauptbild"]}
                     for b in v1_bestand]}]
-            bilder = shop_bilder(detail, row, einzelshop)
+            try:
+                bilder = shop_bilder(detail, row, einzelshop)
+            except ArtikelBildzuordnungFehler:
+                bilder = shop_bilder(detail, row, einzelshop, ids_pruefen=False)
+                v1_bestand = await _v1_shopbestand(client, key, bilder)
         except (ArtikelServerFehler, ArtikelBildzuordnungFehler) as exc:
             if speicher.freigegeben(key, rev):
                 ungeprueft[key] = {"id": key, "sku": sku, "name": name, "fehler": str(exc),
@@ -329,6 +356,16 @@ async def abgleichen(client):
                     thumb = speicher.thumb_speichern(daten)
             result.append({**quelle, "id": bid, "thumb": thumb, "fehler": bildfehler, "version": version, "position": bild["sortNumber"],
                            "hauptbild": bool(bild.get("isMainImage")), "dateiname": str(bild.get("filename") or "")[:200]})
+        if v1_bestand is None and len(result) == len(bilder) and any(b["fehler"] and not b["thumb"] for b in result):
+            try:
+                v1_vorschlag = await _v1_shopbestand(client, key, bilder)
+            except JtlFehler:
+                v1_vorschlag = []
+            if v1_vorschlag and all(
+                neu["thumb"] and (not altbild["thumb"] or altbild["thumb"] == neu["thumb"])
+                for altbild, neu in zip(result, v1_vorschlag, strict=True)
+            ):
+                v1_bestand = result = v1_vorschlag
         if speicher.freigegeben(key, rev):
             parent = row.get("parentItemId")
             parent = ident(parent) if parent and parent != "00000000-0000-0000-0000-000000000000" else None
